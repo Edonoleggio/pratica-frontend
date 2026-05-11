@@ -2355,7 +2355,7 @@ function Wizard({ onClose, prefillCustomer, operator, fleet, customers, partners
     ritiroIndirizzo: '',
     consegnaStruttura: 's3',
     consegnaIndirizzo: '',
-    pagamento: 'C',
+    pagamento: 'C',}
  const [pdfOpen, setPdfOpen] = useState(false);
   const [sent, setSent] = useState(false);
   const [isUploading, setIsUploading] = useState(false); // 
