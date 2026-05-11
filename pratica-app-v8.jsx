@@ -2356,13 +2356,38 @@ function Wizard({ onClose, prefillCustomer, operator, fleet, customers, partners
     consegnaStruttura: 's3',
     consegnaIndirizzo: '',
     pagamento: 'C',
-  });
-  const [pdfOpen, setPdfOpen] = useState(false);
+ const [pdfOpen, setPdfOpen] = useState(false);
   const [sent, setSent] = useState(false);
+  const [isUploading, setIsUploading] = useState(false); // 
 
   const update = useCallback((k, v) => setData(d => ({ ...d, [k]: v })), []);
   const t = data.tipoVeicolo ? VEHICLE_TYPES[data.tipoVeicolo] : null;
   const isCargosBound = t?.cargosRequired === true;
+
+  //
+  const handleFinalConfirm = async () => {
+    setIsUploading(true);
+    try {
+      // 
+      const BACKEND_URL = 'https://pratica-backend.onrender.com'; 
+      
+      const response = await fetch(BACKEND_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+
+      if (response.ok) {
+        setSent(true); // 
+      } else {
+        alert("Il server ha ricevuto i dati ma ha dato errore. Controlla i log di Render.");
+      }
+    } catch (error) {
+      alert("Errore di connessione: Il backend su Render non risponde. Aspetta un minuto e riprova (potrebbe essere in standby).");
+    } finally {
+      setIsUploading(false);
+    }
+  };
 
   const STEPS = ['Tipo', 'Cliente', 'Veicolo', 'Periodo', 'Conferma'];
 
