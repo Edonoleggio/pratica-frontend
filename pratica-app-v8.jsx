@@ -1,4 +1,10 @@
+// CONFIGURAZIONE SERVER - Incollato da Gemini
+const API_URL = "https://pratica-backend.onrender.com/api";
+
+// --- Fine configurazione ---
+
 import { useState, useMemo, useEffect, useRef, useCallback, memo } from 'react';
+// 
 import {
   LayoutDashboard, FileText, Car, Users, Settings, Plus, Search,
   ChevronRight, Check, AlertCircle, Clock, Send, Camera, ScanLine,
@@ -45,7 +51,7 @@ const AGENCY = {
 
 // Configurazione CARGOS — modificabile via UI in Impostazioni
 const INITIAL_CARGOS_CONFIG = {
-  endpoint: 'https://pratica-backend.onrender.com',
+  endpoint: 'https://cargos.poliziadistato.it/CARGOS_API',
   agenziaId: 'EDO-LMP-1994',
   username: 'edonoleggio',
   password: '',                               // mai stampato in chiaro
