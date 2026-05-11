@@ -2489,7 +2489,7 @@ function Wizard({ onClose, prefillCustomer, operator, fleet, customers, partners
                   Continua <ArrowRight className="w-4 h-4" aria-hidden="true" />
                 </button>
               ) : (
-                <button type="button" onClick={() => setSent(true)} className="btn-accent px-5 py-2 rounded text-sm font-semibold flex items-center gap-2">
+                <button type="button" onClick={handleFinalConfirm} className="btn-accent px-5 py-2 rounded text-sm font-semibold flex items-center gap-2">
                   {isCargosBound
                     ? <><Send className="w-4 h-4" aria-hidden="true" /> Invia a CARGOS</>
                     : <><FileCheck2 className="w-4 h-4" aria-hidden="true" /> Genera contratto</>
