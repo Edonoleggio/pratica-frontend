@@ -345,7 +345,7 @@ const VEHICLE_STATUS = {
   venduto:     { label: 'Venduto',     pill: 'pill-neutral', icon: X },
 };
 
-const INITIAL_CUSTOMERS = [
+const [] = [
   {
     id: 'c1', cognome: 'Bianchi', nome: 'Marco',
     nascita: '12/03/1985', luogoNascita: 'Milano', cittadinanza: 'Italia',
@@ -376,7 +376,7 @@ const INITIAL_CUSTOMERS = [
   },
 ];
 
-const INITIAL_PARTNERS = [
+const [] = [
   { id: 's1',  nome: 'Aeroporto di Lampedusa',       tipo: 'aeroporto',   indirizzo: 'Contrada Cala Pisana, 92031 Lampedusa (AG)',  fissa: true },
   { id: 's2',  nome: 'Porto di Lampedusa',           tipo: 'porto',       indirizzo: 'Lungomare Luigi Rizzo, 92031 Lampedusa (AG)', fissa: true },
   { id: 's3',  nome: 'Sede Edonoleggio',             tipo: 'sede',        indirizzo: 'Cortile Caltanissetta, 92031 Lampedusa (AG)', fissa: true },
@@ -414,7 +414,7 @@ const PARTNER_TYPES = {
   casa:         { label: 'Casa vacanze' },
 };
 
-const MOCK_OPERATORS = [
+const [] = [
   { id: 'op-alessandra', initials: 'AR', nome: 'Alessandra Raptis', turno: '08:30 → 14:00', current: true,  ruolo: 'Titolare' },
   { id: 'op-marco',      initials: 'MS', nome: 'Marco Santini',     turno: '14:00 → 20:30', current: false, ruolo: 'Operatore' },
   { id: 'op-giulia',     initials: 'GP', nome: 'Giulia Pellegrini', turno: 'on-call',        current: false, ruolo: 'Operatore' },
@@ -1017,10 +1017,10 @@ export default function App() {
 
   // Stato persistente su localStorage — sopravvive a refresh, riavvii del tablet, ecc.
   // Chiavi prefissate 'edo:v1:' per gestire migrazioni future senza confondersi con altre app.
-  const [fleet, setFleet]           = usePersistentState('edo:v1:fleet',     INITIAL_FLEET);
-  const [customers, setCustomers]   = usePersistentState('edo:v1:customers', INITIAL_CUSTOMERS);
-  const [partners, setPartners]     = usePersistentState('edo:v1:partners',  INITIAL_PARTNERS);
-  const [operators, setOperators]   = usePersistentState('edo:v1:operators', MOCK_OPERATORS);
+  const [fleet, setFleet]           = usePersistentState('edo:v1:fleet',     []);
+  const [customers, setCustomers]   = usePersistentState('edo:v1:customers', []);
+  const [partners, setPartners]     = usePersistentState('edo:v1:partners',  []);
+  const [operators, setOperators]   = usePersistentState('edo:v1:operators', []);
   const [cargosConfig, setCargosConfig] = usePersistentState('edo:v1:cargos', INITIAL_CARGOS_CONFIG);
 
   // Stato di sessione (non persistente — si resetta a ogni apertura)
@@ -4134,7 +4134,7 @@ function ShiftChangeModal({ currentOperator, operators, onClose, onConfirm }) {
   const [newOpId, setNewOpId] = useState(null);
   const [taken, setTaken] = useState({});
   const openContracts = MOCK_CONTRACTS.filter(c => c.fuori || c.stato === 'bozza' || c.stato === 'errore');
-  const ops = operators || MOCK_OPERATORS;
+  const ops = operators || [];
   const enabledOps = ops.filter(o => o.enabled !== false);
   const newOp = ops.find(o => o.id === newOpId);
   const takenCount = Object.values(taken).filter(Boolean).length;
