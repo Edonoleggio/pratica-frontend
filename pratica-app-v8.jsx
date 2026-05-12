@@ -995,8 +995,7 @@ function Toggle({ checked, onChange, label }) {
       <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all ${checked ? 'left-5' : 'left-0.5'}`} />
     </button>
   );
-} 
-
+}
 // ═══════════════════════════════════════════════════════════════════
 // APP ROOT
 // ═══════════════════════════════════════════════════════════════════
