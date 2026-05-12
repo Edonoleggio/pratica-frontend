@@ -991,11 +991,12 @@ function Toggle({ checked, onChange, label }) {
       aria-label={label}
       onClick={() => onChange(!checked)}
       className={`relative w-11 h-6 rounded-full transition-all focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-[var(--ink)] ${checked ? 'bg-[var(--ink)]' : 'bg-[var(--border-strong)]'}`}
-    >
+    {/* ... fine del componente precedente ... */}
       <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all ${checked ? 'left-5' : 'left-0.5'}`} />
     </button>
   );
-} //
+} // <--- QUESTA PARENTESI È FONDAMENTALE! Deve chiudere lo Switch o la funzione sopra.
+
 // ═══════════════════════════════════════════════════════════════════
 // APP ROOT
 // ═══════════════════════════════════════════════════════════════════
