@@ -2406,7 +2406,7 @@ function Wizard({ onClose, prefillCustomer, operator, fleet, customers, partners
       // 
       const BACKEND_URL = 'https://pratica-backend.onrender.com'; 
       
-      const response = await ffetch(`${BACKEND_URL}/api/contracts`, {
+      const response = await fetch(`${BACKEND_URL}/api/contracts`, {
   method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
