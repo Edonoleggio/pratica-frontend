@@ -1000,7 +1000,7 @@ function Toggle({ checked, onChange, label }) {
 // ═══════════════════════════════════════════════════════════════════
 // APP ROOT
 // ═══════════════════════════════════════════════════════════════════
-export default function App() {
+export default function App() 
   const [page, setPage] = useState('dashboard');
   const [wizardOpen, setWizardOpen] = useState(false);
 
