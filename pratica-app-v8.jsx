@@ -534,6 +534,8 @@ const BACKEND_URL = 'https://pratica-backend.onrender.com';
 function usePersistentState(key, initialValue) {
   const [value, setValue] = useState(initialValue);
   const [loaded, setLoaded] = useState(false);
+  const isSaving = useRef(false);
+  const pendingSave = useRef(false);
 
   // Carica dal backend all'avvio
   useEffect(() => {
@@ -544,7 +546,6 @@ function usePersistentState(key, initialValue) {
         setLoaded(true);
       })
       .catch(() => {
-        // Fallback: prova localStorage
         try {
           const raw = window.localStorage.getItem(key);
           if (raw) setValue(JSON.parse(raw));
@@ -553,17 +554,35 @@ function usePersistentState(key, initialValue) {
       });
   }, [key]);
 
+  // Polling ogni 30 secondi — solo se non stiamo salvando
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (isSaving.current) return;
+      fetch(`${BACKEND_URL}/api/store/${encodeURIComponent(key)}`)
+        .then(r => r.json())
+        .then(data => {
+          if (data.value !== null && !isSaving.current) setValue(data.value);
+        })
+        .catch(() => {});
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [key]);
+
   // Salva sul backend ad ogni modifica
   useEffect(() => {
     if (!loaded) return;
+    isSaving.current = true;
     fetch(`${BACKEND_URL}/api/store/${encodeURIComponent(key)}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ value }),
-    }).catch(() => {
-      // Fallback: salva in localStorage
-      try { window.localStorage.setItem(key, JSON.stringify(value)); } catch {}
-    });
+    })
+      .catch(() => {
+        try { window.localStorage.setItem(key, JSON.stringify(value)); } catch {}
+      })
+      .finally(() => {
+        isSaving.current = false;
+      });
   }, [key, value, loaded]);
 
   return [value, setValue];
