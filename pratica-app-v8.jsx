@@ -1748,6 +1748,22 @@ function ContractsList() {
                     >
                       Dettagli / PDF
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!confirm(`Cancellare la pratica ${c.id}?`)) return;
+                        fetch(`${BACKEND_URL}/api/contracts/${c.id}`, { method: 'DELETE' })
+                          .then(r => r.json())
+                          .then(res => {
+                            if (res.ok) setContracts(prev => prev.filter(x => x.id !== c.id));
+                            else alert('Errore durante la cancellazione');
+                          });
+                      }}
+                      className="btn-ghost px-3 py-1 rounded text-xs"
+                      style={{ color: 'var(--err)' }}
+                    >
+                      Cancella
+                    </button>
                   </td>
                 </tr>
               ))}
