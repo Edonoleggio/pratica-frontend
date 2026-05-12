@@ -529,27 +529,42 @@ function useFleetCounts(fleet) {
 // Critico per il banco: se l'operatore aggiunge un cliente alle 9:30
 // e l'iPad fa restart automatico alle 14:00, ritrova tutto.
 // Gestisce gracefully ambienti senza localStorage (SSR, mode privato Safari).
-function usePersistentState(key, initialValue) {
-  const [value, setValue] = useState(() => {
-    if (typeof window === 'undefined' || !window.localStorage) return initialValue;
-    try {
-      const raw = window.localStorage.getItem(key);
-      if (raw === null) return initialValue;
-      return JSON.parse(raw);
-    } catch {
-      // JSON corrotto o quota piena → torniamo all'iniziale, non crashiamo
-      return initialValue;
-    }
-  });
+const BACKEND_URL = 'https://pratica-backend.onrender.com';
 
+function usePersistentState(key, initialValue) {
+  const [value, setValue] = useState(initialValue);
+  const [loaded, setLoaded] = useState(false);
+
+  // Carica dal backend all'avvio
   useEffect(() => {
-    if (typeof window === 'undefined' || !window.localStorage) return;
-    try {
-      window.localStorage.setItem(key, JSON.stringify(value));
-    } catch {
-      // Quota piena o disabilitato → silently ignore, lo state resta in memoria
-    }
-  }, [key, value]);
+    fetch(`${BACKEND_URL}/api/store/${encodeURIComponent(key)}`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.value !== null) setValue(data.value);
+        setLoaded(true);
+      })
+      .catch(() => {
+        // Fallback: prova localStorage
+        try {
+          const raw = window.localStorage.getItem(key);
+          if (raw) setValue(JSON.parse(raw));
+        } catch {}
+        setLoaded(true);
+      });
+  }, [key]);
+
+  // Salva sul backend ad ogni modifica
+  useEffect(() => {
+    if (!loaded) return;
+    fetch(`${BACKEND_URL}/api/store/${encodeURIComponent(key)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ value }),
+    }).catch(() => {
+      // Fallback: salva in localStorage
+      try { window.localStorage.setItem(key, JSON.stringify(value)); } catch {}
+    });
+  }, [key, value, loaded]);
 
   return [value, setValue];
 }
