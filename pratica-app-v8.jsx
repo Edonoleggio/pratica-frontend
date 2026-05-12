@@ -18,7 +18,7 @@ import {
   Upload, Image as ImageIcon, RefreshCw, Key, Eye as EyeIcon, EyeOff,
   CircleDot, Power, Shield, Briefcase
 } from 'lucide-react';
-
+const API_BASE_URL = 'https://pratica-backend.onrender.com';
 // ═══════════════════════════════════════════════════════════════════
 // EDONOLEGGIO — REAL COMPANY DATA
 // www.edonoleggio.com · Pionieri del noleggio a Lampedusa dal 1994
@@ -39,14 +39,14 @@ const AGENCY = {
   catastale: 'E431',
   telefono: '+39 0922 970265',
   cellulari: ['+39 339 172 8645', '+39 338 649 6305'],
-  email: 'edomoto@libero.it',
+  email: 'info@edonoleggio.com',
   pec: 'edonoleggio@pec.it',
   questuraPec: 'ag.gab@pecps.poliziadistato.it',
   piva: '01900450840',
   cf: 'RPTLSN61A58E431A',
   agenziaId: 'EDO-LMP-1994',
   orari: 'Lun–Dom · 08:30–13:00 / 14:30–19:00',
-  servizi: 'Auto · Scooter · Quad · E-bike · Mehari · Transfer · Officina',
+  servizi: 'Auto · Scooter · Quad · E-bike · Mehari · Transfer',
 };
 
 // Configurazione CARGOS — modificabile via UI in Impostazioni
@@ -537,56 +537,45 @@ function usePersistentState(key, initialValue) {
   const isSaving = useRef(false);
   const pendingSave = useRef(false);
 
-  // Carica dal backend all'avvio
+  // Modifica il caricamento iniziale
   useEffect(() => {
-    fetch(`${BACKEND_URL}/api/store/${encodeURIComponent(key)}`)
-      .then(r => r.json())
-      .then(data => {
-        if (data.value !== null) setValue(data.value);
-        setLoaded(true);
+    const API_BASE_URL = 'https://pratica-backend.onrender.com';
+
+    // Prima prova a prendere i dati dal SERVER
+    fetch(`${API_BASE_URL}/api/fleet`)
+      .then(res => res.json())
+      .then(serverData => {
+        if (serverData && serverData.length > 0) {
+          setValue(serverData); // Se il server ha la flotta, usa quella!
+        }
       })
       .catch(() => {
+        // Se il server fallisce o è lento, prova il vecchio metodo locale
         try {
           const raw = window.localStorage.getItem(key);
           if (raw) setValue(JSON.parse(raw));
         } catch {}
+      })
+      .finally(() => {
         setLoaded(true);
       });
   }, [key]);
 
-  // Polling ogni 30 secondi — solo se non stiamo salvando
+  // Modifica il Polling (l'aggiornamento automatico)
   useEffect(() => {
+    const API_BASE_URL = 'https://pratica-backend.onrender.com';
+    
     const interval = setInterval(() => {
-      if (isSaving.current) return;
-      fetch(`${BACKEND_URL}/api/store/${encodeURIComponent(key)}`)
-        .then(r => r.json())
-        .then(data => {
-          if (data.value !== null && !isSaving.current) setValue(data.value);
+      // Ogni 30 secondi, chiedi al server se ci sono novità
+      fetch(`${API_BASE_URL}/api/fleet`)
+        .then(res => res.json())
+        .then(serverData => {
+           setValue(serverData);
         })
-        .catch(() => {});
+        .catch(err => console.log("Backend ancora in standby..."));
     }, 30000);
+
     return () => clearInterval(interval);
-  }, [key]);
-
-  // Salva sul backend ad ogni modifica
-  useEffect(() => {
-    if (!loaded) return;
-    isSaving.current = true;
-    fetch(`${BACKEND_URL}/api/store/${encodeURIComponent(key)}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ value }),
-    })
-      .catch(() => {
-        try { window.localStorage.setItem(key, JSON.stringify(value)); } catch {}
-      })
-      .finally(() => {
-        isSaving.current = false;
-      });
-  }, [key, value, loaded]);
-
-  return [value, setValue];
-}
 
 // useToasts — gestore semplice di notifiche non-bloccanti.
 // push({ tone, title, message, duration }) ritorna l'id; dismiss(id) chiude.
