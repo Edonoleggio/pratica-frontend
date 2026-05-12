@@ -995,7 +995,7 @@ function Toggle({ checked, onChange, label }) {
       <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all ${checked ? 'left-5' : 'left-0.5'}`} />
     </button>
   );
-} // <--- Questa chiude la funzione esterna (forse si chiama useLocalStorage o simile)
+} 
 
 // ═══════════════════════════════════════════════════════════════════
 // APP ROOT
@@ -1003,7 +1003,6 @@ function Toggle({ checked, onChange, label }) {
 export default function App() {
   const [page, setPage] = useState('dashboard');
   const [wizardOpen, setWizardOpen] = useState(false);
-
   // Stato persistente su localStorage — sopravvive a refresh, riavvii del tablet, ecc.
   // Chiavi prefissate 'edo:v1:' per gestire migrazioni future senza confondersi con altre app.
   const [fleet, setFleet]           = usePersistentState('edo:v1:fleet',     []);
