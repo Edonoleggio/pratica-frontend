@@ -1680,72 +1680,92 @@ function ReturnColumn({ title, color, items, empty, fmtTime, urgent, muted }) {
 // CONTRACTS LIST
 // ═══════════════════════════════════════════════════════════════════
 function ContractsList() {
-  const allContracts = useMemo(
-    () => MOCK_CONTRACTS.concat(MOCK_CONTRACTS.map(c => ({ ...c, id: c.id.replace('0', '9'), data: 'ieri' }))),
-    []
-  );
+  const [contracts, setContracts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState('all');
+  const [selectedContract, setSelectedContract] = useState(null);
+
+  useEffect(() => {
+    fetch(`${BACKEND_URL}/api/contracts?limit=200`)
+      .then(r => r.json())
+      .then(data => { setContracts(data.contracts || []); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, []);
+
+  const filtered = contracts.filter(c => {
+    if (filter === 'paper') return c.status === 'paper';
+    if (filter === 'cargos') return c.cargos_required;
+    return true;
+  });
 
   return (
     <div>
       <h2 className="serif text-3xl font-medium mb-1">Pratiche</h2>
       <p className="text-sm mb-6" style={{ color: 'var(--muted)' }}>
-        Archivio completo · esportabile in CSV per fallback CARGOS via PEC alla Questura di Agrigento
+        Archivio completo dei contratti generati
       </p>
       <div className="card-paper">
         <div className="px-5 py-3 border-b flex items-center gap-3" style={{ borderColor: 'var(--border)' }}>
-          <button type="button" className="btn-ghost px-3 py-1.5 rounded text-xs flex items-center gap-1.5 border" style={{ borderColor: 'var(--border)' }}>
-            <Filter className="w-3.5 h-3.5" aria-hidden="true" /> Filtri
-          </button>
-          <button type="button" className="btn-ghost px-3 py-1.5 rounded text-xs">Tutte</button>
-          <button type="button" className="btn-ghost px-3 py-1.5 rounded text-xs">Solo CARGOS (auto)</button>
-          <button type="button" className="btn-ghost px-3 py-1.5 rounded text-xs flex items-center gap-1.5">In errore <span className="pill pill-err">1</span></button>
-          <div className="flex-1" />
-          <button type="button" className="btn-ghost px-3 py-1.5 rounded text-xs flex items-center gap-1.5">
-            <Download className="w-3.5 h-3.5" aria-hidden="true" /> Esporta CSV
-          </button>
+          <button type="button" onClick={() => setFilter('all')} className={`btn-ghost px-3 py-1.5 rounded text-xs ${filter === 'all' ? 'font-bold' : ''}`}>Tutte</button>
+          <button type="button" onClick={() => setFilter('cargos')} className={`btn-ghost px-3 py-1.5 rounded text-xs ${filter === 'cargos' ? 'font-bold' : ''}`}>Solo CARGOS (auto)</button>
+          <button type="button" onClick={() => setFilter('paper')} className={`btn-ghost px-3 py-1.5 rounded text-xs ${filter === 'paper' ? 'font-bold' : ''}`}>Solo cartacei</button>
         </div>
-        <table className="w-full" aria-label="Archivio pratiche">
-          <thead>
-            <tr className="text-[11px] uppercase tracking-wider" style={{ color: 'var(--muted)' }}>
-              <th scope="col" className="text-left px-5 py-3 font-semibold">ID</th>
-              <th scope="col" className="text-left px-2 py-3 font-semibold">Cliente</th>
-              <th scope="col" className="text-left px-2 py-3 font-semibold">Veicolo</th>
-              <th scope="col" className="text-left px-2 py-3 font-semibold">Operatore</th>
-              <th scope="col" className="text-left px-2 py-3 font-semibold">Stato</th>
-              <th scope="col" className="text-right px-5 py-3 font-semibold">Ricevuta</th>
-            </tr>
-          </thead>
-          <tbody>
-            {allContracts.map((c, i) => (
-              <tr key={`${c.id}-${i}`} className="border-t hover:bg-[var(--surface-2)] transition-colors" style={{ borderColor: 'var(--border)' }}>
-                <td className="px-5 py-3 mono text-xs">{c.id}</td>
-                <td className="px-2 py-3 text-sm">{c.cliente}</td>
-                <td className="px-2 py-3 text-sm" style={{ color: 'var(--ink-2)' }}>{c.veicolo}</td>
-                <td className="px-2 py-3">
-                  <div className="flex items-center gap-1.5 text-xs">
-                    <div className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-semibold" style={{ background: 'var(--surface-2)', color: 'var(--ink-2)' }} aria-hidden="true">
-                      {['AR', 'MS'][i % 2]}
-                    </div>
-                    <span style={{ color: 'var(--ink-2)' }}>{['Alessandra', 'Marco'][i % 2]}</span>
-                  </div>
-                </td>
-                <td className="px-2 py-3"><StatusPill stato={c.stato} /></td>
-                <td className="px-5 py-3 text-right">
-                  {c.stato === 'inviato' && (
-                    <button type="button" className="text-xs mono flex items-center gap-1 ml-auto btn-ghost px-2 py-1 rounded" style={{ color: 'var(--ink-2)' }} aria-label={`Apri ricevuta RIC-${c.id.slice(-4)}`}>
-                      RIC-{c.id.slice(-4)} <ArrowUpRight className="w-3 h-3" aria-hidden="true" />
-                    </button>
-                  )}
-                </td>
+        {loading ? (
+          <div className="px-5 py-8 text-center text-sm" style={{ color: 'var(--muted)' }}>Caricamento...</div>
+        ) : filtered.length === 0 ? (
+          <div className="px-5 py-8 text-center text-sm" style={{ color: 'var(--muted)' }}>Nessuna pratica trovata</div>
+        ) : (
+          <table className="w-full" aria-label="Archivio pratiche">
+            <thead>
+              <tr className="text-[11px] uppercase tracking-wider" style={{ color: 'var(--muted)' }}>
+                <th scope="col" className="text-left px-5 py-3 font-semibold">ID</th>
+                <th scope="col" className="text-left px-2 py-3 font-semibold">Tipo</th>
+                <th scope="col" className="text-left px-2 py-3 font-semibold">Stato</th>
+                <th scope="col" className="text-left px-2 py-3 font-semibold">Data</th>
+                <th scope="col" className="text-right px-5 py-3 font-semibold">Azione</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {filtered.map(c => (
+                <tr key={c.id} className="border-t" style={{ borderColor: 'var(--border)' }}>
+                  <td className="px-5 py-3 font-mono text-xs">{c.id}</td>
+                  <td className="px-2 py-3 text-sm">{c.vehicle_type}</td>
+                  <td className="px-2 py-3">
+                    <span className={`pill ${c.status === 'sent' ? 'pill-sea' : c.status === 'error' ? 'pill-err' : 'pill-ink'}`}>
+                      {c.status}
+                    </span>
+                  </td>
+                  <td className="px-2 py-3 text-sm">{new Date(c.created_at).toLocaleDateString('it-IT')}</td>
+                  <td className="px-5 py-3 text-right">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        fetch(`${BACKEND_URL}/api/contracts/${c.id}`)
+                          .then(r => r.json())
+                          .then(full => setSelectedContract(full));
+                      }}
+                      className="btn-ghost px-3 py-1 rounded text-xs"
+                    >
+                      Dettagli / PDF
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
+      {selectedContract && (
+        <ContractPdfModal
+          data={selectedContract.payload}
+          operator={{}}
+          partners={[]}
+          onClose={() => setSelectedContract(null)}
+        />
+      )}
     </div>
   );
 }
-
 // ═══════════════════════════════════════════════════════════════════
 // FLEET
 // ═══════════════════════════════════════════════════════════════════
