@@ -1034,7 +1034,7 @@ export default function App() {
   // Toast system per feedback non-bloccanti
   const { toasts, push: pushToast, dismiss: dismissToast } = useToasts();
 
-  const operator = operators[operatorIdx] || operators[0];
+  const operator = operators.length > 0 ? (operators[operatorIdx] || operators[0]) : { id: 'loading', nome: '...', ruolo: '', turnoInizio: '08:00', turnoFine: '20:00' };
 
   useEffect(() => {
     if (!online && pendingQueue === 0) setPendingQueue(2);
