@@ -345,7 +345,7 @@ const VEHICLE_STATUS = {
   venduto:     { label: 'Venduto',     pill: 'pill-neutral', icon: X },
 };
 
-const [] = [
+const MOCK_CUSTOMERS = [
   {
     id: 'c1', cognome: 'Bianchi', nome: 'Marco',
     nascita: '12/03/1985', luogoNascita: 'Milano', cittadinanza: 'Italia',
@@ -376,7 +376,7 @@ const [] = [
   },
 ];
 
-const [] = [
+conconst MOCK_LOCATIONS = [];st [] = [
   { id: 's1',  nome: 'Aeroporto di Lampedusa',       tipo: 'aeroporto',   indirizzo: 'Contrada Cala Pisana, 92031 Lampedusa (AG)',  fissa: true },
   { id: 's2',  nome: 'Porto di Lampedusa',           tipo: 'porto',       indirizzo: 'Lungomare Luigi Rizzo, 92031 Lampedusa (AG)', fissa: true },
   { id: 's3',  nome: 'Sede Edonoleggio',             tipo: 'sede',        indirizzo: 'Cortile Caltanissetta, 92031 Lampedusa (AG)', fissa: true },
@@ -414,7 +414,7 @@ const PARTNER_TYPES = {
   casa:         { label: 'Casa vacanze' },
 };
 
-const [] = [
+const MOCK_OPERATORS = [];
   { id: 'op-alessandra', initials: 'AR', nome: 'Alessandra Raptis', turno: '08:30 → 14:00', current: true,  ruolo: 'Titolare' },
   { id: 'op-marco',      initials: 'MS', nome: 'Marco Santini',     turno: '14:00 → 20:30', current: false, ruolo: 'Operatore' },
   { id: 'op-giulia',     initials: 'GP', nome: 'Giulia Pellegrini', turno: 'on-call',        current: false, ruolo: 'Operatore' },
