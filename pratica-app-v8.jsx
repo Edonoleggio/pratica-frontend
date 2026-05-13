@@ -563,19 +563,18 @@ function usePersistentState(key, initialValue) {
 
   // Modifica il Polling (l'aggiornamento automatico)
   useEffect(() => {
-    const API_BASE_URL = 'https://pratica-backend.onrender.com';
-    
     const interval = setInterval(() => {
-      // Ogni 30 secondi, chiedi al server se ci sono novità
       fetch(`${API_BASE_URL}/api/fleet`)
         .then(res => res.json())
         .then(serverData => {
-           setValue(serverData);
+          setValue(serverData);
         })
         .catch(err => console.log("Backend ancora in standby..."));
     }, 30000);
 
     return () => clearInterval(interval);
+  }, []);
+}
 
 // useToasts — gestore semplice di notifiche non-bloccanti.
 // push({ tone, title, message, duration }) ritorna l'id; dismiss(id) chiude.
