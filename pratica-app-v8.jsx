@@ -345,61 +345,9 @@ const VEHICLE_STATUS = {
   venduto:     { label: 'Venduto',     pill: 'pill-neutral', icon: X },
 };
 
-const MOCK_CUSTOMERS = [
-  {
-    id: 'c1', cognome: 'Bianchi', nome: 'Marco',
-    nascita: '12/03/1985', luogoNascita: 'Milano', cittadinanza: 'Italia',
-    docTipo: 'CI', docNum: 'CA12345AA', patente: 'MI1234567X',
-    tel: '+39 348 1234567', email: 'marco.bianchi@gmail.com',
-    visite: 7, vip: true,
-    fatturazione: {
-      tipo: 'azienda', ragioneSociale: 'Bianchi Studio S.r.l.',
-      cf: 'BNCMRC85C12F205A', piva: '08741230963',
-      indirizzo: 'Via Manzoni 24, 20121 Milano (MI)',
-      sdi: 'M5UXCR1', pec: 'studio.bianchi@pec.it',
-    },
-  },
-  {
-    id: 'c2', cognome: 'García López', nome: 'María',
-    nascita: '07/09/1992', luogoNascita: 'Barcelona, ES', cittadinanza: 'Spagna',
-    docTipo: 'PA', docNum: 'XDA456789', patente: '12345678B',
-    tel: '+34 612 345 678', email: 'maria.garcia@email.es',
-    visite: 3, vip: false, fatturazione: null,
-  },
-  {
-    id: 'c3', cognome: 'Müller', nome: 'Hans',
-    nascita: '23/11/1976', luogoNascita: 'München, DE', cittadinanza: 'Germania',
-    docTipo: 'CI', docNum: 'DE9988776', patente: 'B1234567',
-    tel: '+49 170 1234567', email: 'h.mueller@telekom.de',
-    visite: 1, vip: false,
-    fatturazione: { tipo: 'privato', cf: '', piva: '', indirizzo: 'Maximilianstraße 12, 80539 München', sdi: '', pec: '' },
-  },
-];
+const MOCK_CUSTOMERS = [];
 
-conconst MOCK_LOCATIONS = [];st [] = [
-  { id: 's1',  nome: 'Aeroporto di Lampedusa',       tipo: 'aeroporto',   indirizzo: 'Contrada Cala Pisana, 92031 Lampedusa (AG)',  fissa: true },
-  { id: 's2',  nome: 'Porto di Lampedusa',           tipo: 'porto',       indirizzo: 'Lungomare Luigi Rizzo, 92031 Lampedusa (AG)', fissa: true },
-  { id: 's3',  nome: 'Sede Edonoleggio',             tipo: 'sede',        indirizzo: 'Cortile Caltanissetta, 92031 Lampedusa (AG)', fissa: true },
-  { id: 's4',  nome: 'Nautic Hotel',                 tipo: 'hotel',       indirizzo: 'Lampedusa (AG)' },
-  { id: 's5',  nome: "U' Piddu Hotel",               tipo: 'hotel',       indirizzo: 'Lampedusa (AG)' },
-  { id: 's6',  nome: 'Moresco Resort',               tipo: 'resort',      indirizzo: 'Lampedusa (AG)' },
-  { id: 's7',  nome: 'Il Villaggio del Mago',        tipo: 'resort',      indirizzo: 'Lampedusa (AG)' },
-  { id: 's8',  nome: 'Villa Giulia Residence',       tipo: 'residence',   indirizzo: 'Lampedusa (AG)' },
-  { id: 's9',  nome: '7 Palazzi',                    tipo: 'residence',   indirizzo: 'Lampedusa (AG)' },
-  { id: 's10', nome: 'Le Barche Volanti',            tipo: 'guesthouse',  indirizzo: 'Via Roma, 92031 Lampedusa (AG)' },
-  { id: 's11', nome: 'Perla del Sud',                tipo: 'guesthouse',  indirizzo: 'Lampedusa (AG)' },
-  { id: 's12', nome: 'Dimora Spugnara',              tipo: 'guesthouse',  indirizzo: 'Lampedusa (AG)' },
-  { id: 's13', nome: 'Farchikalà',                   tipo: 'guesthouse',  indirizzo: 'Lampedusa (AG)' },
-  { id: 's14', nome: 'Appartamenti Alba e Tramonto', tipo: 'appartamento',indirizzo: 'Lampedusa (AG)' },
-  { id: 's15', nome: 'Appartamenti Nino Paranzoto',  tipo: 'appartamento',indirizzo: 'Lampedusa (AG)' },
-  { id: 's16', nome: 'Brezza Marina',                tipo: 'casa',        indirizzo: 'Lampedusa (AG)' },
-  { id: 's17', nome: 'Casa vacanze da Ivan',         tipo: 'casa',        indirizzo: 'Lampedusa (AG)' },
-  { id: 's18', nome: 'Casa di Manuela',              tipo: 'casa',        indirizzo: 'Lampedusa (AG)' },
-  { id: 's19', nome: 'Casa vacanze da Nino',         tipo: 'casa',        indirizzo: 'Lampedusa (AG)' },
-  { id: 's20', nome: 'Casette di Sara',              tipo: 'casa',        indirizzo: 'Lampedusa (AG)' },
-  { id: 's21', nome: 'Le villette di Cala Galera',   tipo: 'casa',        indirizzo: 'Contrada Cala Galera, 92031 Lampedusa (AG)' },
-  { id: 's22', nome: 'Le villette di Cala Madonna',  tipo: 'casa',        indirizzo: 'Contrada Cala Madonna, 92031 Lampedusa (AG)' },
-];
+const MOCK_LOCATIONS = [];
 
 const PARTNER_TYPES = {
   aeroporto:    { label: 'Aeroporto' },
@@ -415,11 +363,7 @@ const PARTNER_TYPES = {
 };
 
 const MOCK_OPERATORS = [];
-  { id: 'op-alessandra', initials: 'AR', nome: 'Alessandra Raptis', turno: '08:30 → 14:00', current: true,  ruolo: 'Titolare' },
-  { id: 'op-marco',      initials: 'MS', nome: 'Marco Santini',     turno: '14:00 → 20:30', current: false, ruolo: 'Operatore' },
-  { id: 'op-giulia',     initials: 'GP', nome: 'Giulia Pellegrini', turno: 'on-call',        current: false, ruolo: 'Operatore' },
-];
-
+ 
 const MOCK_CONTRACTS = [
   { id: 'EDO-2026-0418', cliente: 'Bianchi Marco',      clienteId: 'c1', veicolo: 'Citroën Mehari · AG123XX',   tipo: 'auto',    stato: 'inviato',  data: 'oggi · 09:14', ritiro: 'oggi 10:00', consegna: 'lun 18:00',  consegnaTimestamp: 'lunedì 18:00',  minutiAlRientro: null, fuori: true },
   { id: 'EDO-2026-0419', cliente: 'García López María', clienteId: 'c2', veicolo: 'Vespa Primavera · DJ44102',   tipo: 'scooter', stato: 'cartaceo', data: 'oggi · 11:32', ritiro: 'oggi 12:00', consegna: 'oggi 17:30', consegnaTimestamp: 'oggi 17:30',    minutiAlRientro: 50,   fuori: true },
