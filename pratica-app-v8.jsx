@@ -1,11 +1,5 @@
-// CONFIGURAZIONE SERVER - Incollato da Gemini
-const API_URL = "https://pratica-backend.onrender.com/api";
-
-// --- Fine configurazione ---
-
-import { useState, useMemo, useEffect, useRef, useCallback, memo } from 'react';
-// 
-import {
+import { useState, useMemo, useEffect, useRef, useCallback, memo, Component } from 'react';
+import { CalendarDays,
   LayoutDashboard, FileText, Car, Users, Settings, Plus, Search,
   ChevronRight, Check, AlertCircle, Clock, Send, Camera, ScanLine,
   ChevronLeft, X, MapPin, CreditCard, ShieldCheck, Download,
@@ -20,11 +14,122 @@ import {
 } from 'lucide-react';
 
 // ═══════════════════════════════════════════════════════════════════
+// APP VERSION — visualizzata in Impostazioni
+// ═══════════════════════════════════════════════════════════════════
+// Mantieni questa stringa allineata con i tag git e i deploy Render.
+// Convenzione: x.y.z dove x = major rewrite, y = feature, z = fix.
+// La data accanto aiuta a verificare al volo che il deploy sia andato a buon fine.
+const APP_VERSION = {
+  number: '0.12.0',
+  codename: 'Manutenzione e rientri',
+  date: '2026-05-13',
+  changelog: [
+    'Anagrafica agenzia editabile da Impostazioni → Modifica (admin)',
+    'Tracking reale veicoli fuori: pannello "Veicoli fuori" nella Dashboard',
+    'Calcolo automatico ritardo / imminente / programmato dai contratti reali',
+    'Aggiornamento live ogni 60s: i veicoli passano da "imminenti" a "in ritardo" da soli',
+    'Pulsante "Veicolo rientrato" su Dashboard e lista Pratiche',
+    'Filtro "In viaggio" nella lista Pratiche per veicoli ancora fuori',
+    'Reset archivi · zona pericolosa: svuota rubrica/contratti/tutto dal backend',
+    'Risolve i 3 clienti finti che riapparivano dal backend Render',
+    'Sync agenzia: i dati anagrafici sono coerenti tra tutti i tablet',
+    'Storage ibrido backend Render + localStorage di fallback',
+    'Error boundary globale · toggle CARGOS · mapping 46 campi CARGOS',
+  ],
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// ERROR BOUNDARY — niente più schermate bianche
+// ═══════════════════════════════════════════════════════════════════
+// React di default svuota tutto il DOM quando un componente crasha, lasciando
+// pagina bianca. Questo boundary cattura l'errore in qualsiasi figlio e mostra
+// un fallback leggibile con stack trace, utile per diagnosticare al volo.
+// In produzione si potrebbe loggare a Sentry/backend; qui lo mostra inline.
+class ErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null, errorInfo: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { error, errorInfo: null };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    this.setState({ error, errorInfo });
+    if (typeof console !== 'undefined' && console.error) {
+      console.error('[Pratica] Error boundary catch:', error, errorInfo);
+    }
+  }
+
+  reset = () => this.setState({ error: null, errorInfo: null });
+
+  render() {
+    if (!this.state.error) return this.props.children;
+
+    const { error, errorInfo } = this.state;
+    const msg = error?.message || String(error);
+    const stack = error?.stack || '';
+    const componentStack = errorInfo?.componentStack || '';
+
+    return (
+      <div style={{ minHeight: '100vh', background: '#faf7f2', padding: '40px 24px', fontFamily: '"IBM Plex Sans", system-ui, sans-serif', color: '#1a1815' }}>
+        <div style={{ maxWidth: 720, margin: '0 auto' }}>
+          <div style={{ background: '#f4d8d8', border: '1px solid #c83434', borderLeft: '4px solid #c83434', padding: '20px 24px', borderRadius: 4, marginBottom: 20 }}>
+            <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#c83434', marginBottom: 4, fontWeight: 600 }}>
+              Errore inatteso · Pratica v{APP_VERSION?.number || '?'}
+            </div>
+            <h1 style={{ fontFamily: '"Newsreader", Georgia, serif', fontSize: 24, fontWeight: 500, margin: '0 0 12px' }}>
+              Qualcosa è andato storto
+            </h1>
+            <p style={{ fontSize: 14, color: '#3a352e', margin: '0 0 16px', lineHeight: 1.5 }}>
+              L'applicazione ha incontrato un errore e non può proseguire da questa schermata. I dati salvati sono intatti. Puoi tornare alla schermata principale o ricaricare l'app.
+            </p>
+            <div style={{ padding: 12, background: '#faf7f2', border: '1px solid #d4ccba', borderRadius: 4, fontFamily: '"JetBrains Mono", Menlo, monospace', fontSize: 12, color: '#1a1815', wordBreak: 'break-word' }}>
+              <strong>{error?.name || 'Error'}:</strong> {msg}
+            </div>
+            <div style={{ marginTop: 16, display: 'flex', gap: 8 }}>
+              <button type="button" onClick={this.reset} style={{ padding: '8px 16px', background: '#c83434', color: 'white', border: 'none', borderRadius: 4, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                Riprova
+              </button>
+              <button type="button" onClick={() => { if (typeof window !== 'undefined') window.location.reload(); }} style={{ padding: '8px 16px', background: 'white', color: '#1a1815', border: '1px solid #d4ccba', borderRadius: 4, fontSize: 13, fontWeight: 500, cursor: 'pointer' }}>
+                Ricarica app
+              </button>
+            </div>
+          </div>
+
+          <details style={{ background: '#fff', border: '1px solid #d4ccba', borderRadius: 4, padding: 16, fontSize: 12 }}>
+            <summary style={{ cursor: 'pointer', fontWeight: 600, color: '#3a352e' }}>
+              Dettagli tecnici (utile per assistenza)
+            </summary>
+            {stack && (
+              <>
+                <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#7a7068', marginTop: 12, marginBottom: 4 }}>Stack JavaScript</div>
+                <pre style={{ margin: 0, fontFamily: '"JetBrains Mono", monospace', fontSize: 11, color: '#3a352e', whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 200, overflow: 'auto', padding: 8, background: '#faf7f2', border: '1px solid #e8e0cc', borderRadius: 3 }}>{stack}</pre>
+              </>
+            )}
+            {componentStack && (
+              <>
+                <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#7a7068', marginTop: 12, marginBottom: 4 }}>Stack componenti React</div>
+                <pre style={{ margin: 0, fontFamily: '"JetBrains Mono", monospace', fontSize: 11, color: '#3a352e', whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 200, overflow: 'auto', padding: 8, background: '#faf7f2', border: '1px solid #e8e0cc', borderRadius: 3 }}>{componentStack}</pre>
+              </>
+            )}
+          </details>
+        </div>
+      </div>
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
 // EDONOLEGGIO — REAL COMPANY DATA
 // www.edonoleggio.com · Pionieri del noleggio a Lampedusa dal 1994
 // ═══════════════════════════════════════════════════════════════════
 
-const AGENCY = {
+// Valori iniziali Edonoleggio. In v0.12+ questi dati sono editabili via UI
+// (Impostazioni → Anagrafica agenzia). Cambiamenti vengono propagati al backend
+// e sincronizzati tra tutti i dispositivi del banco.
+const INITIAL_AGENCY = {
   nome: 'Edonoleggio',
   titolare: 'Raptis Alessandra',
   ragioneSociale: 'Edonoleggio di Raptis Alessandra',
@@ -345,38 +450,15 @@ const VEHICLE_STATUS = {
   venduto:     { label: 'Venduto',     pill: 'pill-neutral', icon: X },
 };
 
-const [] = [
-  {
-    id: 'c1', cognome: 'Bianchi', nome: 'Marco',
-    nascita: '12/03/1985', luogoNascita: 'Milano', cittadinanza: 'Italia',
-    docTipo: 'CI', docNum: 'CA12345AA', patente: 'MI1234567X',
-    tel: '+39 348 1234567', email: 'marco.bianchi@gmail.com',
-    visite: 7, vip: true,
-    fatturazione: {
-      tipo: 'azienda', ragioneSociale: 'Bianchi Studio S.r.l.',
-      cf: 'BNCMRC85C12F205A', piva: '08741230963',
-      indirizzo: 'Via Manzoni 24, 20121 Milano (MI)',
-      sdi: 'M5UXCR1', pec: 'studio.bianchi@pec.it',
-    },
-  },
-  {
-    id: 'c2', cognome: 'García López', nome: 'María',
-    nascita: '07/09/1992', luogoNascita: 'Barcelona, ES', cittadinanza: 'Spagna',
-    docTipo: 'PA', docNum: 'XDA456789', patente: '12345678B',
-    tel: '+34 612 345 678', email: 'maria.garcia@email.es',
-    visite: 3, vip: false, fatturazione: null,
-  },
-  {
-    id: 'c3', cognome: 'Müller', nome: 'Hans',
-    nascita: '23/11/1976', luogoNascita: 'München, DE', cittadinanza: 'Germania',
-    docTipo: 'CI', docNum: 'DE9988776', patente: 'B1234567',
-    tel: '+49 170 1234567', email: 'h.mueller@telekom.de',
-    visite: 1, vip: false,
-    fatturazione: { tipo: 'privato', cf: '', piva: '', indirizzo: 'Maximilianstraße 12, 80539 München', sdi: '', pec: '' },
-  },
-];
+// Clienti: nessun seed di simulazione. Il primo cliente viene aggiunto dall'operatore
+// (manualmente o tramite QR/scan documento). La rubrica si popola con l'uso.
+// Struttura del record cliente, per riferimento documentale:
+//   { id, cognome, nome, nascita, luogoNascita, cittadinanza,
+//     docTipo, docNum, patente, tel, email, visite, vip,
+//     fatturazione: { tipo, ragioneSociale?, cf, piva, indirizzo, sdi, pec } | null }
+const INITIAL_CUSTOMERS = [];
 
-const [] = [
+const INITIAL_PARTNERS = [
   { id: 's1',  nome: 'Aeroporto di Lampedusa',       tipo: 'aeroporto',   indirizzo: 'Contrada Cala Pisana, 92031 Lampedusa (AG)',  fissa: true },
   { id: 's2',  nome: 'Porto di Lampedusa',           tipo: 'porto',       indirizzo: 'Lungomare Luigi Rizzo, 92031 Lampedusa (AG)', fissa: true },
   { id: 's3',  nome: 'Sede Edonoleggio',             tipo: 'sede',        indirizzo: 'Cortile Caltanissetta, 92031 Lampedusa (AG)', fissa: true },
@@ -414,19 +496,20 @@ const PARTNER_TYPES = {
   casa:         { label: 'Casa vacanze' },
 };
 
-const [] = [
-  { id: 'op-alessandra', initials: 'AR', nome: 'Alessandra Raptis', turno: '08:30 → 14:00', current: true,  ruolo: 'Titolare' },
-  { id: 'op-marco',      initials: 'MS', nome: 'Marco Santini',     turno: '14:00 → 20:30', current: false, ruolo: 'Operatore' },
-  { id: 'op-giulia',     initials: 'GP', nome: 'Giulia Pellegrini', turno: 'on-call',        current: false, ruolo: 'Operatore' },
+// Operatori: il banco deve avere almeno un operatore per funzionare (l'app crasha
+// se la lista è vuota, vedi guardia in SettingsPage). Quindi seed con la titolare
+// reale di Edonoleggio. Altri operatori si aggiungono dalla UI in Impostazioni.
+const MOCK_OPERATORS = [
+  { id: 'op-alessandra', initials: 'AR', nome: 'Alessandra Raptis', turno: '08:30 → 13:00 / 14:30 → 19:00', current: true, ruolo: 'Titolare', role: 'admin', tel: '+39 339 172 8645', email: 'edomoto@libero.it', enabled: true },
 ];
 
-const MOCK_CONTRACTS = [
-  { id: 'EDO-2026-0418', cliente: 'Bianchi Marco',      clienteId: 'c1', veicolo: 'Citroën Mehari · AG123XX',   tipo: 'auto',    stato: 'inviato',  data: 'oggi · 09:14', ritiro: 'oggi 10:00', consegna: 'lun 18:00',  consegnaTimestamp: 'lunedì 18:00',  minutiAlRientro: null, fuori: true },
-  { id: 'EDO-2026-0419', cliente: 'García López María', clienteId: 'c2', veicolo: 'Vespa Primavera · DJ44102',   tipo: 'scooter', stato: 'cartaceo', data: 'oggi · 11:32', ritiro: 'oggi 12:00', consegna: 'oggi 17:30', consegnaTimestamp: 'oggi 17:30',    minutiAlRientro: 50,   fuori: true },
-  { id: 'EDO-2026-0420', cliente: 'Rossi Anna',         clienteId: null, veicolo: 'Polaris Sportsman · XQ88550', tipo: 'quad',    stato: 'cartaceo', data: 'oggi · 14:08', ritiro: 'oggi 14:30', consegna: 'oggi 19:00', consegnaTimestamp: 'oggi 19:00',    minutiAlRientro: 140,  fuori: true },
-  { id: 'EDO-2026-0421', cliente: 'Müller Hans',        clienteId: 'c3', veicolo: 'Fiat Panda · GG441KP',        tipo: 'auto',    stato: 'errore',   data: 'oggi · 15:50', ritiro: 'oggi 16:00', consegna: 'oggi 16:30', consegnaTimestamp: 'oggi 16:30',    minutiAlRientro: -10,  fuori: true, ritardo: true },
-  { id: 'EDO-2026-0422', cliente: 'Esposito Luca',      clienteId: null, veicolo: 'Atala B-Tour · —',            tipo: 'ebike',   stato: 'cartaceo', data: 'oggi · 16:21', ritiro: 'dom 09:00',  consegna: 'mar 09:00', consegnaTimestamp: 'martedì 09:00', minutiAlRientro: null, fuori: false },
-];
+// Contratti: nessuna simulazione. La lista pratiche si popola dal wizard reale.
+// I record salvati hanno una struttura più ricca (vedi submitContract in App):
+//   { contractId, createdAt, operatorId, status, vehicleType, cargosRequired,
+//     cargosOverridden, record (46 campi CARGOS), wizardSnapshot, receipt, syncedAt }
+// Questa costante esiste ancora solo per retrocompatibilità con vecchi riferimenti
+// che usavano MOCK_CONTRACTS nel codice della Dashboard e dei contatori di rientro.
+const MOCK_CONTRACTS = [];
 
 const TIPO_PAGAMENTO = {
   C: { label: 'Carta di credito', cargosMap: 'C', icon: CreditCard },
@@ -436,6 +519,246 @@ const TIPO_PAGAMENTO = {
 };
 
 const TIPO_DOC = { CI: "Carta d'identità", PA: 'Passaporto', PT: 'Patente di guida', PE: 'Permesso di soggiorno' };
+
+// ═══════════════════════════════════════════════════════════════════
+// BACKEND API
+// ═══════════════════════════════════════════════════════════════════
+//
+// Thin client per il backend Pratica (Node/Express). Endpoint base
+// configurabile via env (VITE_PRATICA_API o NEXT_PUBLIC_PRATICA_API)
+// o dal pannello Impostazioni (override locale, salvato in localStorage).
+//
+// Strategia:
+//   • create contratto AUTO → POST sync, attesa fino a 30s, ricevuta CARGOS
+//   • create contratto MOTO/SCOOTER → POST, salvato come 'paper' (escluso CARGOS)
+//   • errore di rete → contratto sopravvive in localStorage, l'utente può
+//     ritentare manualmente o lasciare al background sync
+//   • timeout 30s per submission, 5s per health check
+//   • retry esponenziale solo per chiamate idempotenti (GET, retry endpoint)
+//   • idempotenza POST garantita dal CONTRATTO_ID univoco lato client
+// ═══════════════════════════════════════════════════════════════════
+
+// URL di default: in produzione (build Vite/Next) può essere injected da variabile d'ambiente.
+// Altrimenti usiamo direttamente il backend Render già deployato e funzionante.
+// L'utente admin può sempre sovrascrivere via UI in Impostazioni → Backend Pratica.
+// Nota: NON usiamo `import.meta` direttamente perché il parser di alcuni ambienti
+// (artifact preview Claude, vecchi bundler senza ESM) fallisce in fase di parsing.
+function getDefaultApiBase() {
+  try {
+    // globalThis.process è popolato da Next.js a build time
+    if (typeof globalThis !== 'undefined') {
+      const p = globalThis.process;
+      if (p && p.env && p.env.NEXT_PUBLIC_PRATICA_API) return p.env.NEXT_PUBLIC_PRATICA_API;
+    }
+  } catch {
+    /* parser quiet */
+  }
+  // Default: backend Edonoleggio già deployato su Render
+  return 'https://pratica-backend.onrender.com/api';
+}
+const DEFAULT_API_BASE = getDefaultApiBase();
+
+// Errore tipizzato — distingue rete / validazione / server.
+// Il chiamante può inspect err.kind per decidere il toast e il rollback.
+class ApiError extends Error {
+  constructor(kind, message, details) {
+    super(message);
+    this.kind = kind;     // 'network' | 'timeout' | 'validation' | 'server' | 'auth' | 'offline' | 'blocked'
+    this.details = details;
+  }
+}
+
+// Rileva se la chiamata a `url` sarà quasi sicuramente bloccata dal browser.
+// Caso tipico: l'anteprima artifact di Claude gira sotto un CSP che blocca
+// connect-src verso localhost. Senza questo check, il polling health spara
+// 50+ errori console al minuto inutilmente. Meglio non chiamare proprio.
+function isLikelyBlocked(url) {
+  if (typeof window === 'undefined') return false;
+  try {
+    const target = new URL(url, window.location.href);
+    const isLocalhost = target.hostname === 'localhost' || target.hostname === '127.0.0.1' || target.hostname === '0.0.0.0';
+    if (!isLocalhost) return false;
+    // Siamo dentro un iframe/sandbox? Probabile CSP restrittivo.
+    // L'anteprima artifact di Claude è un iframe srcdoc dove window.location.hostname
+    // è stringa vuota — non è "il nostro server", quindi chiamare localhost è inutile.
+    // Anche claudeusercontent.com e simili sandbox host che non sono localhost vanno trattati uguale.
+    const here = window.location.hostname;
+    const inLocalDev = here === 'localhost' || here === '127.0.0.1';
+    return !inLocalDev;
+  } catch {
+    return false;
+  }
+}
+
+// Wrapper fetch con timeout + JSON + gestione errori uniforme.
+async function apiFetch(baseUrl, path, options = {}) {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    throw new ApiError('offline', 'Nessuna connessione di rete');
+  }
+  // Pre-check: se l'URL è quasi sicuramente bloccato dal CSP del contenitore
+  // (tipico in anteprima artifact con localhost), evita di chiamare proprio
+  // — evita spam di errori console e ottiene comunque feedback al chiamante.
+  if (isLikelyBlocked(`${baseUrl}${path}`)) {
+    throw new ApiError('blocked', 'Backend non raggiungibile da questo contesto (CSP/sandbox)');
+  }
+  const controller = new AbortController();
+  const timeoutMs = options.timeout || 30000;
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const res = await fetch(`${baseUrl}${path}`, {
+      method: options.method || 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(options.operatorId ? { 'X-Operator-Id': options.operatorId } : {}),
+        ...options.headers,
+      },
+      body: options.body ? JSON.stringify(options.body) : undefined,
+      signal: controller.signal,
+    });
+
+    let data = null;
+    const text = await res.text();
+    if (text) {
+      try { data = JSON.parse(text); }
+      catch { data = { ok: false, error: 'invalid_json', raw: text.slice(0, 200) }; }
+    }
+
+    if (!res.ok) {
+      if (res.status === 400) throw new ApiError('validation', data?.error || 'Dati non validi', data);
+      if (res.status === 401 || res.status === 403) throw new ApiError('auth', 'Non autorizzato', data);
+      throw new ApiError('server', `Errore server ${res.status}`, data);
+    }
+    return data;
+  } catch (err) {
+    if (err instanceof ApiError) throw err;
+    if (err.name === 'AbortError') throw new ApiError('timeout', `Timeout (${timeoutMs / 1000}s) — server non risponde`);
+    throw new ApiError('network', err.message || 'Errore di rete');
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Genera un CONTRATTO_ID idempotente lato client.
+// Formato: <AGENCY_ID>-<YYYYMMDD>-<seq>-<random>
+// L'unicità è garantita dal random + timestamp. Se la rete cade e l'utente
+// riprova, il client deve riusare lo stesso ID (è la regola di idempotenza).
+function generateContractId(agenziaId) {
+  const d = new Date();
+  const ymd = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+  const rand = Math.random().toString(36).slice(2, 8).toUpperCase();
+  return `${agenziaId || 'EDO'}-${ymd}-${rand}`;
+}
+
+// Mappa il wizard data → record CARGOS tracciato.
+// Riferimento: D.M. 29/10/2021, Allegato A (45 campi).
+// I codici tabellati (luoghi ISTAT, cittadinanza) usano valori provvisori
+// che il backend rimpiazzerà se necessario — qui si fa best-effort.
+function mapWizardToCargosRecord(data, operator, agency, partners) {
+  const c = data.cliente?.full || {};
+  const v = data.veicolo || {};
+  const tipoCargos = VEICOLO_CARGOS_CODE[v.tipo] || 'A';
+
+  const ritiroPartner = partners.find(p => p.id === data.ritiroStruttura);
+  const consegnaPartner = partners.find(p => p.id === data.consegnaStruttura);
+  const ritiroAddr = data.ritiroIndirizzo || ritiroPartner?.indirizzo || '';
+  const consegnaAddr = data.consegnaIndirizzo || consegnaPartner?.indirizzo || '';
+
+  return {
+    CONTRATTO_ID: data.contractId || generateContractId(agency.agenziaId),
+    CONTRATTO_DATA: data.contractDate || formatNowItalian(),
+    CONTRATTO_TIPOP: data.pagamento || 'C',
+    CONTRATTO_CHECKOUT_DATA: data.ritiroData || '',
+    CONTRATTO_CHECKOUT_LUOGO_COD: agency.istatLuogo,
+    CONTRATTO_CHECKOUT_INDIRIZZO: ritiroAddr,
+    CONTRATTO_CHECKIN_DATA: data.consegnaData || '',
+    CONTRATTO_CHECKIN_LUOGO_COD: agency.istatLuogo,
+    CONTRATTO_CHECKIN_INDIRIZZO: consegnaAddr,
+    OPERATORE_ID: operator?.id || 'unknown',
+    AGENZIA_ID: agency.agenziaId,
+    AGENZIA_NOME: agency.ragioneSociale,
+    AGENZIA_LUOGO_COD: agency.istatLuogo,
+    AGENZIA_INDIRIZZO: `${agency.indirizzoLegale}, ${agency.cap} ${agency.citta} (${agency.provincia})`,
+    AGENZIA_RECAPITO_TEL: agency.telefono,
+    VEICOLO_TIPO: tipoCargos,
+    VEICOLO_MARCA: v.marca || '',
+    VEICOLO_MODELLO: v.modello || '',
+    VEICOLO_TARGA: (v.targa || '').toUpperCase().replace(/\s+/g, ''),
+    VEICOLO_COLORE: v.colore || undefined,
+    VEICOLO_GPS: v.gps ? 1 : 0,
+    VEICOLO_BLOCCOM: v.blocco ? 1 : 0,
+    CONDUCENTE_CONTRAENTE_COGNOME: c.cognome || '',
+    CONDUCENTE_CONTRAENTE_NOME: c.nome || '',
+    CONDUCENTE_CONTRAENTE_NASCITA_DATA: c.nascita || '',
+    CONDUCENTE_CONTRAENTE_NASCITA_LUOGO_COD: 0,  // backend risolve da c.luogoNascita
+    CONDUCENTE_CONTRAENTE_CITTADINANZA_COD: 0,   // backend risolve da c.cittadinanza
+    CONDUCENTE_CONTRAENTE_DOCIDE_TIPO_COD: c.docTipo || 'CI',
+    CONDUCENTE_CONTRAENTE_DOCIDE_NUMERO: c.docNum || '',
+    CONDUCENTE_CONTRAENTE_DOCIDE_LUOGORIL_COD: agency.istatLuogo,
+    CONDUCENTE_CONTRAENTE_PATENTE_NUMERO: c.patente || '',
+    CONDUCENTE_CONTRAENTE_PATENTE_LUOGORIL_COD: agency.istatLuogo,
+    CONDUCENTE_CONTRAENTE_RECAPITO: c.tel || undefined,
+  };
+}
+
+// Mappatura tipi veicolo wizard → codice CARGOS (1 lettera)
+const VEICOLO_CARGOS_CODE = { auto: 'A', scooter: 'M', quad: 'M', ebike: null };
+
+// Formatta now() come "DD/MM/YYYY HH:MM" — formato richiesto da CARGOS
+function formatNowItalian() {
+  const d = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+// Parsing inverso: "DD/MM/YYYY HH:MM" → Date object (o null se invalido)
+// Usato per calcolare i minuti al rientro dai contratti, e altre operazioni
+// che richiedono di confrontare orari/date reali con il momento attuale.
+function parseItalianDateTime(str) {
+  if (!str || typeof str !== 'string') return null;
+  const m = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2})$/);
+  if (!m) return null;
+  const [, d, mo, y, h, mi] = m;
+  const date = new Date(Number(y), Number(mo) - 1, Number(d), Number(h), Number(mi));
+  return isNaN(date.getTime()) ? null : date;
+}
+
+// Factory delle funzioni API — il base URL viene dal Context o passato esplicitamente.
+function makeApi(baseUrl) {
+  return {
+    health: () => apiFetch(baseUrl, '/health', { timeout: 5000 }),
+
+    checkContract: (record) =>
+      apiFetch(baseUrl, '/contracts/check', { method: 'POST', body: record, timeout: 10000 }),
+
+    submitContract: (record, mode = 'sync', operatorId) =>
+      apiFetch(baseUrl, `/contracts?mode=${mode}`, {
+        method: 'POST',
+        body: record,
+        operatorId,
+        timeout: mode === 'sync' ? 35000 : 8000,  // sync attende CARGOS, async ritorna subito
+      }),
+
+    getContract: (id) => apiFetch(baseUrl, `/contracts/${encodeURIComponent(id)}`, { timeout: 8000 }),
+
+    listContracts: (params = {}) => {
+      const qs = new URLSearchParams();
+      if (params.status) qs.set('status', params.status);
+      if (params.since)  qs.set('since', String(params.since));
+      if (params.limit)  qs.set('limit', String(params.limit));
+      return apiFetch(baseUrl, `/contracts?${qs}`, { timeout: 10000 });
+    },
+
+    retryContract: (id, operatorId) =>
+      apiFetch(baseUrl, `/contracts/${encodeURIComponent(id)}/retry`, {
+        method: 'POST', operatorId, timeout: 35000,
+      }),
+
+    // CSV fallback — restituisce il payload base64 e le istruzioni PEC
+    csvBatch: (ids) =>
+      apiFetch(baseUrl, '/contracts/csv-batch', { method: 'POST', body: { ids }, timeout: 10000 }),
+  };
+}
 
 // ═══════════════════════════════════════════════════════════════════
 // CUSTOM HOOKS
@@ -525,67 +848,152 @@ function useFleetCounts(fleet) {
   }, [fleet]);
 }
 
-// usePersistentState — useState che persiste su localStorage tra refresh.
-// Critico per il banco: se l'operatore aggiunge un cliente alle 9:30
-// e l'iPad fa restart automatico alle 14:00, ritrova tutto.
-// Gestisce gracefully ambienti senza localStorage (SSR, mode privato Safari).
-const BACKEND_URL = 'https://pratica-backend.onrender.com';
+// usePersistentState — stato che vive in TRE livelli, in ordine di affidabilità:
+//   1. memoria (useState)               — sempre disponibile, perso a refresh
+//   2. localStorage del browser         — sopravvive a refresh, locale al dispositivo
+//   3. backend Render `/api/store/:key` — sync tra tutti i dispositivi
+//
+// Strategia:
+//   • All'avvio: carichiamo prima da localStorage (zero latenza, schermata istantanea),
+//     poi tentiamo backend in background. Se il backend ha dati più recenti, sovrascrive.
+//   • In scrittura: aggiorniamo lo state e localStorage SUBITO, ma il save remoto è
+//     debounced 1.5s. Se l'utente sta digitando rapidamente (es. modifica indirizzo
+//     cliente), un solo POST parte alla fine, non uno per lettera.
+//   • Se il backend cade, il salvataggio remoto fallisce silenziosamente — i dati
+//     sono comunque al sicuro in localStorage. Una sync esplicita ("Sincronizza ora"
+//     in Impostazioni) li reinvia quando il backend torna.
+//   • Niente polling automatico: spreca batteria, tiene sveglio il Render free tier,
+//     e in scenari reali sovrascrive lo state se due dispositivi modificano insieme.
+//
+// firma: usePersistentState(key, initialValue, options?)
+//   options.baseUrl   — URL backend (se assente, no sync remota)
+//   options.skipRemote — true per disabilitare backend (utile in test)
+//
+function usePersistentState(key, initialValue, options = {}) {
+  const { baseUrl, skipRemote } = options;
 
-function usePersistentState(key, initialValue) {
-  const [value, setValue] = useState(initialValue);
-  const [loaded, setLoaded] = useState(false);
-  const isSaving = useRef(false);
-  const pendingSave = useRef(false);
+  // Lettura sincrona da localStorage all'init
+  const [value, setValue] = useState(() => {
+    if (typeof window === 'undefined' || !window.localStorage) return initialValue;
+    try {
+      const raw = window.localStorage.getItem(key);
+      if (raw === null) return initialValue;
+      return JSON.parse(raw);
+    } catch {
+      return initialValue;
+    }
+  });
 
-  // Carica dal backend all'avvio
+  // Stato sync remota (per UI)
+  const [remoteStatus, setRemoteStatus] = useState(skipRemote || !baseUrl ? 'disabled' : 'idle');
+  const [lastRemoteSync, setLastRemoteSync] = useState(null);
+
+  // Tracciamento per evitare cicli e race
+  const initialLoadDone = useRef(false);
+  const saveTimerRef = useRef(null);
+  const lastSavedRef = useRef(null);  // ultimo valore salvato → evita POST inutili
+
+  // Salvataggio locale immediato a ogni cambio
   useEffect(() => {
-    fetch(`${BACKEND_URL}/api/store/${encodeURIComponent(key)}`)
-      .then(r => r.json())
+    if (typeof window === 'undefined' || !window.localStorage) return;
+    try {
+      window.localStorage.setItem(key, JSON.stringify(value));
+    } catch {
+      // Quota piena → state resta in memoria, OK
+    }
+  }, [key, value]);
+
+  // Caricamento iniziale dal backend (una volta sola, in background)
+  useEffect(() => {
+    if (skipRemote || !baseUrl || initialLoadDone.current) return;
+    initialLoadDone.current = true;
+    let cancelled = false;
+
+    setRemoteStatus('loading');
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+
+    fetch(`${baseUrl}/store/${encodeURIComponent(key)}`, { signal: controller.signal })
+      .then(r => r.ok ? r.json() : null)
       .then(data => {
-        if (data.value !== null) setValue(data.value);
-        setLoaded(true);
+        if (cancelled) return;
+        // Se il backend ha un valore non-null, sovrascrive il locale.
+        // Convenzione: { value: ... } payload del backend.
+        if (data && data.value !== null && data.value !== undefined) {
+          setValue(data.value);
+          lastSavedRef.current = JSON.stringify(data.value);
+        }
+        setRemoteStatus('synced');
+        setLastRemoteSync(new Date());
       })
       .catch(() => {
-        try {
-          const raw = window.localStorage.getItem(key);
-          if (raw) setValue(JSON.parse(raw));
-        } catch {}
-        setLoaded(true);
-      });
-  }, [key]);
+        if (cancelled) return;
+        // Errore di rete o timeout: silente, restiamo su localStorage
+        setRemoteStatus('offline');
+      })
+      .finally(() => clearTimeout(timer));
 
-  // Polling ogni 30 secondi — solo se non stiamo salvando
+    return () => { cancelled = true; controller.abort(); clearTimeout(timer); };
+  }, [key, baseUrl, skipRemote]);
+
+  // Salvataggio remoto debounced — parte 1.5s dopo l'ultima modifica
   useEffect(() => {
-    const interval = setInterval(() => {
-      if (isSaving.current) return;
-      fetch(`${BACKEND_URL}/api/store/${encodeURIComponent(key)}`)
-        .then(r => r.json())
-        .then(data => {
-          if (data.value !== null && !isSaving.current) setValue(data.value);
+    if (skipRemote || !baseUrl || !initialLoadDone.current) return;
+    const serialized = JSON.stringify(value);
+    if (serialized === lastSavedRef.current) return;  // niente di nuovo, skip
+
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000);
+      setRemoteStatus('saving');
+      fetch(`${baseUrl}/store/${encodeURIComponent(key)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ value }),
+        signal: controller.signal,
+      })
+        .then(r => {
+          if (r.ok) {
+            lastSavedRef.current = serialized;
+            setRemoteStatus('synced');
+            setLastRemoteSync(new Date());
+          } else {
+            setRemoteStatus('error');
+          }
         })
-        .catch(() => {});
-    }, 30000);
-    return () => clearInterval(interval);
-  }, [key]);
+        .catch(() => setRemoteStatus('offline'))
+        .finally(() => clearTimeout(timeout));
+    }, 1500);
 
-  // Salva sul backend ad ogni modifica
-  useEffect(() => {
-    if (!loaded) return;
-    isSaving.current = true;
-    fetch(`${BACKEND_URL}/api/store/${encodeURIComponent(key)}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ value }),
-    })
-      .catch(() => {
-        try { window.localStorage.setItem(key, JSON.stringify(value)); } catch {}
-      })
-      .finally(() => {
-        isSaving.current = false;
+    return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
+  }, [key, value, baseUrl, skipRemote]);
+
+  // Sync manuale: forza re-fetch dal backend e re-save del corrente.
+  // Tornata come funzione per essere chiamata dal pulsante "Sincronizza ora".
+  const sync = useCallback(async () => {
+    if (skipRemote || !baseUrl) return { ok: false, reason: 'remote_disabled' };
+    setRemoteStatus('saving');
+    try {
+      // Re-push valore corrente (ha priorità su quello remoto se l'utente
+      // ha modificato qualcosa offline — è una scelta deliberata di "client wins")
+      const res = await fetch(`${baseUrl}/store/${encodeURIComponent(key)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ value }),
       });
-  }, [key, value, loaded]);
+      if (!res.ok) throw new Error(`status ${res.status}`);
+      lastSavedRef.current = JSON.stringify(value);
+      setRemoteStatus('synced');
+      setLastRemoteSync(new Date());
+      return { ok: true };
+    } catch (err) {
+      setRemoteStatus('offline');
+      return { ok: false, reason: err.message };
+    }
+  }, [key, value, baseUrl, skipRemote]);
 
-  return [value, setValue];
+  return [value, setValue, { remoteStatus, lastRemoteSync, sync }];
 }
 
 // useToasts — gestore semplice di notifiche non-bloccanti.
@@ -599,6 +1007,70 @@ function useToasts() {
   }, []);
   const dismiss = useCallback((id) => setToasts(ts => ts.filter(t => t.id !== id)), []);
   return { toasts, push, dismiss };
+}
+
+// useBackendHealth — polling periodico /health del backend.
+// Stati: 'checking' (boot) | 'online' | 'offline' | 'degraded' (CARGOS down)
+// Polling: 30s normale, 5s quando offline (per accorgersi al volo del ritorno).
+// Anche listener su window 'online'/'offline' per recovery immediato.
+function useBackendHealth(api, enabled = true) {
+  const [status, setStatus] = useState('checking');
+  const [lastCheck, setLastCheck] = useState(null);
+  const [cargosOk, setCargosOk] = useState(null);
+  const apiRef = useRef(api);
+  apiRef.current = api;
+
+  useEffect(() => {
+    if (!enabled) return;
+    let cancelled = false;
+    let timer = null;
+
+    const check = async () => {
+      try {
+        const result = await apiRef.current.health();
+        if (cancelled) return;
+        setLastCheck(new Date());
+        setCargosOk(result?.cargos?.ok ?? null);
+        setStatus(result?.cargos?.ok === false ? 'degraded' : 'online');
+      } catch (err) {
+        if (cancelled) return;
+        // Se l'URL è bloccato dal contesto (CSP, sandbox iframe), non ha senso
+        // continuare a fare polling — segniamo 'unconfigured' una volta e basta.
+        if (err.kind === 'blocked') {
+          setStatus('unconfigured');
+          setCargosOk(null);
+          return; // STOP: nessun re-schedule
+        }
+        setStatus('offline');
+        setCargosOk(null);
+      }
+      // Re-check più frequente quando offline (5s) vs normale (30s)
+      const nextDelay = status === 'offline' ? 5000 : 30000;
+      timer = setTimeout(check, nextDelay);
+    };
+
+    check();
+
+    // Listener su eventi network del browser per recovery immediato
+    const onOnline = () => check();
+    const onOffline = () => { if (!cancelled) setStatus('offline'); };
+    if (typeof window !== 'undefined') {
+      window.addEventListener('online', onOnline);
+      window.addEventListener('offline', onOffline);
+    }
+
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('online', onOnline);
+        window.removeEventListener('offline', onOffline);
+      }
+    };
+    // status nelle deps è intenzionale: regola la cadenza del polling.
+  }, [enabled, status]);
+
+  return { status, lastCheck, cargosOk };
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -1011,22 +1483,521 @@ function Toggle({ checked, onChange, label }) {
 // ═══════════════════════════════════════════════════════════════════
 // APP ROOT
 // ═══════════════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════════════
+// PRENOTAZIONI — modulo prenotazioni/calendario (v0.13)
+// Ponte tra EDOX (booking management) e Pratica (contratti/CARGOS).
+// Flusso: Preventivo → Prenotazione → [cliente arriva] → Converti in pratica
+// Schema record:
+//   { id, createdAt, updatedAt, operatorId,
+//     clienteId, clienteNome, clienteCognome, clienteTel,
+//     vehicleId, vehicleLabel, vehicleType,
+//     dal, al, stato, fonte, prezzo, acconto, contractId, note }
+// ═══════════════════════════════════════════════════════════════════
+
+const PRENO_STATI = {
+  attesa:      { label: 'In attesa',  color: '#b87333', bg: '#fdf3e3', dot: '#e9a44c' },
+  confermata:  { label: 'Confermata', color: '#2e6e3e', bg: '#eaf4ec', dot: '#4a9e5c' },
+  in_corso:    { label: 'In corso',   color: '#1f5d83', bg: '#e8f2f9', dot: '#3a8bbf' },
+  completata:  { label: 'Completata', color: '#5a5047', bg: '#f2ede8', dot: '#9a8a78' },
+  cancellata:  { label: 'Cancellata', color: '#8a3030', bg: '#faeaea', dot: '#c85050' },
+};
+
+const PRENO_FONTI = {
+  diretto:       'Diretto',
+  walkin:        'Walk-in',
+  telefono:      'Telefono',
+  online:        'Online',
+  tour_operator: 'Tour operator',
+};
+
+function prenoId() {
+  return 'pr' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+}
+
+function formatDate(d) {
+  if (!d) return '—';
+  const [y, m, g] = d.split('-');
+  return `${g}/${m}/${y}`;
+}
+
+function daysDiff(dal, al) {
+  if (!dal || !al) return 0;
+  return Math.max(0, Math.round((new Date(al) - new Date(dal)) / 86400000));
+}
+
+function todayISO() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+// ── PrenoStatPill ────────────────────────────────────────────────────
+function PrenoStatPill({ stato }) {
+  const s = PRENO_STATI[stato] || PRENO_STATI.attesa;
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: 5,
+      padding: '2px 8px', borderRadius: 20,
+      fontSize: 11, fontWeight: 600, letterSpacing: '0.02em',
+      color: s.color, background: s.bg,
+    }}>
+      <span style={{ width: 6, height: 6, borderRadius: '50%', background: s.dot, flexShrink: 0 }} />
+      {s.label}
+    </span>
+  );
+}
+
+// ── PrenoCard ────────────────────────────────────────────────────────
+function PrenoCard({ p, onEdit, onConvert, onDelete }) {
+  const giorni = daysDiff(p.dal, p.al);
+  return (
+    <div style={{
+      background: 'var(--bg)', border: '1px solid var(--border)',
+      borderRadius: 8, padding: '14px 16px',
+      display: 'flex', gap: 14, alignItems: 'flex-start',
+    }}>
+      {/* date block */}
+      <div style={{
+        flexShrink: 0, width: 52, textAlign: 'center',
+        background: 'var(--surface-2)', borderRadius: 6, padding: '6px 4px',
+      }}>
+        <div style={{ fontSize: 18, fontWeight: 700, fontFamily: 'var(--font-serif)', lineHeight: 1 }}>
+          {p.dal ? p.dal.slice(8) : '—'}
+        </div>
+        <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 2 }}>
+          {p.dal ? new Date(p.dal + 'T12:00:00').toLocaleString('it-IT', { month: 'short' }).toUpperCase() : ''}
+        </div>
+        <div style={{ fontSize: 9, color: 'var(--muted)', marginTop: 4, borderTop: '1px solid var(--border)', paddingTop: 4 }}>
+          {giorni}g
+        </div>
+      </div>
+
+      {/* main content */}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+          <span style={{ fontWeight: 600, fontSize: 14, color: 'var(--ink)' }}>
+            {p.clienteCognome || p.clienteNome ? `${p.clienteCognome || ''} ${p.clienteNome || ''}`.trim() : 'Cliente da definire'}
+          </span>
+          <PrenoStatPill stato={p.stato} />
+          {p.contractId && (
+            <span style={{ fontSize: 10, color: 'var(--muted)', fontFamily: 'monospace' }}>
+              ⟶ pratica
+            </span>
+          )}
+        </div>
+        <div style={{ fontSize: 12, color: 'var(--ink-2)', marginBottom: 4 }}>
+          {p.vehicleLabel || 'Mezzo da assegnare'}
+          {p.clienteTel && <> · <a href={`tel:${p.clienteTel}`} style={{ color: 'var(--ink-2)' }}>{p.clienteTel}</a></>}
+        </div>
+        <div style={{ fontSize: 11, color: 'var(--muted)' }}>
+          {formatDate(p.dal)} → {formatDate(p.al)}
+          {p.prezzo != null && <> · <strong style={{ color: 'var(--ink)' }}>€{p.prezzo}</strong></>}
+          {p.acconto != null && p.acconto > 0 && <> · acconto €{p.acconto}</>}
+          {p.fonte && <> · {PRENO_FONTI[p.fonte] || p.fonte}</>}
+        </div>
+        {p.note && <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4, fontStyle: 'italic' }}>{p.note}</div>}
+      </div>
+
+      {/* actions */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flexShrink: 0 }}>
+        <button type="button" onClick={() => onEdit(p)}
+          style={{ fontSize: 11, padding: '4px 10px', borderRadius: 4, border: '1px solid var(--border)', background: 'transparent', color: 'var(--ink-2)', cursor: 'pointer' }}>
+          Modifica
+        </button>
+        {(p.stato === 'confermata' || p.stato === 'in_corso') && !p.contractId && (
+          <button type="button" onClick={() => onConvert(p)}
+            style={{ fontSize: 11, padding: '4px 10px', borderRadius: 4, border: 'none', background: 'var(--accent)', color: 'white', fontWeight: 600, cursor: 'pointer' }}>
+            → Pratica
+          </button>
+        )}
+        <button type="button" onClick={() => onDelete(p.id)}
+          style={{ fontSize: 11, padding: '4px 10px', borderRadius: 4, border: '1px solid #f0d0d0', background: 'transparent', color: '#c85050', cursor: 'pointer' }}>
+          Elimina
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── PrenoForm — add/edit ─────────────────────────────────────────────
+function PrenoForm({ initial, fleet, customers, onSave, onClose }) {
+  const empty = {
+    clienteNome: '', clienteCognome: '', clienteTel: '',
+    vehicleId: '', vehicleLabel: '', vehicleType: 'auto',
+    dal: todayISO(), al: '', stato: 'attesa', fonte: 'diretto',
+    prezzo: '', acconto: '', note: '',
+  };
+  const [f, setF] = useState(initial ? {
+    ...empty,
+    clienteNome: initial.clienteNome || '',
+    clienteCognome: initial.clienteCognome || '',
+    clienteTel: initial.clienteTel || '',
+    vehicleId: initial.vehicleId || '',
+    vehicleLabel: initial.vehicleLabel || '',
+    vehicleType: initial.vehicleType || 'auto',
+    dal: initial.dal || todayISO(),
+    al: initial.al || '',
+    stato: initial.stato || 'attesa',
+    fonte: initial.fonte || 'diretto',
+    prezzo: initial.prezzo != null ? String(initial.prezzo) : '',
+    acconto: initial.acconto != null ? String(initial.acconto) : '',
+    note: initial.note || '',
+  } : empty);
+
+  const set = (k, v) => setF(x => ({ ...x, [k]: v }));
+
+  const availableVehicles = (fleet || []).filter(v => v.stato === 'available');
+
+  function handleVehicleChange(e) {
+    const id = e.target.value;
+    const v = fleet.find(x => x.id === id);
+    set('vehicleId', id);
+    set('vehicleLabel', v ? `${v.marca} ${v.modello} · ${v.targa}`.trim() : '');
+    set('vehicleType', v ? v.tipo : 'auto');
+  }
+
+  function handleSubmit(e) {
+    e.preventDefault();
+    if (!f.dal) return;
+    onSave({
+      ...f,
+      prezzo: f.prezzo !== '' ? parseFloat(f.prezzo) : null,
+      acconto: f.acconto !== '' ? parseFloat(f.acconto) : null,
+    });
+  }
+
+  const inp = { border: '1px solid var(--border)', borderRadius: 4, padding: '7px 10px', fontSize: 13, width: '100%', background: 'var(--bg)', color: 'var(--ink)', boxSizing: 'border-box' };
+  const lbl = { display: 'block', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--ink-2)', marginBottom: 4 };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 9000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+      <div style={{ background: 'var(--bg)', borderRadius: 10, width: '100%', maxWidth: 520, maxHeight: '90vh', overflowY: 'auto', padding: 24 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+          <h2 style={{ margin: 0, fontSize: 18, fontFamily: 'var(--font-serif)', fontWeight: 600 }}>
+            {initial ? 'Modifica prenotazione' : 'Nuova prenotazione'}
+          </h2>
+          <button type="button" onClick={onClose}
+            style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: 'var(--muted)', padding: '0 4px' }}>✕</button>
+        </div>
+
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {/* Cliente */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div>
+              <label style={lbl}>Cognome</label>
+              <input style={inp} value={f.clienteCognome} onChange={e => set('clienteCognome', e.target.value)} placeholder="Rossi" />
+            </div>
+            <div>
+              <label style={lbl}>Nome</label>
+              <input style={inp} value={f.clienteNome} onChange={e => set('clienteNome', e.target.value)} placeholder="Mario" />
+            </div>
+          </div>
+          <div>
+            <label style={lbl}>Telefono</label>
+            <input style={inp} type="tel" value={f.clienteTel} onChange={e => set('clienteTel', e.target.value)} placeholder="+39 333 123 4567" />
+          </div>
+
+          {/* Mezzo */}
+          <div>
+            <label style={lbl}>Mezzo</label>
+            <select style={inp} value={f.vehicleId} onChange={handleVehicleChange}>
+              <option value="">— Categoria generica —</option>
+              {availableVehicles.map(v => (
+                <option key={v.id} value={v.id}>{v.marca} {v.modello} · {v.targa} ({v.tipo})</option>
+              ))}
+            </select>
+            {!f.vehicleId && (
+              <input style={{ ...inp, marginTop: 6 }} value={f.vehicleLabel}
+                onChange={e => set('vehicleLabel', e.target.value)}
+                placeholder="es. Scooter 125cc standard" />
+            )}
+          </div>
+
+          {/* Date */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div>
+              <label style={lbl}>Dal *</label>
+              <input style={inp} type="date" required value={f.dal} onChange={e => set('dal', e.target.value)} />
+            </div>
+            <div>
+              <label style={lbl}>Al</label>
+              <input style={inp} type="date" value={f.al} min={f.dal} onChange={e => set('al', e.target.value)} />
+            </div>
+          </div>
+
+          {/* Stato e fonte */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div>
+              <label style={lbl}>Stato</label>
+              <select style={inp} value={f.stato} onChange={e => set('stato', e.target.value)}>
+                {Object.entries(PRENO_STATI).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={lbl}>Fonte</label>
+              <select style={inp} value={f.fonte} onChange={e => set('fonte', e.target.value)}>
+                {Object.entries(PRENO_FONTI).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </select>
+            </div>
+          </div>
+
+          {/* Prezzi */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div>
+              <label style={lbl}>Prezzo totale €</label>
+              <input style={inp} type="number" min="0" step="0.01" value={f.prezzo} onChange={e => set('prezzo', e.target.value)} placeholder="0.00" />
+            </div>
+            <div>
+              <label style={lbl}>Acconto €</label>
+              <input style={inp} type="number" min="0" step="0.01" value={f.acconto} onChange={e => set('acconto', e.target.value)} placeholder="0.00" />
+            </div>
+          </div>
+
+          {/* Note */}
+          <div>
+            <label style={lbl}>Note</label>
+            <textarea style={{ ...inp, resize: 'vertical', minHeight: 60 }} value={f.note} onChange={e => set('note', e.target.value)} placeholder="Note aggiuntive…" />
+          </div>
+
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', paddingTop: 4 }}>
+            <button type="button" onClick={onClose}
+              style={{ padding: '9px 18px', borderRadius: 5, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', fontSize: 13 }}>
+              Annulla
+            </button>
+            <button type="submit"
+              style={{ padding: '9px 18px', borderRadius: 5, border: 'none', background: 'var(--accent)', color: 'white', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
+              {initial ? 'Salva modifiche' : 'Crea prenotazione'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ── PrenotazioniPage ─────────────────────────────────────────────────
+function PrenotazioniPage({ prenotazioni, setPrenotazioni, fleet, customers, operator, onOpenWizard, pushToast }) {
+  const [form, setForm] = useState(null); // null | 'new' | {record}
+  const [filterStato, setFilterStato] = useState('tutti');
+  const [search, setSearch] = useState('');
+  const [sortDir, setSortDir] = useState('asc'); // asc = prossime prima
+
+  // CRUD
+  function createPreno(data) {
+    const rec = {
+      id: prenoId(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      operatorId: operator?.id || '',
+      clienteId: null,
+      contractId: null,
+      ...data,
+    };
+    setPrenotazioni(ps => [...ps, rec]);
+    setForm(null);
+    pushToast && pushToast({ tone: 'success', title: 'Prenotazione creata', message: `${rec.clienteCognome || ''} ${rec.clienteNome || ''} · ${formatDate(rec.dal)}` });
+  }
+
+  function updatePreno(data) {
+    setPrenotazioni(ps => ps.map(p => p.id === form.id
+      ? { ...p, ...data, updatedAt: new Date().toISOString() }
+      : p
+    ));
+    setForm(null);
+    pushToast && pushToast({ tone: 'success', title: 'Prenotazione aggiornata', message: `${data.clienteCognome || ''} ${data.clienteNome || ''}`.trim() });
+  }
+
+  function deletePreno(id) {
+    if (!confirm('Eliminare questa prenotazione?')) return;
+    setPrenotazioni(ps => ps.filter(p => p.id !== id));
+    pushToast && pushToast({ tone: 'warning', title: 'Prenotazione eliminata' });
+  }
+
+  function convertToPratica(p) {
+    // Precompila il wizard Pratica con i dati della prenotazione
+    const prefill = {
+      cognome: p.clienteCognome || '',
+      nome: p.clienteNome || '',
+      tel: p.clienteTel || '',
+      vehicleId: p.vehicleId || null,
+      dal: p.dal, al: p.al,
+    };
+    // Segna la prenotazione come "in_corso"
+    setPrenotazioni(ps => ps.map(x => x.id === p.id ? { ...x, stato: 'in_corso', updatedAt: new Date().toISOString() } : x));
+    onOpenWizard && onOpenWizard(prefill);
+    pushToast && pushToast({ tone: 'info', title: 'Wizard aperto', message: 'Dati prenotazione trasferiti nella pratica' });
+  }
+
+  // Filtri e ordinamento
+  const today = todayISO();
+  const filtered = (prenotazioni || [])
+    .filter(p => {
+      if (filterStato !== 'tutti' && p.stato !== filterStato) return false;
+      if (search) {
+        const q = search.toLowerCase();
+        const hay = `${p.clienteNome} ${p.clienteCognome} ${p.clienteTel} ${p.vehicleLabel} ${p.note}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    })
+    .sort((a, b) => {
+      const da = a.dal || '9999', db = b.dal || '9999';
+      return sortDir === 'asc' ? da.localeCompare(db) : db.localeCompare(da);
+    });
+
+  // KPI veloci
+  const attive = (prenotazioni || []).filter(p => p.stato === 'confermata' || p.stato === 'in_corso').length;
+  const inAttesa = (prenotazioni || []).filter(p => p.stato === 'attesa').length;
+  const oggi = (prenotazioni || []).filter(p => p.dal === today || p.al === today).length;
+
+  const btnFilter = (stato, label) => (
+    <button type="button"
+      onClick={() => setFilterStato(stato)}
+      style={{
+        padding: '5px 12px', borderRadius: 20, fontSize: 12, cursor: 'pointer',
+        border: filterStato === stato ? 'none' : '1px solid var(--border)',
+        background: filterStato === stato ? 'var(--ink)' : 'transparent',
+        color: filterStato === stato ? 'var(--bg)' : 'var(--ink-2)',
+        fontWeight: filterStato === stato ? 600 : 400,
+      }}>
+      {label}
+    </button>
+  );
+
+  return (
+    <div style={{ padding: '28px 32px', maxWidth: 860, margin: '0 auto' }}>
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
+        <div>
+          <h1 style={{ margin: 0, fontSize: 22, fontFamily: 'var(--font-serif)', fontWeight: 600 }}>Prenotazioni</h1>
+          <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--muted)' }}>
+            Gestisci le prenotazioni future — poi convertile in pratica al ritiro del cliente.
+          </p>
+        </div>
+        <button type="button"
+          onClick={() => setForm('new')}
+          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 16px', borderRadius: 6, border: 'none', background: 'var(--accent)', color: 'white', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>
+          <Plus style={{ width: 15, height: 15 }} /> Nuova prenotazione
+        </button>
+      </div>
+
+      {/* KPI */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 20 }}>
+        {[
+          { label: 'Confermate / In corso', value: attive, color: '#2e6e3e' },
+          { label: 'In attesa conferma',    value: inAttesa, color: '#b87333' },
+          { label: 'Movimenti oggi',        value: oggi,    color: '#1f5d83' },
+        ].map(k => (
+          <div key={k.label} style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, padding: '14px 16px' }}>
+            <div style={{ fontSize: 28, fontWeight: 700, fontFamily: 'var(--font-serif)', color: k.color }}>{k.value}</div>
+            <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{k.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Barra filtri */}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' }}>
+        <div style={{ position: 'relative', flex: '0 0 200px' }}>
+          <Search style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', width: 14, height: 14, color: 'var(--muted)' }} />
+          <input
+            style={{ paddingLeft: 30, padding: '7px 10px 7px 30px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 12, width: '100%', background: 'var(--bg)', color: 'var(--ink)', boxSizing: 'border-box' }}
+            placeholder="Cerca cliente, mezzo…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+        </div>
+        {btnFilter('tutti', 'Tutte')}
+        {btnFilter('attesa', 'In attesa')}
+        {btnFilter('confermata', 'Confermate')}
+        {btnFilter('in_corso', 'In corso')}
+        {btnFilter('completata', 'Completate')}
+        <button type="button"
+          onClick={() => setSortDir(d => d === 'asc' ? 'desc' : 'asc')}
+          style={{ marginLeft: 'auto', padding: '5px 12px', borderRadius: 20, fontSize: 12, border: '1px solid var(--border)', background: 'transparent', color: 'var(--ink-2)', cursor: 'pointer' }}>
+          {sortDir === 'asc' ? '↑ Prossime' : '↓ Recenti'}
+        </button>
+      </div>
+
+      {/* Lista */}
+      {filtered.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--muted)' }}>
+          <CalendarDays style={{ width: 40, height: 40, margin: '0 auto 12px', opacity: 0.3 }} />
+          <div style={{ fontSize: 15, fontFamily: 'var(--font-serif)', marginBottom: 6 }}>
+            {(prenotazioni || []).length === 0 ? 'Nessuna prenotazione ancora' : 'Nessun risultato per i filtri applicati'}
+          </div>
+          <div style={{ fontSize: 12 }}>
+            {(prenotazioni || []).length === 0 && 'Crea la prima prenotazione con il pulsante qui sopra.'}
+          </div>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {filtered.map(p => (
+            <PrenoCard
+              key={p.id}
+              p={p}
+              onEdit={(rec) => setForm(rec)}
+              onConvert={convertToPratica}
+              onDelete={deletePreno}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Form modal */}
+      {form && (
+        <PrenoForm
+          initial={form === 'new' ? null : form}
+          fleet={fleet}
+          customers={customers}
+          onSave={form === 'new' ? createPreno : updatePreno}
+          onClose={() => setForm(null)}
+        />
+      )}
+    </div>
+  );
+}
+
 export default function App() {
   const [page, setPage] = useState('dashboard');
   const [wizardOpen, setWizardOpen] = useState(false);
 
-  // Stato persistente su localStorage — sopravvive a refresh, riavvii del tablet, ecc.
-  // Chiavi prefissate 'edo:v1:' per gestire migrazioni future senza confondersi con altre app.
-  const [fleet, setFleet]           = usePersistentState('edo:v1:fleet',     []);
-  const [customers, setCustomers]   = usePersistentState('edo:v1:customers', []);
-  const [partners, setPartners]     = usePersistentState('edo:v1:partners',  []);
-  const [operators, setOperators]   = usePersistentState('edo:v1:operators', []);
-  const [cargosConfig, setCargosConfig] = usePersistentState('edo:v1:cargos', INITIAL_CARGOS_CONFIG);
+  // URL del backend (locale al tablet, NON sincronizzato via backend stesso — sarebbe circolare).
+  // L'admin può cambiarlo da Impostazioni; tipicamente punta a Render in produzione.
+  const [apiBaseUrl, setApiBaseUrl] = usePersistentState('edo:v1:apiBase', DEFAULT_API_BASE, { skipRemote: true });
+
+  // Dati operativi: localStorage SEMPRE + sync con backend Render quando disponibile.
+  // Le chiavi 'edo:v1:' devono combaciare con quelle che usa il backend (path /api/store/edo:v1:fleet).
+  // Sync flow: load da backend in background → save debounced 1.5s → fallback localStorage se offline.
+  const sharedOpts = { baseUrl: apiBaseUrl };
+  const [fleet,        setFleet,        fleetSync]     = usePersistentState('edo:v1:fleet',     INITIAL_FLEET,           sharedOpts);
+  const [customers,    setCustomers,    customersSync] = usePersistentState('edo:v1:customers', INITIAL_CUSTOMERS,       sharedOpts);
+  const [partners,     setPartners,     partnersSync]  = usePersistentState('edo:v1:partners',  INITIAL_PARTNERS,        sharedOpts);
+  const [operators,    setOperators,    operatorsSync] = usePersistentState('edo:v1:operators', MOCK_OPERATORS,          sharedOpts);
+  const [cargosConfig, setCargosConfig, cargosSync]    = usePersistentState('edo:v1:cargos',    INITIAL_CARGOS_CONFIG,   sharedOpts);
+  const [agency,       setAgency,       agencySync]    = usePersistentState('edo:v1:agency',    INITIAL_AGENCY,          sharedOpts);
+  const [prenotazioni, setPrenotazioni, prenoSync]     = usePersistentState('edo:v1:prenotazioni', [],              sharedOpts);
+
+  // Helper: aggrega tutti gli stati sync per il pannello Impostazioni
+  const allSyncStatus = useMemo(() => ({
+    fleet: fleetSync, customers: customersSync, partners: partnersSync, prenotazioni: prenoSync,
+    operators: operatorsSync, cargos: cargosSync, agency: agencySync,
+  }), [fleetSync, customersSync, partnersSync, operatorsSync, cargosSync, agencySync]);
+
+  // Sync globale: forza il push di tutti gli slot. Utile per il pulsante "Sincronizza ora".
+  const syncAll = useCallback(async () => {
+    const results = await Promise.all([
+      fleetSync.sync(), customersSync.sync(), partnersSync.sync(),
+      operatorsSync.sync(), cargosSync.sync(), agencySync.sync(),
+    ]);
+    return {
+      ok: results.every(r => r.ok),
+      count: results.filter(r => r.ok).length,
+      total: results.length,
+    };
+  }, [fleetSync, customersSync, partnersSync, operatorsSync, cargosSync, agencySync]);
 
   // Stato di sessione (non persistente — si resetta a ogni apertura)
   const [admin, setAdmin]                 = useState(false);
-  const [online, setOnline]               = useState(true);
-  const [pendingQueue, setPendingQueue]   = useState(0);
+  const [manualOffline, setManualOffline] = useState(false);  // toggle manuale per testing
   const [operatorIdx, setOperatorIdx]     = useState(0);
   const [modal, setModal]                 = useState(null);
   const [prefillCustomer, setPrefillCustomer] = useState(null);
@@ -1034,15 +2005,43 @@ export default function App() {
   // Toast system per feedback non-bloccanti
   const { toasts, push: pushToast, dismiss: dismissToast } = useToasts();
 
-  const operator = operators.length > 0 ? (operators[operatorIdx] || operators[0]) : { id: 'loading', nome: '...', ruolo: '', turnoInizio: '08:00', turnoFine: '20:00' };
+  // API client — memoizzato sul baseUrl così le chiamate sono consistenti
+  const api = useMemo(() => makeApi(apiBaseUrl), [apiBaseUrl]);
 
+  // Polling stato backend — attivo solo se non offline manuale
+  const { status: backendStatus, lastCheck, cargosOk } = useBackendHealth(api, !manualOffline);
+
+  // Online "effettivo" combina toggle manuale + stato del backend
+  const online = !manualOffline && (backendStatus === 'online' || backendStatus === 'degraded');
+  const setOnline = useCallback((v) => setManualOffline(!v), []);
+
+  // Coda contratti in attesa di drain (offline → online)
+  // Per ora indicatore visivo; il drain reale lo fa il worker backend.
+  const [pendingQueue, setPendingQueue] = useState(0);
+
+  const operator = operators[operatorIdx] || operators[0];
+
+  // Toast quando lo stato backend cambia significativamente
+  const lastStatusRef = useRef(backendStatus);
   useEffect(() => {
-    if (!online && pendingQueue === 0) setPendingQueue(2);
-    if (online && pendingQueue > 0) {
-      const t = setTimeout(() => setPendingQueue(0), 1500);
-      return () => clearTimeout(t);
+    if (lastStatusRef.current === backendStatus) return;
+    const wasChecking = lastStatusRef.current === 'checking';
+    lastStatusRef.current = backendStatus;
+    // Skip toast al boot (checking → primo stato): si capisce dal pill di stato
+    if (wasChecking) return;
+    if (backendStatus === 'online') {
+      pushToast({ tone: 'success', title: 'Backend connesso', message: 'Pratica online · CARGOS pronto' });
+    } else if (backendStatus === 'offline') {
+      pushToast({ tone: 'warning', title: 'Backend non raggiungibile', message: 'Lavorerai in locale, i dati restano salvati sul tablet', duration: 5000 });
+    } else if (backendStatus === 'degraded') {
+      pushToast({ tone: 'warning', title: 'CARGOS non disponibile', message: 'I contratti restano in coda, drain automatico al ripristino' });
     }
-  }, [online, pendingQueue]);
+    // 'unconfigured' → niente toast: è uno stato di setup, non un errore.
+    // L'utente vedrà la guida nel pannello Impostazioni → Backend.
+  }, [backendStatus, pushToast]);
+
+  // pendingQueue è derivato da localContracts (vedi effect più sotto, dopo
+  // la dichiarazione di localContracts — l'ordine importa per ESLint).
 
   const openWizard = useCallback((prefill = null) => {
     setPrefillCustomer(prefill);
@@ -1140,6 +2139,213 @@ export default function App() {
     pushToast({ tone: 'success', title: 'CARGOS aggiornato', message: patch.enabled ? 'Invio automatico attivo' : 'Configurazione salvata' });
   }, [pushToast]);
 
+  // Update URL API backend
+  const updateApiBase = useCallback((url) => {
+    setApiBaseUrl(url);
+    pushToast({ tone: 'info', title: 'URL backend aggiornato', message: url });
+  }, [pushToast]);
+
+  // ── SUBMIT CONTRATTO al backend ───────────────────────────────────
+  // Strategia: optimistic — la UI mostra subito "in attesa" e il chiamante
+  // del wizard può chiudere il form. La promise restituisce { ok, status, error }
+  // così il caller decide cosa mostrare (toast verde su sent, warning su error
+  // con suggerimento di retry, info su paper per i motoveicoli).
+  // Salva sempre una copia locale prima della rete: zero contratti persi.
+  const [localContracts, setLocalContracts] = usePersistentState('edo:v1:contracts', [], { skipRemote: true });
+
+  // pendingQueue derivato dai contratti reali in attesa (queued/pending/error)
+  useEffect(() => {
+    const realPending = localContracts.filter(c =>
+      c.status === 'queued' || c.status === 'pending' || c.status === 'error'
+    ).length;
+    setPendingQueue(realPending);
+  }, [localContracts]);
+
+  const submitContract = useCallback(async (wizardData) => {
+    // 1. Map wizard data → CARGOS record
+    const record = mapWizardToCargosRecord(wizardData, operator, agency, partners);
+    const isMoto = record.VEICOLO_TIPO === 'M';
+    const isExcluded = record.VEICOLO_TIPO === null;  // e-bike
+    // Override esplicito: l'operatore ha disattivato CARGOS per questo contratto
+    // (regime transitorio, contratto pre-2018, test, ecc.). Significativo solo per i veicoli
+    // che CARGOS richiederebbe — per scooter/quad/ebike è già spento per norma.
+    const overriddenOff = wizardData.cargosOverride === 'off';
+    const willSendToCargos = !isMoto && !isExcluded && !overriddenOff;
+
+    // 2. Save local copy IMMEDIATELY (sopravvive a tutto)
+    const localEntry = {
+      contractId: record.CONTRATTO_ID,
+      createdAt: new Date().toISOString(),
+      operatorId: operator?.id,
+      status: willSendToCargos ? 'pending' : 'paper',
+      vehicleType: record.VEICOLO_TIPO,
+      cargosRequired: willSendToCargos,
+      cargosOverridden: overriddenOff,  // tracciatura per audit
+      record,
+      wizardSnapshot: wizardData,  // utile per ristampare il PDF, troubleshooting
+    };
+    setLocalContracts(cs => [...cs, localEntry]);
+
+    // 3. Casi che non vanno al backend CARGOS:
+    //    - e-bike (escluse per norma, non veicolo a motore)
+    //    - override manuale dell'operatore (CARGOS disattivato per questo contratto)
+    if (isExcluded) {
+      pushToast({ tone: 'info', title: 'Contratto salvato', message: 'E-bike: non soggetto a CARGOS' });
+      return { ok: true, status: 'paper', contractId: record.CONTRATTO_ID };
+    }
+    if (overriddenOff) {
+      pushToast({
+        tone: 'warning',
+        title: 'Contratto salvato senza CARGOS',
+        message: `Override manuale · ${record.VEICOLO_MARCA} ${record.VEICOLO_MODELLO}`,
+        duration: 4500,
+      });
+      return { ok: true, status: 'paper', contractId: record.CONTRATTO_ID, overridden: true };
+    }
+
+    // 4. Se siamo offline (manuale o backend down), salva e basta
+    if (!online) {
+      setLocalContracts(cs => cs.map(c => c.contractId === record.CONTRATTO_ID ? { ...c, status: 'queued' } : c));
+      pushToast({
+        tone: 'warning',
+        title: 'Salvato in coda',
+        message: `Contratto ${isMoto ? '(motoveicolo)' : ''} in attesa di sync${isMoto ? '' : ' e invio CARGOS'}`,
+        duration: 4500,
+      });
+      return { ok: true, status: 'queued', contractId: record.CONTRATTO_ID };
+    }
+
+    // 5. Online: prova il submit reale
+    try {
+      const result = await api.submitContract(record, 'sync', operator?.id);
+      const finalStatus = result.status || (isMoto ? 'paper' : 'sent');
+      setLocalContracts(cs => cs.map(c =>
+        c.contractId === record.CONTRATTO_ID
+          ? { ...c, status: finalStatus, receipt: result.receipt, syncedAt: new Date().toISOString() }
+          : c
+      ));
+
+      if (isMoto) {
+        pushToast({ tone: 'success', title: 'Contratto salvato', message: 'Motoveicolo: nessun invio CARGOS necessario' });
+      } else if (finalStatus === 'sent') {
+        pushToast({ tone: 'success', title: 'Inviato a CARGOS', message: `Ricevuta: ${result.receipt?.slice(0, 16) || 'ok'}…` });
+      } else if (result.ok === false) {
+        pushToast({ tone: 'warning', title: 'Invio CARGOS fallito', message: result.error || 'Riprovabile dalle Pratiche', duration: 5000 });
+      }
+      return { ok: result.ok !== false, status: finalStatus, contractId: record.CONTRATTO_ID, error: result.error };
+    } catch (err) {
+      // Errore di rete o timeout: il contratto resta in 'pending' localmente
+      setLocalContracts(cs => cs.map(c =>
+        c.contractId === record.CONTRATTO_ID
+          ? { ...c, status: 'error', lastError: err.message, lastErrorKind: err.kind }
+          : c
+      ));
+      const msg = {
+        network:    'Connessione non riuscita — contratto salvato localmente',
+        timeout:    'Backend troppo lento — contratto salvato, riprova dopo',
+        offline:    'Sei offline — contratto in coda',
+        blocked:    'Backend non raggiungibile da questo ambiente — contratto salvato localmente',
+        validation: `Errore di validazione: ${err.message}`,
+        server:     `Errore server: ${err.message}`,
+        auth:       'Sessione scaduta — controlla credenziali CARGOS',
+      }[err.kind] || err.message;
+      pushToast({ tone: 'error', title: 'Invio non completato', message: msg, duration: 6000 });
+      return { ok: false, status: 'error', contractId: record.CONTRATTO_ID, error: err.message, errorKind: err.kind };
+    }
+  }, [operator, partners, online, api, setLocalContracts, pushToast]);
+
+  // Retry manuale di un contratto in errore — utile dalla lista pratiche
+  const retryContract = useCallback(async (contractId) => {
+    if (!online) {
+      pushToast({ tone: 'warning', title: 'Sei offline', message: 'Riprova quando torna la connessione' });
+      return;
+    }
+    try {
+      const result = await api.retryContract(contractId, operator?.id);
+      setLocalContracts(cs => cs.map(c =>
+        c.contractId === contractId
+          ? { ...c, status: result.status || 'sent', receipt: result.receipt, syncedAt: new Date().toISOString() }
+          : c
+      ));
+      pushToast({ tone: 'success', title: 'Reinvio riuscito', message: `Contratto ${contractId.slice(-8)} inviato a CARGOS` });
+    } catch (err) {
+      pushToast({ tone: 'error', title: 'Reinvio fallito', message: err.message });
+    }
+  }, [online, api, operator, setLocalContracts, pushToast]);
+
+  // Marca un contratto come "veicolo rientrato": cambia status a 'completed' e registra
+  // il timestamp del rientro effettivo. Sparisce dal pannello "Veicoli fuori".
+  // I dati restano in archivio per consultazioni successive.
+  const markContractReturned = useCallback((contractId) => {
+    setLocalContracts(cs => cs.map(c =>
+      c.contractId === contractId
+        ? { ...c, returnedAt: new Date().toISOString() }
+        : c
+    ));
+    const c = localContracts.find(x => x.contractId === contractId);
+    const veicolo = c?.record?.VEICOLO_TARGA || c?.record?.VEICOLO_MARCA || 'veicolo';
+    pushToast({
+      tone: 'success',
+      title: 'Rientro registrato',
+      message: `${veicolo} marcato come rientrato`,
+      duration: 3000,
+    });
+  }, [localContracts, setLocalContracts, pushToast]);
+
+  // ── RESET ARCHIVI ─────────────────────────────────────────────────
+  // Svuota uno slot persistente sia in locale che remoto. Il debounce
+  // di usePersistentState propaga il valore vuoto al backend Render
+  // entro 1.5s, sovrascrivendo eventuali dati lasciati lì da versioni
+  // precedenti (es. i 3 clienti di simulazione che non si volevano via).
+  const resetCustomers = useCallback(() => {
+    setCustomers([]);
+    pushToast({ tone: 'warning', title: 'Rubrica clienti svuotata', message: 'Il backend verrà aggiornato entro pochi secondi', duration: 4000 });
+  }, [setCustomers, pushToast]);
+
+  const resetContracts = useCallback(() => {
+    setLocalContracts([]);
+    pushToast({ tone: 'warning', title: 'Archivio pratiche svuotato', message: 'Tutti i contratti locali sono stati rimossi', duration: 4000 });
+  }, [setLocalContracts, pushToast]);
+
+  const resetEverything = useCallback(() => {
+    setCustomers([]);
+    setLocalContracts([]);
+    setFleet(INITIAL_FLEET);
+    setPartners(INITIAL_PARTNERS);
+    setOperators(MOCK_OPERATORS);
+    pushToast({ tone: 'warning', title: 'Reset completo eseguito', message: 'Tutto ripristinato ai valori reali iniziali · sync in corso', duration: 5000 });
+  }, [setCustomers, setLocalContracts, setFleet, setPartners, setOperators, pushToast]);
+
+  const requestResetCustomers = useCallback(() => {
+    setModal({
+      type: 'confirm',
+      title: 'Svuotare tutta la rubrica clienti?',
+      message: <>Verranno rimossi <strong>tutti</strong> i {customers.length} clienti dall'app e dal backend Render. Utile per ripulire i clienti di simulazione caricati per sbaglio. <strong>L'azione è irreversibile</strong>: i contratti già fatti restano, ma i dati anagrafici dei clienti spariranno.</>,
+      confirmLabel: 'Svuota rubrica',
+      onConfirm: resetCustomers,
+    });
+  }, [customers.length, resetCustomers]);
+
+  const requestResetContracts = useCallback(() => {
+    setModal({
+      type: 'confirm',
+      title: 'Svuotare tutto l\'archivio pratiche?',
+      message: <>Verranno rimossi {localContracts.length} contratti dall'archivio locale. <strong>I contratti già inviati a CARGOS restano sui server della Questura</strong> — questo svuota solo la copia interna dell'agenzia. Uso tipico: pulizia contratti di test.</>,
+      confirmLabel: 'Svuota archivio',
+      onConfirm: resetContracts,
+    });
+  }, [localContracts.length, resetContracts]);
+
+  const requestResetEverything = useCallback(() => {
+    setModal({
+      type: 'confirm',
+      title: 'Reset totale ai dati iniziali?',
+      message: <>Operazione di <strong>emergenza</strong>: cancella clienti e contratti dell'app e dal backend, e ripristina flotta/strutture/operatori ai valori reali iniziali (193 veicoli, 22 strutture, solo Alessandra Raptis come operatore). Usare solo se i dati sono compromessi e si vuole ripartire da zero pulito.</>,
+      confirmLabel: 'Conferma reset totale',
+      onConfirm: resetEverything,
+    });
+  }, [resetEverything]);
+
   // ── CONFERME DI ELIMINAZIONE ──────────────────────────────────────
   // Invece di window.confirm() (bloccante, brutto su iOS), usiamo
   // ConfirmModal coerente con lo stile del resto dell'app.
@@ -1183,21 +2389,27 @@ export default function App() {
     <>
       <Styles />
       <div className="pratica-app flex">
-        <Sidebar page={page} setPage={setPage} onNew={() => openWizard()} online={online && cargosConfig.enabled} />
+        <Sidebar page={page} setPage={setPage} onNew={() => openWizard()} online={online && cargosConfig.enabled} agency={agency} />
         <main className="flex-1 min-h-screen" id="main-content">
           <Topbar
             online={online} setOnline={setOnline} pendingQueue={pendingQueue}
             operator={operator} admin={admin} setAdmin={setAdmin}
             onScanPlate={() => setModal('plate')}
             onShiftChange={() => setModal('shift')}
+            agency={agency}
           />
           <div className="px-8 py-6 max-w-[1280px] mx-auto">
-            {page === 'dashboard'  && <Dashboard onNew={() => openWizard()} setPage={setPage} operator={operator} fleet={fleet} />}
-            {page === 'contracts'  && <ContractsList />}
-            {page === 'fleet'      && <FleetPage fleet={fleet} admin={admin} onAddVehicle={() => setModal('newVehicle')} onEditVehicle={(v) => setModal({ type: 'editVehicle', vehicle: v })} onDeleteVehicle={requestDeleteVehicle} />}
-            {page === 'customers'  && <CustomersPage customers={customers} admin={admin} onShowQR={(c) => setModal({ type: 'qr', customer: c })} onNewWithCustomer={openWizard} onAddCustomer={() => setModal('newCustomer')} onEditCustomer={(c) => setModal({ type: 'editCustomer', customer: c })} />}
-            {page === 'partners'   && <PartnersPage partners={partners} admin={admin} onAddPartner={() => setModal('newPartner')} onEditPartner={(p) => setModal({ type: 'editPartner', partner: p })} onDeletePartner={requestDeletePartner} />}
-            {page === 'settings'   && <SettingsPage operator={operator} operators={operators} admin={admin} cargosConfig={cargosConfig} onAddOperator={() => setModal('newOperator')} onEditOperator={(o) => setModal({ type: 'editOperator', operator: o })} onDeleteOperator={requestDeleteOperator} onEditCargos={() => setModal('cargosConfig')} />}
+            {/* ErrorBoundary con key={page}: se una pagina crasha, cambiando pagina
+                il boundary si resetta automaticamente (la key cambia → nuovo mount). */}
+            <ErrorBoundary key={page}>
+              {page === 'dashboard'  && <Dashboard onNew={() => openWizard()} setPage={setPage} operator={operator} fleet={fleet} contracts={localContracts} partners={partners} onMarkReturned={markContractReturned} />}
+              {page === 'prenotazioni' && <PrenotazioniPage prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} fleet={fleet} customers={customers} operator={operator} onOpenWizard={openWizard} pushToast={pushToast} />}
+              {page === 'contracts'  && <ContractsList contracts={localContracts} operators={operators} onRetry={retryContract} onMarkReturned={markContractReturned} online={online} />}
+              {page === 'fleet'      && <FleetPage fleet={fleet} admin={admin} onAddVehicle={() => setModal('newVehicle')} onEditVehicle={(v) => setModal({ type: 'editVehicle', vehicle: v })} onDeleteVehicle={requestDeleteVehicle} />}
+              {page === 'customers'  && <CustomersPage customers={customers} admin={admin} onShowQR={(c) => setModal({ type: 'qr', customer: c })} onNewWithCustomer={openWizard} onAddCustomer={() => setModal('newCustomer')} onEditCustomer={(c) => setModal({ type: 'editCustomer', customer: c })} />}
+              {page === 'partners'   && <PartnersPage partners={partners} admin={admin} onAddPartner={() => setModal('newPartner')} onEditPartner={(p) => setModal({ type: 'editPartner', partner: p })} onDeletePartner={requestDeletePartner} />}
+              {page === 'settings'   && <SettingsPage operator={operator} operators={operators} admin={admin} cargosConfig={cargosConfig} backendStatus={backendStatus} lastCheck={lastCheck} apiBaseUrl={apiBaseUrl} syncStatus={allSyncStatus} agency={agency} customers={customers} contracts={localContracts} onSyncAll={syncAll} pushToast={pushToast} onAddOperator={() => setModal('newOperator')} onEditOperator={(o) => setModal({ type: 'editOperator', operator: o })} onDeleteOperator={requestDeleteOperator} onEditCargos={() => setModal('cargosConfig')} onEditApiBase={() => setModal('apiBase')} onEditAgency={() => setModal('agency')} onResetCustomers={requestResetCustomers} onResetContracts={requestResetContracts} onResetEverything={requestResetEverything} />}
+            </ErrorBoundary>
           </div>
         </main>
 
@@ -1209,16 +2421,20 @@ export default function App() {
             fleet={fleet}
             customers={customers}
             partners={partners}
+            onSubmit={submitContract}
+            agency={agency}
           />
         )}
 
         {modal === 'plate'        && <PlateScanModal fleet={fleet} onClose={closeModal} />}
-        {modal === 'shift'        && <ShiftChangeModal currentOperator={operator} operators={operators} onClose={closeModal} onConfirm={handoverShift} />}
+        {modal === 'shift'        && <ShiftChangeModal currentOperator={operator} operators={operators} contracts={localContracts} onClose={closeModal} onConfirm={handoverShift} />}
         {modal === 'newVehicle'   && <NewVehicleModal onClose={closeModal} onSave={(v) => { addVehicle(v); closeModal(); }} />}
         {modal === 'newCustomer'  && <NewCustomerModal onClose={closeModal} onSave={(c) => { addCustomer(c); closeModal(); }} />}
         {modal === 'newPartner'   && <NewPartnerModal onClose={closeModal} onSave={(p) => { addPartner(p); closeModal(); }} />}
         {modal === 'newOperator'  && <NewOperatorModal onClose={closeModal} onSave={(o) => { addOperator(o); closeModal(); }} />}
         {modal === 'cargosConfig' && <CargosConfigModal config={cargosConfig} onClose={closeModal} onSave={(c) => { updateCargosConfig(c); closeModal(); }} />}
+        {modal === 'apiBase'      && <ApiBaseModal current={apiBaseUrl} onClose={closeModal} onSave={(url) => { updateApiBase(url); closeModal(); }} />}
+        {modal === 'agency'       && <AgencyConfigModal current={agency} onClose={closeModal} onSave={(a) => { setAgency(a); pushToast({ tone: 'success', title: 'Anagrafica agenzia aggiornata', message: 'Modifiche salvate · sync in corso' }); closeModal(); }} />}
         {modal?.type === 'qr'             && <QRCustomerModal customer={modal.customer} onClose={closeModal} />}
         {modal?.type === 'editVehicle'    && <NewVehicleModal vehicle={modal.vehicle} onClose={closeModal} onSave={(v) => { updateVehicle(modal.vehicle.id, v); closeModal(); }} />}
         {modal?.type === 'editPartner'    && <NewPartnerModal partner={modal.partner} onClose={closeModal} onSave={(p) => { updatePartner(modal.partner.id, p); closeModal(); }} />}
@@ -1352,10 +2568,11 @@ function Styles() {
 // ═══════════════════════════════════════════════════════════════════
 // SIDEBAR
 // ═══════════════════════════════════════════════════════════════════
-function Sidebar({ page, setPage, onNew, online }) {
+function Sidebar({ page, setPage, onNew, online, agency }) {
   const items = [
     { id: 'dashboard', label: 'Banco',        icon: LayoutDashboard },
     { id: 'contracts', label: 'Pratiche',     icon: FileText },
+    { id: 'prenotazioni', label: 'Prenotazioni', icon: CalendarDays },
     { id: 'fleet',     label: 'Flotta',       icon: Car },
     { id: 'customers', label: 'Clienti',      icon: Users },
     { id: 'partners',  label: 'Strutture',    icon: Hotel },
@@ -1375,7 +2592,7 @@ function Sidebar({ page, setPage, onNew, online }) {
           <span className="serif text-2xl font-medium" style={{ color: 'var(--ink-2)' }}>pratica</span>
         </div>
         <p className="text-[10px] mt-2 tracking-widest uppercase leading-relaxed" style={{ color: 'var(--muted)' }}>
-          Edonoleggio · Lampedusa<br />dal {AGENCY.fondazione}
+          Edonoleggio · Lampedusa<br />dal {agency.fondazione}
         </p>
       </div>
 
@@ -1409,14 +2626,24 @@ function Sidebar({ page, setPage, onNew, online }) {
       </nav>
 
       <div className="p-4 border-t" style={{ borderColor: 'var(--border)' }}>
-        <div className="text-[11px] uppercase tracking-wider mb-2" style={{ color: 'var(--muted)' }}>Stato CARGOS</div>
+        <div className="text-[11px] uppercase tracking-wider mb-2" style={{ color: 'var(--muted)' }}>Stato connessione</div>
         <div className="flex items-center gap-2 text-xs" aria-live="polite">
           <span className="w-2 h-2 rounded-full pulse" style={{ background: online ? 'var(--success)' : 'var(--accent)' }} aria-hidden="true" />
-          <span style={{ color: 'var(--ink-2)' }}>{online ? 'Connesso · Questura AG' : 'Disconnesso'}</span>
+          <span style={{ color: 'var(--ink-2)' }}>{online ? 'Online' : 'Offline'}</span>
         </div>
-        <div className="text-[11px] mt-1 mono" style={{ color: 'var(--muted)' }}>
-          {online ? 'token attivo · 23 min' : 'in attesa di rete'}
+        <div className="text-[11px] mt-1" style={{ color: 'var(--muted)' }}>
+          {online ? 'Backend raggiungibile' : 'Lavoro locale, dati al sicuro'}
         </div>
+        <button
+          type="button"
+          onClick={() => setPage('settings')}
+          className="mt-3 pt-3 border-t w-full text-left text-[10px] mono btn-ghost px-1 py-1 rounded -mx-1 hover:bg-[var(--surface-2)]"
+          style={{ borderColor: 'var(--border)', color: 'var(--muted)' }}
+          title="Apri impostazioni · informazioni versione"
+          aria-label={`Versione ${APP_VERSION.number}, apri impostazioni`}
+        >
+          Pratica v{APP_VERSION.number} · {APP_VERSION.date}
+        </button>
       </div>
     </aside>
   );
@@ -1425,13 +2652,13 @@ function Sidebar({ page, setPage, onNew, online }) {
 // ═══════════════════════════════════════════════════════════════════
 // TOPBAR
 // ═══════════════════════════════════════════════════════════════════
-function Topbar({ online, setOnline, pendingQueue, operator, admin, setAdmin, onScanPlate, onShiftChange }) {
+function Topbar({ online, setOnline, pendingQueue, operator, admin, setAdmin, onScanPlate, onShiftChange, agency }) {
   return (
     <header className="border-b px-8 py-3 flex items-center gap-3" style={{ borderColor: 'var(--border)', background: 'var(--bg)' }}>
       <div className="flex items-center gap-2 text-sm" style={{ color: 'var(--ink-2)' }}>
         <Building2 className="w-4 h-4" aria-hidden="true" />
-        <span className="font-medium">{AGENCY.nome}</span>
-        <span style={{ color: 'var(--muted)' }}>· {AGENCY.indirizzoLegale}, {AGENCY.citta}</span>
+        <span className="font-medium">{agency.nome}</span>
+        <span style={{ color: 'var(--muted)' }}>· {agency.indirizzoLegale}, {agency.citta}</span>
       </div>
 
       <div className="flex-1" />
@@ -1508,34 +2735,121 @@ function Topbar({ online, setOnline, pendingQueue, operator, admin, setAdmin, on
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// DASHBOARD
+// DASHBOARD — basata su dati reali (props), niente mock
 // ═══════════════════════════════════════════════════════════════════
-function Dashboard({ onNew, setPage, operator }) {
-  const stats = [
-    { k: 'Pratiche oggi',    v: 5,  sub: '2 auto · 1 scoot · 1 quad · 1 e-bike', accent: false },
-    { k: 'Inviate a CARGOS', v: 1,  sub: 'su 2 dovute (solo auto)',               accent: false },
-    { k: 'In errore',        v: 1,  sub: 'richiede attenzione',                   accent: true  },
-    { k: 'Veicoli fuori',    v: 12, sub: 'rientri previsti oggi: 3',              accent: false },
-  ];
-  const returns = useMemo(() => MOCK_CONTRACTS.filter(c => c.fuori && c.minutiAlRientro !== null), []);
+function Dashboard({ onNew, setPage, operator, fleet, contracts, partners, onMarkReturned }) {
+  // Data di oggi formattata in italiano
+  const today = useMemo(() => {
+    const d = new Date();
+    const giorni = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
+    const mesi   = ['gennaio', 'febbraio', 'marzo', 'aprile', 'maggio', 'giugno',
+                    'luglio', 'agosto', 'settembre', 'ottobre', 'novembre', 'dicembre'];
+    return `${giorni[d.getDay()]} · ${d.getDate()} ${mesi[d.getMonth()]} ${d.getFullYear()} · Lampedusa`;
+  }, []);
+
+  // Statistiche derivate dai dati reali
+  const stats = useMemo(() => {
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+    const todayContracts = contracts.filter(c => {
+      if (!c.createdAt) return false;
+      return new Date(c.createdAt) >= startOfDay;
+    });
+    const byType = { auto: 0, scooter: 0, quad: 0, ebike: 0 };
+    todayContracts.forEach(c => {
+      const t = c.vehicleType === 'A' ? 'auto' : c.vehicleType === 'M' ? 'scooter' : null;
+      if (t && byType[t] !== undefined) byType[t]++;
+    });
+    const sent     = todayContracts.filter(c => c.status === 'sent').length;
+    const dueCargos = todayContracts.filter(c => c.cargosRequired).length;
+    const errors   = contracts.filter(c => c.status === 'error').length;
+    // Veicoli fuori = contratti attivi non ancora marcati rientrati
+    const out = contracts.filter(c =>
+      !c.returnedAt &&
+      ['sent', 'paper', 'queued', 'pending'].includes(c.status) &&
+      parseItalianDateTime(c.record?.CONTRATTO_CHECKIN_DATA) !== null
+    ).length;
+    // Overdue rispetto a ora
+    const nowMs = Date.now();
+    const overdue = contracts.filter(c => {
+      if (c.returnedAt) return false;
+      if (!['sent', 'paper', 'queued', 'pending'].includes(c.status)) return false;
+      const d = parseItalianDateTime(c.record?.CONTRATTO_CHECKIN_DATA);
+      return d !== null && d.getTime() < nowMs;
+    }).length;
+
+    return [
+      {
+        k: 'Pratiche oggi',
+        v: todayContracts.length,
+        sub: todayContracts.length === 0
+          ? 'nessun contratto ancora'
+          : `${byType.auto} auto · ${byType.scooter} scoot · ${byType.quad} quad · ${byType.ebike} e-bike`,
+        accent: false,
+      },
+      {
+        k: 'Inviate a CARGOS',
+        v: sent,
+        sub: dueCargos === 0 ? 'nessun invio dovuto oggi' : `su ${dueCargos} dovute (solo auto)`,
+        accent: false,
+      },
+      {
+        k: 'In errore',
+        v: errors,
+        sub: errors === 0 ? 'tutto in regola' : 'richiede attenzione',
+        accent: errors > 0,
+      },
+      {
+        k: 'Veicoli fuori',
+        v: out,
+        sub: out === 0
+          ? 'nessun veicolo in viaggio'
+          : overdue > 0
+          ? `${overdue} in ritardo`
+          : 'tutti nei tempi',
+        accent: overdue > 0,
+      },
+    ];
+  }, [contracts]);
+
+  // Saluto adattivo
+  const greeting = useMemo(() => {
+    const h = new Date().getHours();
+    if (h < 12)  return 'Buongiorno';
+    if (h < 18)  return 'Buon pomeriggio';
+    return 'Buonasera';
+  }, []);
+
+  const errorCount = stats[2].v;
+  const recentContracts = useMemo(() =>
+    [...contracts].sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || '')).slice(0, 5)
+  , [contracts]);
 
   return (
     <div>
       <div className="mb-8 flex items-end justify-between">
         <div>
-          <p className="text-xs uppercase tracking-widest mb-2" style={{ color: 'var(--muted)' }}>Venerdì · 8 maggio 2026 · Lampedusa</p>
-          <h2 className="serif text-4xl font-medium tracking-tight">Buongiorno, {operator.nome.split(' ')[0]}.</h2>
-          <p className="text-sm mt-1" style={{ color: 'var(--ink-2)' }}>
-            <span style={{ color: 'var(--accent)' }}>1 pratica</span> richiede la tua attenzione ·{' '}
-            <span style={{ color: 'var(--accent)' }}>1 rientro in ritardo</span>.
-          </p>
+          <p className="text-xs uppercase tracking-widest mb-2" style={{ color: 'var(--muted)' }}>{today}</p>
+          <h2 className="serif text-4xl font-medium tracking-tight">{greeting}, {operator.nome.split(' ')[0]}.</h2>
+          {errorCount > 0 ? (
+            <p className="text-sm mt-1" style={{ color: 'var(--ink-2)' }}>
+              <span style={{ color: 'var(--accent)' }}>{errorCount === 1 ? '1 pratica' : `${errorCount} pratiche`}</span> in errore richiede attenzione.
+            </p>
+          ) : contracts.length === 0 ? (
+            <p className="text-sm mt-1" style={{ color: 'var(--ink-2)' }}>
+              Banco pronto. <span style={{ color: 'var(--accent)' }}>Apri la prima pratica</span> per iniziare.
+            </p>
+          ) : (
+            <p className="text-sm mt-1" style={{ color: 'var(--ink-2)' }}>
+              Tutto in regola · {contracts.length === 1 ? '1 contratto' : `${contracts.length} contratti`} in archivio.
+            </p>
+          )}
         </div>
         <button type="button" onClick={onNew} className="btn-primary px-5 py-2.5 rounded text-sm font-semibold flex items-center gap-2">
           <Plus className="w-4 h-4" aria-hidden="true" /> Nuova pratica
         </button>
       </div>
 
-      {/* Stat cards — colored top border instead of distracting stripe */}
       <div className="grid grid-cols-4 gap-3 mb-6" role="list" aria-label="Statistiche giornaliere">
         {stats.map(s => (
           <div key={s.k} className={`card-paper p-5 ${s.accent ? 'stat-accent' : ''}`} role="listitem">
@@ -1546,60 +2860,70 @@ function Dashboard({ onNew, setPage, operator }) {
         ))}
       </div>
 
-      <ReturnsPanel returns={returns} />
+      <ReturnsPanel contracts={contracts} partners={partners} onMarkReturned={onMarkReturned} />
 
       <div className="card-paper">
         <div className="px-5 py-4 border-b flex items-center justify-between" style={{ borderColor: 'var(--border)' }}>
-          <h3 className="serif text-xl font-medium">Pratiche di oggi</h3>
+          <h3 className="serif text-xl font-medium">Pratiche recenti</h3>
           <button type="button" onClick={() => setPage('contracts')} className="text-xs flex items-center gap-1 btn-ghost px-2 py-1 rounded">
             Vedi tutte <ChevronRight className="w-3 h-3" aria-hidden="true" />
           </button>
         </div>
-        <table className="w-full" aria-label="Pratiche di oggi">
-          <thead>
-            <tr className="text-[11px] uppercase tracking-wider" style={{ color: 'var(--muted)' }}>
-              <th scope="col" className="text-left px-5 py-3 font-semibold">ID</th>
-              <th scope="col" className="text-left px-2 py-3 font-semibold">Tipo</th>
-              <th scope="col" className="text-left px-2 py-3 font-semibold">Cliente</th>
-              <th scope="col" className="text-left px-2 py-3 font-semibold">Veicolo</th>
-              <th scope="col" className="text-left px-2 py-3 font-semibold">Periodo</th>
-              <th scope="col" className="text-left px-2 py-3 font-semibold">Stato</th>
-              <th scope="col" className="text-right px-5 py-3 font-semibold">Azione</th>
-            </tr>
-          </thead>
-          <tbody>
-            {MOCK_CONTRACTS.map(c => {
-              const t = VEHICLE_TYPES[c.tipo];
-              return (
-                <tr key={c.id} className="border-t hover:bg-[var(--surface-2)] transition-colors" style={{ borderColor: 'var(--border)' }}>
-                  <td className="px-5 py-3">
-                    <div className="mono text-xs" style={{ color: 'var(--ink-2)' }}>{c.id}</div>
-                    <div className="text-[11px]" style={{ color: 'var(--muted)' }}>{c.data}</div>
-                  </td>
-                  <td className="px-2 py-3">
-                    <span className="inline-flex items-center gap-1.5 text-xs" style={{ color: t.cargosRequired ? 'var(--ink)' : 'var(--muted)' }}>
-                      <VehicleIcon type={c.tipo} className="w-3.5 h-3.5" /> {t.short}
-                    </span>
-                  </td>
-                  <td className="px-2 py-3 text-sm">{c.cliente}</td>
-                  <td className="px-2 py-3 text-sm" style={{ color: 'var(--ink-2)' }}>{c.veicolo}</td>
-                  <td className="px-2 py-3 text-xs" style={{ color: 'var(--ink-2)' }}>{c.ritiro} → {c.consegna}</td>
-                  <td className="px-2 py-3"><StatusPill stato={c.stato} /></td>
-                  <td className="px-5 py-3 text-right">
-                    {c.stato === 'errore' && (
-                      <button type="button" className="btn-accent px-3 py-1.5 rounded text-xs font-medium">Reinvia</button>
-                    )}
-                    {(c.stato === 'inviato' || c.stato === 'cartaceo' || c.stato === 'bozza') && (
-                      <button type="button" className="btn-ghost px-2 py-1.5 rounded text-xs flex items-center gap-1 ml-auto" aria-label={`Apri pratica ${c.id}`}>
-                        <Eye className="w-3.5 h-3.5" aria-hidden="true" /> Apri
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+
+        {recentContracts.length === 0 ? (
+          <div className="p-12 text-center">
+            <FileText className="w-10 h-10 mx-auto mb-3" style={{ color: 'var(--muted)' }} aria-hidden="true" />
+            <div className="serif text-lg font-medium mb-1">Nessuna pratica ancora</div>
+            <div className="text-sm mb-5" style={{ color: 'var(--ink-2)' }}>
+              Crea il primo contratto per popolare l'archivio.
+            </div>
+            <button type="button" onClick={onNew} className="btn-primary px-4 py-2 rounded text-sm font-semibold inline-flex items-center gap-2">
+              <Plus className="w-4 h-4" aria-hidden="true" /> Nuova pratica
+            </button>
+          </div>
+        ) : (
+          <table className="w-full" aria-label="Pratiche recenti">
+            <thead>
+              <tr className="text-[11px] uppercase tracking-wider" style={{ color: 'var(--muted)' }}>
+                <th scope="col" className="text-left px-5 py-3 font-semibold">ID</th>
+                <th scope="col" className="text-left px-2 py-3 font-semibold">Cliente</th>
+                <th scope="col" className="text-left px-2 py-3 font-semibold">Veicolo</th>
+                <th scope="col" className="text-left px-2 py-3 font-semibold">Quando</th>
+                <th scope="col" className="text-left px-2 py-3 font-semibold">Stato</th>
+              </tr>
+            </thead>
+            <tbody>
+              {recentContracts.map(c => {
+                const r = c.record || {};
+                const createdAt = c.createdAt ? new Date(c.createdAt) : null;
+                const stato = c.status === 'sent'    ? 'inviato'
+                           : c.status === 'paper'   ? 'cartaceo'
+                           : c.status === 'queued'  ? 'bozza'
+                           : c.status === 'pending' ? 'bozza'
+                           : c.status === 'error'   ? 'errore'
+                           : 'bozza';
+                return (
+                  <tr key={c.contractId} className="border-t hover:bg-[var(--surface-2)] transition-colors" style={{ borderColor: 'var(--border)' }}>
+                    <td className="px-5 py-3 mono text-xs" style={{ color: 'var(--ink-2)' }}>{c.contractId.slice(-12)}</td>
+                    <td className="px-2 py-3 text-sm">
+                      {r.CONDUCENTE_CONTRAENTE_COGNOME} {r.CONDUCENTE_CONTRAENTE_NOME}
+                    </td>
+                    <td className="px-2 py-3 text-sm" style={{ color: 'var(--ink-2)' }}>
+                      {r.VEICOLO_MARCA} {r.VEICOLO_MODELLO}
+                      {r.VEICOLO_TARGA && <span className="mono text-[11px] ml-1.5">· {r.VEICOLO_TARGA}</span>}
+                    </td>
+                    <td className="px-2 py-3 text-xs" style={{ color: 'var(--ink-2)' }}>
+                      {createdAt
+                        ? createdAt.toLocaleString('it-IT', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
+                        : '—'}
+                    </td>
+                    <td className="px-2 py-3"><StatusPill stato={stato} /></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
       </div>
     </div>
   );
@@ -1614,61 +2938,139 @@ const StatusPill = memo(function StatusPill({ stato }) {
   return null;
 });
 
-function ReturnsPanel({ returns }) {
-  const overdue   = useMemo(() => returns.filter(r => r.minutiAlRientro < 0), [returns]);
-  const imminent  = useMemo(() => returns.filter(r => r.minutiAlRientro >= 0 && r.minutiAlRientro <= 90), [returns]);
-  const scheduled = useMemo(() => returns.filter(r => r.minutiAlRientro > 90), [returns]);
+// ReturnsPanel: tre colonne (In ritardo · Imminenti · Programmati) calcolate
+// dai contratti reali. Un contratto è "in viaggio" se status ∈ {sent, paper, queued}
+// e CONTRATTO_CHECKIN_DATA è nel futuro (non ancora marcato come 'completed').
+// Aggiornamento live: il `now` interno rigenera ogni 60s per spostare automaticamente
+// le pratiche da "imminenti" a "in ritardo" senza che l'operatore debba ricaricare.
+function ReturnsPanel({ contracts, partners, onMarkReturned }) {
+  // Ticker che invalida `now` ogni 60 secondi → ricalcolo automatico dei minuti
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 60000);
+    return () => clearInterval(t);
+  }, []);
 
-  const fmtTime = useCallback((mins) =>
-    mins < 0 ? `${Math.abs(mins)} min in ritardo`
-    : mins < 60 ? `tra ${mins} min`
-    : `tra ${Math.floor(mins / 60)}h ${mins % 60}m`
-  , []);
+  // Deriva la lista veicoli "fuori" dai contratti reali
+  const returns = useMemo(() => {
+    const active = (contracts || []).filter(c => {
+      // Considero solo contratti finalizzati ma non ancora chiusi
+      if (c.returnedAt) return false;
+      if (c.status === 'error') return false;  // contratti in errore non sono "fuori"
+      if (!['sent', 'paper', 'queued', 'pending'].includes(c.status)) return false;
+      // Devono avere data di rientro parsabile
+      const checkinDate = parseItalianDateTime(c.record?.CONTRATTO_CHECKIN_DATA);
+      return checkinDate !== null;
+    });
+
+    return active.map(c => {
+      const r = c.record || {};
+      const checkinDate = parseItalianDateTime(r.CONTRATTO_CHECKIN_DATA);
+      const minutiAlRientro = Math.round((checkinDate - now) / 60000);
+      const partner = partners?.find(p => p.indirizzo === r.CONTRATTO_CHECKIN_INDIRIZZO);
+      return {
+        contractId: c.contractId,
+        cliente:    `${r.CONDUCENTE_CONTRAENTE_COGNOME || ''} ${r.CONDUCENTE_CONTRAENTE_NOME || ''}`.trim() || '—',
+        telefono:   r.CONDUCENTE_CONTRAENTE_RECAPITO || null,
+        marca:      r.VEICOLO_MARCA || '',
+        modello:    r.VEICOLO_MODELLO || '',
+        targa:      r.VEICOLO_TARGA || '',
+        consegnaTimestamp: r.CONTRATTO_CHECKIN_DATA || '—',
+        consegnaPartner:   partner?.nome || null,
+        minutiAlRientro,
+      };
+    });
+  }, [contracts, partners, now]);
+
+  const overdue   = useMemo(() => returns.filter(r => r.minutiAlRientro < 0).sort((a,b) => a.minutiAlRientro - b.minutiAlRientro), [returns]);
+  const imminent  = useMemo(() => returns.filter(r => r.minutiAlRientro >= 0 && r.minutiAlRientro <= 90).sort((a,b) => a.minutiAlRientro - b.minutiAlRientro), [returns]);
+  const scheduled = useMemo(() => returns.filter(r => r.minutiAlRientro > 90).sort((a,b) => a.minutiAlRientro - b.minutiAlRientro), [returns]);
+
+  const fmtTime = useCallback((mins) => {
+    if (mins < 0) {
+      const m = Math.abs(mins);
+      if (m < 60)  return `${m} min in ritardo`;
+      if (m < 1440) return `${Math.floor(m / 60)}h ${m % 60}m in ritardo`;
+      return `${Math.floor(m / 1440)}g in ritardo`;
+    }
+    if (mins < 60)   return `tra ${mins} min`;
+    if (mins < 1440) return `tra ${Math.floor(mins / 60)}h ${mins % 60}m`;
+    return `tra ${Math.floor(mins / 1440)}g ${Math.floor((mins % 1440) / 60)}h`;
+  }, []);
+
+  // Se non ci sono veicoli fuori, non mostro proprio il pannello
+  if (returns.length === 0) return null;
 
   return (
     <div className="card-paper mb-6 overflow-hidden">
       <div className="px-5 py-3 border-b flex items-center gap-3" style={{ borderColor: 'var(--border)' }}>
         <Timer className="w-4 h-4" style={{ color: 'var(--accent)' }} aria-hidden="true" />
-        <h3 className="serif text-lg font-medium">Rientri di oggi</h3>
-        <span className="text-xs" style={{ color: 'var(--muted)' }}>· {returns.length} previsti</span>
+        <h3 className="serif text-lg font-medium">Veicoli fuori</h3>
+        <span className="text-xs" style={{ color: 'var(--muted)' }}>· {returns.length} {returns.length === 1 ? 'attivo' : 'attivi'}</span>
         <div className="flex-1" />
-        {/* aria-live per aggiornamenti urgenti */}
         <div aria-live="assertive" aria-atomic="true" className="flex items-center gap-2">
           {overdue.length > 0  && <span className="pill pill-err pulse-red" role="alert"><AlertCircle className="w-3 h-3" aria-hidden="true" /> {overdue.length} in ritardo</span>}
-          {imminent.length > 0 && <span className="pill pill-warn"><Clock className="w-3 h-3" aria-hidden="true" /> {imminent.length} imminenti</span>}
+          {imminent.length > 0 && <span className="pill pill-warn"><Clock className="w-3 h-3" aria-hidden="true" /> {imminent.length} {imminent.length === 1 ? 'imminente' : 'imminenti'}</span>}
         </div>
       </div>
       <div className="grid grid-cols-3 divide-x" style={{ borderColor: 'var(--border)' }}>
-        <ReturnColumn title="In ritardo" color="var(--accent)" items={overdue} empty="Nessuno · ottimo lavoro" fmtTime={fmtTime} urgent />
-        <ReturnColumn title="Imminenti"  color="var(--warning)" items={imminent} empty="Nessuno nelle prossime 1.5h" fmtTime={fmtTime} />
-        <ReturnColumn title="Programmati" color="var(--muted)" items={scheduled} empty="Nessuno" fmtTime={fmtTime} muted />
+        <ReturnColumn title="In ritardo"   color="var(--accent)"  items={overdue}   empty="Nessuno · ottimo lavoro"     fmtTime={fmtTime} onMarkReturned={onMarkReturned} urgent />
+        <ReturnColumn title="Imminenti"    color="var(--warning)" items={imminent}  empty="Nessuno nelle prossime 1.5h" fmtTime={fmtTime} onMarkReturned={onMarkReturned} />
+        <ReturnColumn title="Programmati"  color="var(--muted)"   items={scheduled} empty="Nessuno"                     fmtTime={fmtTime} onMarkReturned={onMarkReturned} muted />
       </div>
     </div>
   );
 }
 
-function ReturnColumn({ title, color, items, empty, fmtTime, urgent, muted }) {
+function ReturnColumn({ title, color, items, empty, fmtTime, urgent, muted, onMarkReturned }) {
   return (
     <div className="p-4">
       <div className="text-[10px] uppercase tracking-widest font-semibold mb-3" style={{ color }}>{title}</div>
       {items.length === 0
         ? <div className="text-xs py-2" style={{ color: 'var(--muted)' }}>{empty}</div>
         : items.map(r => (
-          <div key={r.id} className={`flex items-start gap-3 py-2 ${urgent ? 'pulse-red rounded px-2 -mx-2' : ''}`}>
+          <div key={r.contractId} className={`flex items-start gap-2 py-2 ${urgent ? 'pulse-red rounded px-2 -mx-2' : ''}`}>
             <div className="flex-1 min-w-0">
               <div className="text-sm font-medium truncate">{r.cliente}</div>
-              <div className="text-[11px] mt-0.5" style={{ color: 'var(--muted)' }}>
-                <span className="mono">{r.veicolo.split(' · ')[1]}</span> · {r.veicolo.split(' · ')[0]}
+              <div className="text-[11px] mt-0.5 truncate" style={{ color: 'var(--muted)' }}>
+                {r.targa && <span className="mono">{r.targa}</span>}
+                {r.targa && (r.marca || r.modello) && ' · '}
+                {r.marca} {r.modello}
               </div>
               <div className="text-[11px] mt-1 font-medium" style={{ color: urgent ? 'var(--accent)' : muted ? 'var(--muted)' : 'var(--warning)' }}>
                 {muted ? r.consegnaTimestamp : fmtTime(r.minutiAlRientro)}
               </div>
+              {r.consegnaPartner && (
+                <div className="text-[10px] mt-0.5" style={{ color: 'var(--muted)' }}>
+                  <MapPin className="w-2.5 h-2.5 inline mr-0.5" aria-hidden="true" />{r.consegnaPartner}
+                </div>
+              )}
             </div>
-            {!muted && (
-              <button type="button" className="btn-ghost p-1.5 rounded border flex-shrink-0" style={{ borderColor: 'var(--border)' }} aria-label={`Chiama ${r.cliente}`}>
-                <PhoneCall className="w-3.5 h-3.5" aria-hidden="true" />
-              </button>
-            )}
+            <div className="flex flex-col gap-1 flex-shrink-0">
+              {!muted && r.telefono && (
+                <a
+                  href={`tel:${r.telefono.replace(/\s/g, '')}`}
+                  className="btn-ghost p-1.5 rounded border block"
+                  style={{ borderColor: 'var(--border)' }}
+                  aria-label={`Chiama ${r.cliente}`}
+                  title={r.telefono}
+                >
+                  <PhoneCall className="w-3.5 h-3.5" aria-hidden="true" />
+                </a>
+              )}
+              {onMarkReturned && (
+                <button
+                  type="button"
+                  onClick={() => onMarkReturned(r.contractId)}
+                  className="btn-ghost p-1.5 rounded border"
+                  style={{ borderColor: 'var(--success)', color: 'var(--success)' }}
+                  aria-label={`Marca rientrato veicolo ${r.targa || ''}`}
+                  title="Veicolo rientrato"
+                >
+                  <Check className="w-3.5 h-3.5" aria-hidden="true" />
+                </button>
+              )}
+            </div>
           </div>
         ))
       }
@@ -1677,111 +3079,220 @@ function ReturnColumn({ title, color, items, empty, fmtTime, urgent, muted }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// CONTRACTS LIST
+// CONTRACTS LIST — basata su localContracts reali (no mock)
 // ═══════════════════════════════════════════════════════════════════
-function ContractsList() {
-  const [contracts, setContracts] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState('all');
-  const [selectedContract, setSelectedContract] = useState(null);
+function ContractsList({ contracts, operators, onRetry, onMarkReturned, online }) {
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [query, setQuery] = useState('');
 
-  useEffect(() => {
-    fetch(`${BACKEND_URL}/api/contracts?limit=200`)
-      .then(r => r.json())
-      .then(data => { setContracts(data.contracts || []); setLoading(false); })
-      .catch(() => setLoading(false));
-  }, []);
+  const counts = useMemo(() => {
+    const c = { all: contracts.length, sent: 0, paper: 0, queued: 0, error: 0, pending: 0, out: 0 };
+    for (const x of contracts) {
+      c[x.status] = (c[x.status] || 0) + 1;
+      // 'out' = veicoli ancora in viaggio (sent/paper/queued con data CONTRATTO_CHECKIN_DATA, non rientrati)
+      if (!x.returnedAt && ['sent', 'paper', 'queued', 'pending'].includes(x.status) &&
+          parseItalianDateTime(x.record?.CONTRATTO_CHECKIN_DATA)) {
+        c.out++;
+      }
+    }
+    return c;
+  }, [contracts]);
 
-  const filtered = contracts.filter(c => {
-    if (filter === 'paper') return c.status === 'paper';
-    if (filter === 'cargos') return c.cargos_required;
-    return true;
-  });
+  const filtered = useMemo(() => {
+    let f;
+    if (statusFilter === 'all') f = contracts;
+    else if (statusFilter === 'out') {
+      f = contracts.filter(x =>
+        !x.returnedAt &&
+        ['sent', 'paper', 'queued', 'pending'].includes(x.status) &&
+        parseItalianDateTime(x.record?.CONTRATTO_CHECKIN_DATA)
+      );
+    }
+    else f = contracts.filter(x => x.status === statusFilter);
+
+    if (query.trim()) {
+      const q = query.toLowerCase();
+      f = f.filter(x => {
+        const r = x.record || {};
+        return (
+          (r.CONTRATTO_ID || '').toLowerCase().includes(q) ||
+          (r.CONDUCENTE_CONTRAENTE_COGNOME || '').toLowerCase().includes(q) ||
+          (r.CONDUCENTE_CONTRAENTE_NOME || '').toLowerCase().includes(q) ||
+          (r.VEICOLO_TARGA || '').toLowerCase().includes(q) ||
+          (r.VEICOLO_MARCA || '').toLowerCase().includes(q)
+        );
+      });
+    }
+    return [...f].sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+  }, [contracts, statusFilter, query]);
+
+  const statusFilters = [
+    { id: 'all',     label: 'Tutte',         n: counts.all,                      icon: null },
+    { id: 'out',     label: 'In viaggio',    n: counts.out || 0,                 icon: Timer,        color: 'var(--sea)' },
+    { id: 'sent',    label: 'Inviate',       n: counts.sent || 0,                icon: CheckCircle2, color: 'var(--success)' },
+    { id: 'paper',   label: 'Cartacee',      n: counts.paper || 0,               icon: FileCheck2,   color: 'var(--sea)' },
+    { id: 'queued',  label: 'In coda',       n: (counts.queued || 0) + (counts.pending || 0), icon: Clock, color: 'var(--warning)' },
+    { id: 'error',   label: 'In errore',     n: counts.error || 0,               icon: AlertCircle,  color: 'var(--accent)' },
+  ].filter(s => s.id === 'all' || s.n > 0);
 
   return (
     <div>
       <h2 className="serif text-3xl font-medium mb-1">Pratiche</h2>
       <p className="text-sm mb-6" style={{ color: 'var(--muted)' }}>
-        Archivio completo dei contratti generati
+        {contracts.length === 0
+          ? 'Archivio vuoto — i contratti creati dal wizard "Nuova pratica" appariranno qui.'
+          : `${contracts.length} contratti · esportabili in CSV per fallback CARGOS via PEC alla Questura di Agrigento`}
       </p>
-      <div className="card-paper">
-        <div className="px-5 py-3 border-b flex items-center gap-3" style={{ borderColor: 'var(--border)' }}>
-          <button type="button" onClick={() => setFilter('all')} className={`btn-ghost px-3 py-1.5 rounded text-xs ${filter === 'all' ? 'font-bold' : ''}`}>Tutte</button>
-          <button type="button" onClick={() => setFilter('cargos')} className={`btn-ghost px-3 py-1.5 rounded text-xs ${filter === 'cargos' ? 'font-bold' : ''}`}>Solo CARGOS (auto)</button>
-          <button type="button" onClick={() => setFilter('paper')} className={`btn-ghost px-3 py-1.5 rounded text-xs ${filter === 'paper' ? 'font-bold' : ''}`}>Solo cartacei</button>
+
+      {contracts.length === 0 ? (
+        <div className="card-paper p-12 text-center">
+          <FileText className="w-12 h-12 mx-auto mb-4" style={{ color: 'var(--muted)' }} aria-hidden="true" />
+          <div className="serif text-xl font-medium mb-2">Nessun contratto ancora</div>
+          <div className="text-sm" style={{ color: 'var(--ink-2)' }}>
+            Inizia creando la prima pratica dal banco.
+          </div>
         </div>
-        {loading ? (
-          <div className="px-5 py-8 text-center text-sm" style={{ color: 'var(--muted)' }}>Caricamento...</div>
-        ) : filtered.length === 0 ? (
-          <div className="px-5 py-8 text-center text-sm" style={{ color: 'var(--muted)' }}>Nessuna pratica trovata</div>
-        ) : (
-          <table className="w-full" aria-label="Archivio pratiche">
-            <thead>
-              <tr className="text-[11px] uppercase tracking-wider" style={{ color: 'var(--muted)' }}>
-                <th scope="col" className="text-left px-5 py-3 font-semibold">ID</th>
-                <th scope="col" className="text-left px-2 py-3 font-semibold">Tipo</th>
-                <th scope="col" className="text-left px-2 py-3 font-semibold">Stato</th>
-                <th scope="col" className="text-left px-2 py-3 font-semibold">Data</th>
-                <th scope="col" className="text-right px-5 py-3 font-semibold">Azione</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map(c => (
-                <tr key={c.id} className="border-t" style={{ borderColor: 'var(--border)' }}>
-                  <td className="px-5 py-3 font-mono text-xs">{c.id}</td>
-                  <td className="px-2 py-3 text-sm">{c.vehicle_type}</td>
-                  <td className="px-2 py-3">
-                    <span className={`pill ${c.status === 'sent' ? 'pill-sea' : c.status === 'error' ? 'pill-err' : 'pill-ink'}`}>
-                      {c.status}
-                    </span>
-                  </td>
-                  <td className="px-2 py-3 text-sm">{new Date(c.created_at).toLocaleDateString('it-IT')}</td>
-                  <td className="px-5 py-3 text-right">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        fetch(`${BACKEND_URL}/api/contracts/${c.id}`)
-                          .then(r => r.json())
-                          .then(full => setSelectedContract(full));
-                      }}
-                      className="btn-ghost px-3 py-1 rounded text-xs"
-                    >
-                      Dettagli / PDF
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (!confirm(`Cancellare la pratica ${c.id}?`)) return;
-                        fetch(`${BACKEND_URL}/api/contracts/${c.id}`, { method: 'DELETE' })
-                          .then(r => r.json())
-                          .then(res => {
-                            if (res.ok) setContracts(prev => prev.filter(x => x.id !== c.id));
-                            else alert('Errore durante la cancellazione');
-                          });
-                      }}
-                      className="btn-ghost px-3 py-1 rounded text-xs"
-                      style={{ color: 'var(--err)' }}
-                    >
-                      Cancella
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-      {selectedContract && (
-        <ContractPdfModal
-          data={selectedContract.payload}
-          operator={{}}
-          partners={[]}
-          onClose={() => setSelectedContract(null)}
-        />
+      ) : (
+        <>
+          <div className="flex flex-wrap gap-2 mb-3" role="group" aria-label="Filtra per stato contratto">
+            {statusFilters.map(s => {
+              const Icon = s.icon;
+              return (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => setStatusFilter(s.id)}
+                  className={`px-3 py-1.5 rounded text-xs flex items-center gap-2 border transition-all ${statusFilter === s.id ? 'btn-primary border-transparent' : 'btn-ghost'}`}
+                  style={{ borderColor: statusFilter === s.id ? 'transparent' : 'var(--border)' }}
+                  aria-pressed={statusFilter === s.id}
+                >
+                  {Icon && <Icon className="w-3.5 h-3.5" style={{ color: statusFilter === s.id ? 'currentColor' : s.color }} />}
+                  {s.label}
+                  <span className="opacity-60">{s.n}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="relative mb-4">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--muted)' }} aria-hidden="true" />
+            <input className="input pl-9" placeholder="Cerca per ID, cliente, targa…" value={query} onChange={e => setQuery(e.target.value)} />
+            {query && (
+              <button type="button" onClick={() => setQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 btn-ghost p-0.5 rounded" aria-label="Cancella ricerca">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
+          {filtered.length === 0 ? (
+            <div className="card-paper p-8 text-center text-sm" style={{ color: 'var(--muted)' }}>
+              Nessun contratto trovato{query && ` per "${query}"`}
+            </div>
+          ) : (
+            <div className="card-paper overflow-hidden">
+              <table className="w-full" aria-label="Archivio pratiche">
+                <thead>
+                  <tr className="text-[11px] uppercase tracking-wider border-b" style={{ color: 'var(--muted)', borderColor: 'var(--border)' }}>
+                    <th scope="col" className="text-left px-5 py-3 font-semibold">ID</th>
+                    <th scope="col" className="text-left px-2 py-3 font-semibold">Cliente</th>
+                    <th scope="col" className="text-left px-2 py-3 font-semibold">Veicolo</th>
+                    <th scope="col" className="text-left px-2 py-3 font-semibold">Data</th>
+                    <th scope="col" className="text-left px-2 py-3 font-semibold">Operatore</th>
+                    <th scope="col" className="text-left px-2 py-3 font-semibold">Stato</th>
+                    <th scope="col" className="text-right px-5 py-3 font-semibold">Azioni</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map(c => {
+                    const r = c.record || {};
+                    const op = operators?.find(o => o.id === c.operatorId);
+                    const opName = op?.nome || c.operatorId || '—';
+                    const opInitials = op?.initials || getInitials(opName.split(' ')[0], opName.split(' ').slice(1).join(' '));
+                    const createdDate = c.createdAt ? new Date(c.createdAt) : null;
+                    const stato = c.status === 'sent'    ? 'inviato'
+                               : c.status === 'paper'   ? 'cartaceo'
+                               : c.status === 'queued'  ? 'bozza'
+                               : c.status === 'pending' ? 'bozza'
+                               : c.status === 'error'   ? 'errore'
+                               : 'bozza';
+                    return (
+                      <tr key={c.contractId} className="border-t hover:bg-[var(--surface-2)] transition-colors" style={{ borderColor: 'var(--border)' }}>
+                        <td className="px-5 py-3 mono text-[11px]" style={{ color: 'var(--ink-2)' }}>{c.contractId.slice(-12)}</td>
+                        <td className="px-2 py-3 text-sm">
+                          {r.CONDUCENTE_CONTRAENTE_COGNOME} {r.CONDUCENTE_CONTRAENTE_NOME}
+                        </td>
+                        <td className="px-2 py-3 text-sm" style={{ color: 'var(--ink-2)' }}>
+                          {r.VEICOLO_MARCA} {r.VEICOLO_MODELLO}
+                          {r.VEICOLO_TARGA && <span className="mono text-[11px] ml-1.5">· {r.VEICOLO_TARGA}</span>}
+                        </td>
+                        <td className="px-2 py-3 text-xs" style={{ color: 'var(--ink-2)' }}>
+                          {createdDate ? createdDate.toLocaleDateString('it-IT', { day: '2-digit', month: 'short' }) : '—'}
+                          <div className="text-[10px] mono" style={{ color: 'var(--muted)' }}>
+                            {createdDate?.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}
+                          </div>
+                        </td>
+                        <td className="px-2 py-3">
+                          <div className="flex items-center gap-1.5 text-xs">
+                            <div className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-semibold" style={{ background: 'var(--surface-2)', color: 'var(--ink-2)' }} aria-hidden="true">
+                              {opInitials}
+                            </div>
+                            <span style={{ color: 'var(--ink-2)' }}>{opName.split(' ')[0]}</span>
+                          </div>
+                        </td>
+                        <td className="px-2 py-3"><StatusPill stato={stato} /></td>
+                        <td className="px-5 py-3 text-right">
+                          <div className="flex items-center gap-1.5 justify-end">
+                            {/* Veicolo ancora "fuori" → mostra pulsante "rientrato" */}
+                            {!c.returnedAt &&
+                             ['sent', 'paper', 'queued', 'pending'].includes(c.status) &&
+                             parseItalianDateTime(c.record?.CONTRATTO_CHECKIN_DATA) &&
+                             onMarkReturned && (
+                              <button
+                                type="button"
+                                onClick={() => onMarkReturned(c.contractId)}
+                                className="btn-ghost px-2 py-1 rounded text-xs border inline-flex items-center gap-1"
+                                style={{ borderColor: 'var(--success)', color: 'var(--success)' }}
+                                title="Marca veicolo come rientrato"
+                              >
+                                <Check className="w-3 h-3" /> Rientrato
+                              </button>
+                            )}
+                            {c.returnedAt && (
+                              <span className="text-[11px] inline-flex items-center gap-1" style={{ color: 'var(--success)' }} title={`Rientrato il ${new Date(c.returnedAt).toLocaleString('it-IT')}`}>
+                                <Check className="w-3 h-3" /> Rientrato
+                              </span>
+                            )}
+                            {c.status === 'error' && onRetry && (
+                              <button
+                                type="button"
+                                onClick={() => onRetry(c.contractId)}
+                                disabled={!online}
+                                className="btn-accent px-3 py-1.5 rounded text-xs font-medium inline-flex items-center gap-1 disabled:opacity-40"
+                                title={online ? 'Riprova invio CARGOS' : 'Offline · non si può riprovare ora'}
+                              >
+                                <RefreshCw className="w-3 h-3" /> Reinvia
+                              </button>
+                            )}
+                            {c.status === 'sent' && c.receipt && (
+                              <span className="text-[11px] mono inline-flex items-center gap-1" style={{ color: 'var(--ink-2)' }}>
+                                {c.receipt.slice(0, 12)}… <ArrowUpRight className="w-3 h-3" aria-hidden="true" />
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
 }
+
 // ═══════════════════════════════════════════════════════════════════
 // FLEET
 // ═══════════════════════════════════════════════════════════════════
@@ -2194,8 +3705,55 @@ function PartnersPage({ partners, admin, onAddPartner, onEditPartner, onDeletePa
 // ═══════════════════════════════════════════════════════════════════
 // SETTINGS
 // ═══════════════════════════════════════════════════════════════════
-function SettingsPage({ operator, operators, cargosConfig, admin, onAddOperator, onEditOperator, onDeleteOperator, onEditCargos }) {
+function SettingsPage({ operator, operators, cargosConfig, admin, backendStatus, lastCheck, apiBaseUrl, syncStatus, agency, onSyncAll, pushToast, onAddOperator, onEditOperator, onDeleteOperator, onEditCargos, onEditApiBase, onEditAgency, onResetCustomers, onResetContracts, onResetEverything, customers, contracts }) {
   const [showCargosSecrets, setShowCargosSecrets] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+
+  const handleSyncAll = useCallback(async () => {
+    if (syncing) return;
+    setSyncing(true);
+    try {
+      const result = await onSyncAll();
+      if (result.ok) {
+        pushToast?.({ tone: 'success', title: 'Sincronizzazione completata', message: `${result.count}/${result.total} sezioni aggiornate sul backend` });
+      } else {
+        pushToast?.({ tone: 'warning', title: 'Sincronizzazione parziale', message: `${result.count}/${result.total} sezioni riuscite — controlla la connessione`, duration: 5000 });
+      }
+    } finally {
+      setSyncing(false);
+    }
+  }, [syncing, onSyncAll, pushToast]);
+
+  // Guardie difensive: se per qualche bug a monte mancano dati cruciali,
+  // mostriamo un fallback leggibile invece di crashare con "undefined.nome".
+  // Questo non dovrebbe mai succedere ma protegge dai casi-limite (CRUD operatori
+  // che svuota la lista, persistente con dati corrotti, ecc.).
+  if (!operators || operators.length === 0) {
+    return (
+      <div className="card-paper p-8 text-center">
+        <AlertTriangle className="w-8 h-8 mx-auto mb-3" style={{ color: 'var(--warning)' }} />
+        <div className="serif text-xl font-medium mb-2">Nessun operatore configurato</div>
+        <div className="text-sm" style={{ color: 'var(--ink-2)' }}>
+          La lista operatori è vuota. Ricarica l'app per ripristinare i valori predefiniti.
+        </div>
+      </div>
+    );
+  }
+  if (!operator) {
+    return (
+      <div className="card-paper p-8 text-center">
+        <AlertTriangle className="w-8 h-8 mx-auto mb-3" style={{ color: 'var(--warning)' }} />
+        <div className="serif text-xl font-medium mb-2">Nessun operatore attivo</div>
+        <div className="text-sm" style={{ color: 'var(--ink-2)' }}>
+          L'operatore corrente non è definito. Effettua un cambio turno per assegnarne uno.
+        </div>
+      </div>
+    );
+  }
+  // Anche cargosConfig deve esistere — usiamo oggetto vuoto come fallback
+  // così tutti gli accessi a cfg.xxx ritornano undefined gestiti dalle `||`.
+  const cfg = cargosConfig || {};
+
   const enabledOps = operators.filter(o => o.enabled !== false);
 
   return (
@@ -2213,21 +3771,28 @@ function SettingsPage({ operator, operators, cargosConfig, admin, onAddOperator,
 
       <div className="grid grid-cols-2 gap-4 mb-4">
         <section className="card-paper p-6" aria-labelledby="agency-heading">
-          <div className="flex items-baseline gap-3 mb-4">
-            <h3 id="agency-heading" className="serif text-lg font-medium">{AGENCY.nome}</h3>
-            <span className="text-[11px] uppercase tracking-wider" style={{ color: 'var(--muted)' }}>dal {AGENCY.fondazione}</span>
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-baseline gap-3">
+              <h3 id="agency-heading" className="serif text-lg font-medium">{agency.nome}</h3>
+              <span className="text-[11px] uppercase tracking-wider" style={{ color: 'var(--muted)' }}>dal {agency.fondazione}</span>
+            </div>
+            {admin && (
+              <button type="button" onClick={onEditAgency} className="btn-ghost px-2.5 py-1 rounded text-xs border inline-flex items-center gap-1.5" style={{ borderColor: 'var(--border)' }}>
+                <Pencil className="w-3.5 h-3.5" /> Modifica
+              </button>
+            )}
           </div>
           <div className="grid grid-cols-2 gap-3 text-sm">
-            <Field label="Ragione sociale"  value={AGENCY.ragioneSociale} wide />
-            <Field label="Titolare"         value={AGENCY.titolare} />
-            <Field label="P. IVA"           value={AGENCY.piva} mono />
-            <Field label="Codice fiscale"   value={AGENCY.cf} mono wide />
-            <Field label="Sede legale"      value={`${AGENCY.indirizzoLegale}, ${AGENCY.cap} ${AGENCY.citta} (${AGENCY.provincia})`} wide />
-            <Field label="Sede operativa"   value={AGENCY.sedeOperativa} wide />
-            <Field label="Telefono"         value={AGENCY.telefono} mono />
-            <Field label="Cellulari"        value={AGENCY.cellulari.join(' / ')} mono />
-            <Field label="Email"            value={AGENCY.email} mono wide />
-            <Field label="Servizi"          value={AGENCY.servizi} wide />
+            <Field label="Ragione sociale"  value={agency.ragioneSociale} wide />
+            <Field label="Titolare"         value={agency.titolare} />
+            <Field label="P. IVA"           value={agency.piva} mono />
+            <Field label="Codice fiscale"   value={agency.cf} mono wide />
+            <Field label="Sede legale"      value={`${agency.indirizzoLegale}, ${agency.cap} ${agency.citta} (${agency.provincia})`} wide />
+            <Field label="Sede operativa"   value={agency.sedeOperativa} wide />
+            <Field label="Telefono"         value={agency.telefono} mono />
+            <Field label="Cellulari"        value={(agency.cellulari || []).join(' / ')} mono />
+            <Field label="Email"            value={agency.email} mono wide />
+            <Field label="Servizi"          value={agency.servizi} wide />
           </div>
         </section>
 
@@ -2241,34 +3806,34 @@ function SettingsPage({ operator, operators, cargosConfig, admin, onAddOperator,
             )}
           </div>
           <div className="space-y-3 text-sm">
-            <Field label="Endpoint"             value={cargosConfig.endpoint || '—'} mono wide />
-            <Field label="ID Agenzia"           value={cargosConfig.agenziaId || AGENCY.agenziaId} mono />
-            <Field label="Codice luogo (ISTAT)" value={cargosConfig.istatLuogo || AGENCY.istatLuogo} mono />
-            <Field label="Username"             value={cargosConfig.username || '—'} mono />
+            <Field label="Endpoint"             value={cfg.endpoint || '—'} mono wide />
+            <Field label="ID Agenzia"           value={cfg.agenziaId || agency.agenziaId} mono />
+            <Field label="Codice luogo (ISTAT)" value={cfg.istatLuogo || agency.istatLuogo} mono />
+            <Field label="Username"             value={cfg.username || '—'} mono />
             <div>
               <div className="label">Password</div>
               <div className="flex items-center gap-2">
                 <span className="text-sm mono">
-                  {cargosConfig.password
-                    ? (showCargosSecrets ? cargosConfig.password : '••••••••••')
+                  {cfg.password
+                    ? (showCargosSecrets ? cfg.password : '••••••••••')
                     : <span style={{ color: 'var(--muted)' }}>non configurata</span>}
                 </span>
-                {cargosConfig.password && (
+                {cfg.password && (
                   <button type="button" onClick={() => setShowCargosSecrets(s => !s)} className="btn-ghost p-1 rounded" aria-label={showCargosSecrets ? 'Nascondi password' : 'Mostra password'}>
                     {showCargosSecrets ? <EyeOff className="w-3.5 h-3.5" /> : <EyeIcon className="w-3.5 h-3.5" />}
                   </button>
                 )}
               </div>
             </div>
-            <Field label="PEC Questura"         value={cargosConfig.questuraPec || AGENCY.questuraPec} mono wide />
+            <Field label="PEC Questura"         value={cfg.questuraPec || agency.questuraPec} mono wide />
             <Field label="Operatore corrente"   value={`${operator.nome} (${operator.id})`} wide />
             <div>
               <div className="label">Stato comunicazione</div>
               <div className="flex items-center gap-2">
-                {cargosConfig.enabled && cargosConfig.username && cargosConfig.password ? (
+                {cfg.enabled && cfg.username && cfg.password ? (
                   <>
                     <span className="pill pill-ok"><CheckCircle2 className="w-3 h-3" aria-hidden="true" /> Attiva</span>
-                    <span className="text-xs" style={{ color: 'var(--muted)' }}>Invio automatico {cargosConfig.autoSendTimeout || 30}s</span>
+                    <span className="text-xs" style={{ color: 'var(--muted)' }}>Invio automatico {cfg.autoSendTimeout || 30}s</span>
                   </>
                 ) : (
                   <>
@@ -2280,7 +3845,7 @@ function SettingsPage({ operator, operators, cargosConfig, admin, onAddOperator,
             </div>
             <div className="text-xs p-3 rounded mt-2" style={{ background: 'var(--surface-2)', color: 'var(--ink-2)' }}>
               <Info className="w-3.5 h-3.5 inline mr-1" aria-hidden="true" />
-              Credenziali rilasciate dalla <strong>Questura di Agrigento</strong>, competente sulla sede legale di {AGENCY.citta}. Conservate cifrate (AES-256-GCM) lato server.
+              Credenziali rilasciate dalla <strong>Questura di Agrigento</strong>, competente sulla sede legale di {agency.citta}. Conservate cifrate (AES-256-GCM) lato server.
             </div>
           </div>
         </section>
@@ -2345,28 +3910,142 @@ function SettingsPage({ operator, operators, cargosConfig, admin, onAddOperator,
         </ul>
       </section>
 
+      <section className="card-paper p-6 mb-4" aria-labelledby="backend-heading">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            {/* Icona dinamica: Wifi se online, WifiOff se non raggiungibile */}
+            {backendStatus === 'online' || backendStatus === 'degraded'
+              ? <Wifi className="w-5 h-5" style={{ color: 'var(--success)' }} aria-hidden="true" />
+              : <WifiOff className="w-5 h-5" style={{ color: 'var(--muted)' }} aria-hidden="true" />
+            }
+            <div>
+              <h3 id="backend-heading" className="serif text-lg font-medium">Backend Pratica</h3>
+              <div className="text-xs" style={{ color: 'var(--muted)' }}>
+                {backendStatus === 'checking'     && 'Verifica connessione in corso…'}
+                {backendStatus === 'online'       && <>Connesso · ultimo check {lastCheck ? lastCheck.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '—'}</>}
+                {backendStatus === 'degraded'     && 'Backend connesso ma CARGOS non disponibile'}
+                {backendStatus === 'offline'      && 'Non raggiungibile · lavorando in locale'}
+                {backendStatus === 'unconfigured' && 'Backend non configurato per questo ambiente'}
+              </div>
+            </div>
+          </div>
+          {admin && (
+            <button type="button" onClick={onEditApiBase} className="btn-ghost px-2.5 py-1 rounded text-xs border inline-flex items-center gap-1.5" style={{ borderColor: 'var(--border)' }}>
+              <Pencil className="w-3.5 h-3.5" /> Cambia URL
+            </button>
+          )}
+        </div>
+        <div className="space-y-2 text-sm">
+          <Field label="URL endpoint" value={apiBaseUrl} mono wide />
+          <div>
+            <div className="label">Stato attuale</div>
+            <div className="flex items-center gap-2 flex-wrap">
+              {backendStatus === 'online'       && <span className="pill pill-ok"><CheckCircle2 className="w-3 h-3" /> Online</span>}
+              {backendStatus === 'degraded'     && <span className="pill pill-warn"><AlertTriangle className="w-3 h-3" /> CARGOS giù</span>}
+              {backendStatus === 'offline'      && <span className="pill pill-err"><WifiOff className="w-3 h-3" /> Offline</span>}
+              {backendStatus === 'checking'     && <span className="pill pill-neutral"><RefreshCw className="w-3 h-3 animate-spin" /> Verifica…</span>}
+              {backendStatus === 'unconfigured' && <span className="pill pill-neutral"><Settings className="w-3 h-3" /> Da configurare</span>}
+              <span className="text-xs" style={{ color: 'var(--muted)' }}>
+                {backendStatus === 'offline'
+                  ? 'I contratti vengono salvati localmente, drain quando torna la rete'
+                  : backendStatus === 'degraded'
+                  ? 'I contratti restano in coda, drain automatico al ripristino CARGOS'
+                  : backendStatus === 'unconfigured'
+                  ? 'Cambia URL per puntare al server reale, oppure resta in modalità locale'
+                  : 'Contratti inviati in tempo reale a CARGOS'}
+              </span>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section className="card-paper p-6" aria-labelledby="audit-heading">
         <div className="flex items-center gap-2 mb-4">
           <History className="w-4 h-4" style={{ color: 'var(--ink-2)' }} aria-hidden="true" />
           <h3 id="audit-heading" className="serif text-lg font-medium">Audit log · ultimi cambi turno</h3>
         </div>
-        <ol className="space-y-3 text-sm" aria-label="Storico cambi turno">
-          {[
-            { t: 'oggi 08:30', from: '—',                 to: 'Alessandra Raptis', taken: 0, action: 'Apertura turno' },
-            { t: 'ieri 20:30', from: 'Marco Santini',     to: 'turno chiuso',      taken: 0, action: 'Chiusura turno' },
-            { t: 'ieri 14:00', from: 'Alessandra Raptis', to: 'Marco Santini',     taken: 4, action: 'Cambio turno' },
-          ].map((e, i) => (
-            <li key={i} className="flex items-center gap-3 py-1">
-              <div className="text-xs mono w-20" style={{ color: 'var(--muted)' }}>{e.t}</div>
-              <Stamp className="w-3.5 h-3.5" style={{ color: 'var(--muted)' }} aria-hidden="true" />
-              <div className="flex-1">
-                <span>{e.action}: <strong>{e.from}</strong> → <strong>{e.to}</strong></span>
-                {e.taken > 0 && <span className="text-xs ml-2" style={{ color: 'var(--muted)' }}>({e.taken} pratiche prese in carico)</span>}
-              </div>
-            </li>
-          ))}
-        </ol>
+        <div className="text-xs p-4 rounded text-center" style={{ background: 'var(--surface-2)', color: 'var(--ink-2)' }}>
+          <Clock className="w-5 h-5 mx-auto mb-2 opacity-50" aria-hidden="true" />
+          Nessun cambio turno registrato ancora.<br />
+          Lo storico si popola automaticamente a ogni passaggio di consegne tra operatori.
+        </div>
       </section>
+
+      {admin && (
+        <section className="card-paper p-6 mt-4" aria-labelledby="sync-heading">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-3">
+              <RefreshCw className={`w-5 h-5 ${syncing ? 'animate-spin' : ''}`} style={{ color: 'var(--ink-2)' }} aria-hidden="true" />
+              <div>
+                <h3 id="sync-heading" className="serif text-lg font-medium">Sincronizzazione multi-dispositivo</h3>
+                <div className="text-xs" style={{ color: 'var(--muted)' }}>
+                  Forza l'invio dei dati locali al backend Render — utile dopo lavoro offline
+                </div>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={handleSyncAll}
+              disabled={syncing || backendStatus !== 'online'}
+              className="btn-primary px-4 py-2 rounded text-sm font-semibold inline-flex items-center gap-2 disabled:opacity-40"
+              title={backendStatus !== 'online' ? 'Backend non raggiungibile — sincronizzazione disponibile solo online' : 'Forza sync ora'}
+            >
+              {syncing
+                ? <><RefreshCw className="w-4 h-4 animate-spin" /> Sincronizzazione…</>
+                : <><RefreshCw className="w-4 h-4" /> Sincronizza ora</>
+              }
+            </button>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 text-xs mt-4">
+            {[
+              { id: 'fleet',     label: 'Flotta veicoli',         st: syncStatus?.fleet },
+              { id: 'customers', label: 'Rubrica clienti',        st: syncStatus?.customers },
+              { id: 'partners',  label: 'Strutture partner',      st: syncStatus?.partners },
+              { id: 'operators', label: 'Operatori del banco',    st: syncStatus?.operators },
+              { id: 'cargos',    label: 'Configurazione CARGOS',  st: syncStatus?.cargos },
+              { id: 'agency',    label: 'Anagrafica agenzia',     st: syncStatus?.agency },
+            ].map(row => {
+              const status = row.st?.remoteStatus || 'disabled';
+              const last = row.st?.lastRemoteSync;
+              const meta = {
+                idle:     { label: 'In attesa',     color: 'var(--muted)',   icon: Clock },
+                loading:  { label: 'Caricamento…',  color: 'var(--sea)',     icon: RefreshCw },
+                saving:   { label: 'Salvataggio…',  color: 'var(--sea)',     icon: RefreshCw },
+                synced:   { label: 'Sincronizzato', color: 'var(--success)', icon: CheckCircle2 },
+                error:    { label: 'Errore',        color: 'var(--accent)',  icon: AlertCircle },
+                offline:  { label: 'Solo locale',   color: 'var(--warning)', icon: WifiOff },
+                disabled: { label: 'Solo locale',   color: 'var(--muted)',   icon: WifiOff },
+              }[status];
+              const Icon = meta.icon;
+              const spinning = status === 'loading' || status === 'saving';
+              return (
+                <div key={row.id} className="p-3 rounded border flex items-center gap-3" style={{ borderColor: 'var(--border)' }}>
+                  <Icon className={`w-4 h-4 flex-shrink-0 ${spinning ? 'animate-spin' : ''}`} style={{ color: meta.color }} aria-hidden="true" />
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium">{row.label}</div>
+                    <div className="text-[10px]" style={{ color: meta.color }}>
+                      {meta.label}
+                      {last && status === 'synced' && (
+                        <span style={{ color: 'var(--muted)' }}> · {last.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="mt-4 text-[11px] p-3 rounded flex items-start gap-2" style={{ background: 'var(--surface-2)', color: 'var(--ink-2)' }}>
+            <Info className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+            <span>
+              I dati vengono salvati automaticamente sul backend 1,5 secondi dopo ogni modifica.
+              Il pulsante <strong>"Sincronizza ora"</strong> serve solo per forzare un re-invio (es. dopo periodi offline).
+              In caso di conflitti tra dispositivi, vince l'ultima modifica salvata.
+            </span>
+          </div>
+        </section>
+      )}
 
       {admin && (
         <section className="card-paper p-6 mt-4" aria-labelledby="storage-heading">
@@ -2375,7 +4054,7 @@ function SettingsPage({ operator, operators, cargosConfig, admin, onAddOperator,
             <h3 id="storage-heading" className="serif text-lg font-medium">Archivio locale</h3>
           </div>
           <div className="text-xs mb-3" style={{ color: 'var(--ink-2)' }}>
-            Tutti i dati (flotta, clienti, strutture, operatori, configurazione CARGOS) sono salvati nel browser di questo dispositivo. Sopravvivono ai riavvii, ma <strong>non sono sincronizzati</strong> con gli altri dispositivi finché non si collega il backend. Per Edonoleggio: ogni tablet del banco mantiene la sua copia.
+            Tutti i dati (flotta, clienti, strutture, operatori, configurazione CARGOS) sono salvati nel browser di questo dispositivo <strong>e</strong> sincronizzati con il backend Render quando online. Quando il backend è raggiungibile, le modifiche fatte su un tablet appaiono su tutti gli altri entro pochi secondi. Quando il backend è offline, i dati restano comunque al sicuro localmente.
           </div>
           <div className="grid grid-cols-2 gap-2 text-xs">
             <div className="p-2 rounded border" style={{ borderColor: 'var(--border)' }}>
@@ -2397,6 +4076,111 @@ function SettingsPage({ operator, operators, cargosConfig, admin, onAddOperator,
           </div>
         </section>
       )}
+
+      {admin && (onResetCustomers || onResetContracts || onResetEverything) && (
+        <section className="card-paper p-6 mt-4" aria-labelledby="reset-heading" style={{ borderLeft: '3px solid var(--accent)' }}>
+          <div className="flex items-center gap-2 mb-3">
+            <AlertTriangle className="w-4 h-4" style={{ color: 'var(--accent)' }} aria-hidden="true" />
+            <h3 id="reset-heading" className="serif text-lg font-medium">Reset archivi · zona pericolosa</h3>
+          </div>
+          <div className="text-xs mb-4" style={{ color: 'var(--ink-2)' }}>
+            Operazioni di pulizia per rimuovere dati di simulazione, test, o legacy.
+            Le modifiche si propagano <strong>anche al backend Render</strong>, quindi sovrascrivono
+            quello che è stato salvato lì da versioni precedenti dell'app.
+          </div>
+          <div className="space-y-2">
+            {onResetCustomers && (
+              <div className="flex items-center justify-between p-3 rounded border" style={{ borderColor: 'var(--border)' }}>
+                <div className="flex-1">
+                  <div className="font-medium text-sm">Svuota rubrica clienti</div>
+                  <div className="text-xs" style={{ color: 'var(--muted)' }}>
+                    Rimuove tutti i clienti salvati (locale + backend). Attualmente: <strong>{customers?.length || 0}</strong>.
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={onResetCustomers}
+                  disabled={!customers?.length}
+                  className="btn-ghost px-3 py-1.5 rounded text-xs border inline-flex items-center gap-1.5 disabled:opacity-40"
+                  style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }}
+                >
+                  <Trash2 className="w-3 h-3" /> Svuota
+                </button>
+              </div>
+            )}
+            {onResetContracts && (
+              <div className="flex items-center justify-between p-3 rounded border" style={{ borderColor: 'var(--border)' }}>
+                <div className="flex-1">
+                  <div className="font-medium text-sm">Svuota archivio pratiche</div>
+                  <div className="text-xs" style={{ color: 'var(--muted)' }}>
+                    Rimuove i contratti salvati localmente. Quelli già inviati a CARGOS restano sui server della Questura. Attualmente: <strong>{contracts?.length || 0}</strong>.
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={onResetContracts}
+                  disabled={!contracts?.length}
+                  className="btn-ghost px-3 py-1.5 rounded text-xs border inline-flex items-center gap-1.5 disabled:opacity-40"
+                  style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }}
+                >
+                  <Trash2 className="w-3 h-3" /> Svuota
+                </button>
+              </div>
+            )}
+            {onResetEverything && (
+              <div className="flex items-center justify-between p-3 rounded border" style={{ borderColor: 'var(--accent)', background: '#fdf4f4' }}>
+                <div className="flex-1">
+                  <div className="font-medium text-sm" style={{ color: 'var(--accent)' }}>Reset totale</div>
+                  <div className="text-xs" style={{ color: 'var(--ink-2)' }}>
+                    Operazione di emergenza: cancella clienti+contratti e riporta flotta/strutture/operatori ai dati reali iniziali.
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={onResetEverything}
+                  className="btn-accent px-3 py-1.5 rounded text-xs font-semibold inline-flex items-center gap-1.5"
+                >
+                  <RefreshCw className="w-3 h-3" /> Reset totale
+                </button>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+
+      {/* Footer versione — sempre visibile, anche senza admin */}
+      <section className="mt-6 px-6 py-5 rounded text-xs flex items-center justify-between" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }} aria-labelledby="version-heading">
+        <div className="flex items-center gap-4">
+          <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: 'var(--accent)', color: '#fff' }} aria-hidden="true">
+            <Sparkles className="w-4 h-4" />
+          </div>
+          <div>
+            <div className="flex items-baseline gap-2 flex-wrap">
+              <span id="version-heading" className="serif text-base font-medium" style={{ color: 'var(--ink)' }}>Pratica</span>
+              <span className="mono font-semibold" style={{ color: 'var(--accent)' }}>v{APP_VERSION.number}</span>
+              <span style={{ color: 'var(--muted)' }}>· "{APP_VERSION.codename}"</span>
+            </div>
+            <div className="mt-0.5" style={{ color: 'var(--muted)' }}>
+              Edonoleggio Lampedusa · build del <span className="mono">{APP_VERSION.date}</span>
+            </div>
+          </div>
+        </div>
+        {admin && (
+          <details className="text-right">
+            <summary className="cursor-pointer btn-ghost px-2 py-1 rounded inline-flex items-center gap-1 text-[11px]">
+              Cosa c'è di nuovo <ChevronDown className="w-3 h-3" />
+            </summary>
+            <ul className="mt-2 text-left space-y-1" style={{ color: 'var(--ink-2)' }}>
+              {APP_VERSION.changelog.map((line, i) => (
+                <li key={i} className="flex items-start gap-1.5">
+                  <Check className="w-3 h-3 flex-shrink-0 mt-0.5" style={{ color: 'var(--success)' }} />
+                  <span>{line}</span>
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
+      </section>
     </div>
   );
 }
@@ -2413,7 +4197,7 @@ const Field = memo(function Field({ label, value, mono, wide }) {
 // ═══════════════════════════════════════════════════════════════════
 // WIZARD
 // ═══════════════════════════════════════════════════════════════════
-function Wizard({ onClose, prefillCustomer, operator, fleet, customers, partners }) {
+function Wizard({ onClose, prefillCustomer, operator, fleet, customers, partners, onSubmit, agency }) {
   const [step, setStep] = useState(prefillCustomer ? 3 : 1);
   const [data, setData] = useState({
     tipoVeicolo: prefillCustomer ? 'auto' : null,
@@ -2426,40 +4210,22 @@ function Wizard({ onClose, prefillCustomer, operator, fleet, customers, partners
     consegnaStruttura: 's3',
     consegnaIndirizzo: '',
     pagamento: 'C',
-   })
- const [pdfOpen, setPdfOpen] = useState(false);
+    // Override CARGOS: 'auto' = decide il tipo veicolo (auto→invia, scooter→no)
+    //                  'off'  = forzato OFF dall'operatore (solo archivio, no invio)
+    // L'override è significativo solo per veicoli normalmente soggetti a CARGOS.
+    // Per scooter/quad/ebike il toggle non ha effetto pratico (già esclusi per norma).
+    cargosOverride: 'auto',
+  });
+  const [pdfOpen, setPdfOpen] = useState(false);
   const [sent, setSent] = useState(false);
-  const [isUploading, setIsUploading] = useState(false); // 
+  const [submitting, setSubmitting] = useState(false);
+  const [submitResult, setSubmitResult] = useState(null);
 
   const update = useCallback((k, v) => setData(d => ({ ...d, [k]: v })), []);
   const t = data.tipoVeicolo ? VEHICLE_TYPES[data.tipoVeicolo] : null;
-  const isCargosBound = t?.cargosRequired === true;
-
-  //
-  const handleFinalConfirm = async () => {
-    setIsUploading(true);
-    try {
-      // 
-      const BACKEND_URL = 'https://pratica-backend.onrender.com'; 
-      
-      const endpoint = data.tipoVeicolo === 'auto' ? '/api/contracts' : '/api/contracts/paper';
-      const response = await fetch(`${BACKEND_URL}${endpoint}`, {
-  method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      });
-
-      if (response.ok) {
-        setSent(true); // 
-      } else {
-        alert("Il server ha ricevuto i dati ma ha dato errore. Controlla i log di Render.");
-      }
-    } catch (error) {
-      alert("Errore di connessione: Il backend su Render non risponde. Aspetta un minuto e riprova (potrebbe essere in standby).");
-    } finally {
-      setIsUploading(false);
-    }
-  };
+  // CARGOS effettivo = obbligatorio per legge sul tipo veicolo E non disattivato dall'operatore.
+  // Se override = 'off', il contratto viene salvato come 'paper' anche per le auto.
+  const isCargosBound = t?.cargosRequired === true && data.cargosOverride !== 'off';
 
   const STEPS = ['Tipo', 'Cliente', 'Veicolo', 'Periodo', 'Conferma'];
 
@@ -2469,6 +4235,16 @@ function Wizard({ onClose, prefillCustomer, operator, fleet, customers, partners
     if (step === 3) return data.veicolo !== null;
     return true;
   }, [step, data.tipoVeicolo, data.cliente, data.veicolo]);
+
+  // Conferma finale: chiama submitContract dall'App, mostra spinner, poi ResultScreen
+  const handleConfirm = useCallback(async () => {
+    if (submitting) return;
+    setSubmitting(true);
+    const result = onSubmit ? await onSubmit(data) : { ok: true, status: 'paper' };
+    setSubmitResult(result);
+    setSubmitting(false);
+    setSent(true);
+  }, [onSubmit, data, submitting]);
 
   // Close on Escape
   useEffect(() => {
@@ -2524,14 +4300,14 @@ function Wizard({ onClose, prefillCustomer, operator, fleet, customers, partners
           {/* Body — fade-in animato al cambio step tramite key */}
           <div className="flex-1 overflow-y-auto px-8 py-8">
             {sent
-              ? <ResultScreen data={data} onClose={onClose} operator={operator} onShowPdf={() => setPdfOpen(true)} />
+              ? <ResultScreen data={data} onClose={onClose} operator={operator} submitResult={submitResult} onShowPdf={() => setPdfOpen(true)} />
               : (
                 <div key={step} className="fade-in">
                   {step === 1 && <Step1Type data={data} update={update} />}
                   {step === 2 && <Step2Customer data={data} update={update} customers={customers} />}
                   {step === 3 && <Step3Vehicle data={data} update={update} fleet={fleet} />}
                   {step === 4 && <Step4Period data={data} update={update} partners={partners} />}
-                  {step === 5 && <Step5Confirm data={data} operator={operator} partners={partners} onShowPdf={() => setPdfOpen(true)} />}
+                  {step === 5 && <Step5Confirm data={data} operator={operator} partners={partners} onShowPdf={() => setPdfOpen(true)} update={update} agency={agency} />}
                 </div>
               )
             }
@@ -2540,14 +4316,17 @@ function Wizard({ onClose, prefillCustomer, operator, fleet, customers, partners
           {/* Footer */}
           {!sent && (
             <div className="px-8 py-4 border-t flex items-center" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
-              <button type="button" onClick={() => step > 1 ? setStep(step - 1) : onClose()} className="btn-ghost px-4 py-2 rounded text-sm flex items-center gap-2">
+              <button type="button" onClick={() => step > 1 ? setStep(step - 1) : onClose()} disabled={submitting} className="btn-ghost px-4 py-2 rounded text-sm flex items-center gap-2 disabled:opacity-40">
                 <ChevronLeft className="w-4 h-4" aria-hidden="true" /> {step === 1 ? 'Annulla' : 'Indietro'}
               </button>
               <div className="flex-1" />
               {t && !isCargosBound && step >= 1 && (
                 <div className="flex items-center gap-2 mr-4 text-xs" style={{ color: 'var(--warning)' }} role="status">
                   <AlertTriangle className="w-3.5 h-3.5" aria-hidden="true" />
-                  {t.label}: nessun invio CARGOS, solo contratto
+                  {t.cargosRequired && data.cargosOverride === 'off'
+                    ? <>CARGOS <strong>disattivato manualmente</strong> · solo archivio</>
+                    : <>{t.label}: nessun invio CARGOS, solo contratto</>
+                  }
                 </div>
               )}
               {step < 5 ? (
@@ -2561,11 +4340,22 @@ function Wizard({ onClose, prefillCustomer, operator, fleet, customers, partners
                   Continua <ArrowRight className="w-4 h-4" aria-hidden="true" />
                 </button>
               ) : (
-                <button type="button" onClick={handleFinalConfirm} className="btn-accent px-5 py-2 rounded text-sm font-semibold flex items-center gap-2">
-                  {isCargosBound
-                    ? <><Send className="w-4 h-4" aria-hidden="true" /> Invia a CARGOS</>
-                    : <><FileCheck2 className="w-4 h-4" aria-hidden="true" /> Genera contratto</>
-                  }
+                <button
+                  type="button"
+                  onClick={handleConfirm}
+                  disabled={submitting}
+                  aria-disabled={submitting}
+                  className="btn-accent px-5 py-2 rounded text-sm font-semibold flex items-center gap-2 disabled:opacity-60"
+                >
+                  {submitting ? (
+                    <><RefreshCw className="w-4 h-4 animate-spin" aria-hidden="true" /> {isCargosBound ? 'Invio in corso…' : 'Salvataggio…'}</>
+                  ) : isCargosBound ? (
+                    <><Send className="w-4 h-4" aria-hidden="true" /> Invia a CARGOS</>
+                  ) : t?.cargosRequired && data.cargosOverride === 'off' ? (
+                    <><FileCheck2 className="w-4 h-4" aria-hidden="true" /> Salva senza CARGOS</>
+                  ) : (
+                    <><FileCheck2 className="w-4 h-4" aria-hidden="true" /> Genera contratto</>
+                  )}
                 </button>
               )}
             </div>
@@ -2573,7 +4363,7 @@ function Wizard({ onClose, prefillCustomer, operator, fleet, customers, partners
         </div>
       </div>
 
-      {pdfOpen && <ContractPdfModal data={data} operator={operator} partners={partners} onClose={() => setPdfOpen(false)} />}
+      {pdfOpen && <ContractPdfModal data={data} operator={operator} partners={partners} onClose={() => setPdfOpen(false)} agency={agency} />}
     </>
   );
 }
@@ -3012,9 +4802,14 @@ function StructureSelect({ label, req, partners, structureId, onStructureChange,
 }
 
 // ─── Step 5 — Conferma ────────────────────────────────────────────
-function Step5Confirm({ data, operator, partners, onShowPdf }) {
+function Step5Confirm({ data, operator, partners, onShowPdf, update, agency }) {
   const t = VEHICLE_TYPES[data.tipoVeicolo];
-  const isCargosBound = t.cargosRequired;
+  // Disponibilità CARGOS: lo permette la normativa per questo tipo veicolo?
+  const cargosAllowed = t.cargosRequired;
+  // Effettivo: chiede CARGOS la norma, E l'operatore non ha forzato off?
+  const isCargosBound = cargosAllowed && data.cargosOverride !== 'off';
+  // È stato disattivato manualmente?
+  const cargosManuallyOff = cargosAllowed && data.cargosOverride === 'off';
   const c = data.cliente?.full || {};
   const v = data.veicolo || {};
   const pag = TIPO_PAGAMENTO[data.pagamento];
@@ -3028,17 +4823,17 @@ function Step5Confirm({ data, operator, partners, onShowPdf }) {
     CONTRATTO_DATA: '08/05/2026 16:42',
     CONTRATTO_TIPOP: pag.cargosMap,
     CONTRATTO_CHECKOUT_DATA: data.ritiroData,
-    CONTRATTO_CHECKOUT_LUOGO_COD: AGENCY.istatLuogo,
+    CONTRATTO_CHECKOUT_LUOGO_COD: agency.istatLuogo,
     CONTRATTO_CHECKOUT_INDIRIZZO: ritiroAddr,
     CONTRATTO_CHECKIN_DATA: data.consegnaData,
-    CONTRATTO_CHECKIN_LUOGO_COD: AGENCY.istatLuogo,
+    CONTRATTO_CHECKIN_LUOGO_COD: agency.istatLuogo,
     CONTRATTO_CHECKIN_INDIRIZZO: consegnaAddr,
     OPERATORE_ID: operator.id,
-    AGENZIA_ID: AGENCY.agenziaId,
-    AGENZIA_NOME: AGENCY.nome,
-    AGENZIA_LUOGO_COD: AGENCY.istatLuogo,
-    AGENZIA_INDIRIZZO: AGENCY.indirizzoLegale,
-    AGENZIA_RECAPITO_TEL: AGENCY.telefono,
+    AGENZIA_ID: agency.agenziaId,
+    AGENZIA_NOME: agency.nome,
+    AGENZIA_LUOGO_COD: agency.istatLuogo,
+    AGENZIA_INDIRIZZO: agency.indirizzoLegale,
+    AGENZIA_RECAPITO_TEL: agency.telefono,
     VEICOLO_TIPO: t.cargosCode,
     VEICOLO_MARCA: v.marca || '',
     VEICOLO_MODELLO: v.modello || '',
@@ -3071,20 +4866,56 @@ function Step5Confirm({ data, operator, partners, onShowPdf }) {
           <SummaryRow icon={UserCheck} label="Operatore" value={operator.nome} sub={`${operator.ruolo} · turno ${operator.turno}`} />
         </div>
 
-        {isCargosBound ? (
-          <div className="mt-5 p-4 rounded card-paper flex items-start gap-3">
-            <ShieldCheck className="w-5 h-5 flex-shrink-0 mt-0.5" style={{ color: 'var(--accent)' }} aria-hidden="true" />
-            <div>
-              <div className="font-medium text-sm">Pronto per l'invio a CARGOS</div>
-              <div className="text-xs mt-1" style={{ color: 'var(--ink-2)' }}>Validazione tracciato OK · ricevuta archiviata automaticamente · firma operatore: {operator.nome}.</div>
+        {/* Toggle CARGOS — abilitato solo per tipi veicolo soggetti per legge */}
+        {cargosAllowed ? (
+          <div className="mt-5 p-4 rounded card-paper" style={{ borderLeft: `3px solid ${isCargosBound ? 'var(--accent)' : 'var(--warning)'}` }}>
+            <div className="flex items-start gap-3">
+              <ShieldCheck className="w-5 h-5 flex-shrink-0 mt-0.5" style={{ color: isCargosBound ? 'var(--accent)' : 'var(--muted)' }} aria-hidden="true" />
+              <div className="flex-1">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div className="font-medium text-sm">
+                    {isCargosBound ? 'Invio a CARGOS attivo' : 'Invio a CARGOS disattivato'}
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={isCargosBound}
+                    aria-label={isCargosBound ? 'Disattiva invio a CARGOS per questo contratto' : 'Riattiva invio a CARGOS per questo contratto'}
+                    onClick={() => update && update('cargosOverride', isCargosBound ? 'off' : 'auto')}
+                    className={`relative w-11 h-6 rounded-full transition-all flex-shrink-0 ${isCargosBound ? 'bg-[var(--accent)]' : 'bg-[var(--muted)]'}`}
+                  >
+                    <span className={`absolute top-0.5 ${isCargosBound ? 'left-5' : 'left-0.5'} w-5 h-5 bg-white rounded-full transition-all shadow-sm`} />
+                  </button>
+                </div>
+                <div className="text-xs mt-2" style={{ color: 'var(--ink-2)' }}>
+                  {isCargosBound ? (
+                    <>Il contratto verrà trasmesso alla Questura di Agrigento. Validazione tracciato OK · firma operatore: <strong>{operator.nome}</strong>.</>
+                  ) : (
+                    <>
+                      <strong style={{ color: 'var(--warning)' }}>Attenzione:</strong> il contratto verrà salvato solo in archivio locale, senza invio CARGOS. Usa questa modalità solo se sai cosa stai facendo (test, contratti pre-2018, regime transitorio dichiarato).
+                    </>
+                  )}
+                </div>
+                {cargosManuallyOff && (
+                  <div className="text-[11px] mt-2 p-2 rounded mono" style={{ background: 'var(--surface-2)', color: 'var(--accent)' }}>
+                    <AlertTriangle className="w-3 h-3 inline mr-1" />
+                    Override manuale attivo · CARGOS bypassato per scelta operatore
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         ) : (
           <div className="mt-5 p-4 rounded card-paper flex items-start gap-3" style={{ borderLeft: '3px solid var(--warning)' }}>
             <FileCheck2 className="w-5 h-5 flex-shrink-0 mt-0.5" style={{ color: 'var(--ink-2)' }} aria-hidden="true" />
-            <div>
-              <div className="font-medium text-sm">{t.label}: nessun invio CARGOS</div>
-              <div className="text-xs mt-1" style={{ color: 'var(--ink-2)' }}>Verrà generato il PDF firmabile per il cliente. Conservazione interna 7 anni.</div>
+            <div className="flex-1">
+              <div className="font-medium text-sm">{t.label}: escluso da CARGOS per norma</div>
+              <div className="text-xs mt-1" style={{ color: 'var(--ink-2)' }}>
+                {t.cargosCode === null
+                  ? 'Non veicolo a motore (e-bike ≤25 km/h)'
+                  : 'Motoveicoli e quadricicli L7e: esclusi da CARGOS ai sensi D.L. 113/2018 art. 17'}
+                . Verrà generato solo il PDF firmabile per il cliente · conservazione interna 7 anni.
+              </div>
             </div>
           </div>
         )}
@@ -3110,6 +4941,12 @@ function Step5Confirm({ data, operator, partners, onShowPdf }) {
               ))}
               <span className="c">  // …altri campi opzionali</span>{'\n'}
               {'}'}
+            </>
+          ) : cargosManuallyOff ? (
+            <>
+              <span className="c">// CARGOS disattivato manualmente dall'operatore</span>{'\n'}
+              <span className="c">// {t.label} ({t.cargosCode}) sarebbe normalmente soggetto</span>{'\n'}
+              <span className="c">// nessun invio API · contratto salvato in archivio locale</span>
             </>
           ) : (
             <>
@@ -3140,41 +4977,76 @@ const SummaryRow = memo(function SummaryRow({ icon: Icon, label, value, sub }) {
 });
 
 // ─── Result screen ────────────────────────────────────────────────
-function ResultScreen({ data, onClose, operator, onShowPdf }) {
+function ResultScreen({ data, onClose, operator, submitResult, onShowPdf }) {
   const t = VEHICLE_TYPES[data.tipoVeicolo];
   const isCargosBound = t.cargosRequired;
 
+  // Stati possibili dal submitResult:
+  //   - undefined → flow legacy (mock, niente backend) → mostra success generico
+  //   - { ok: true, status: 'sent' } → contratto inviato a CARGOS
+  //   - { ok: true, status: 'paper' } → moto/ebike, niente CARGOS
+  //   - { ok: true, status: 'queued' } → offline, in coda locale
+  //   - { ok: false, status: 'error', error, errorKind } → invio fallito
+  const status   = submitResult?.status || (isCargosBound ? 'sent' : 'paper');
+  const failed   = submitResult?.ok === false;
+  const queued   = status === 'queued';
+  const contractId = submitResult?.contractId || 'EDO-2026-0423';
+
+  // Visuale dinamica
+  const visual = failed
+    ? { Icon: AlertTriangle, color: 'var(--accent)',  bg: '#f4d8d8', title: 'Invio non completato' }
+    : queued
+    ? { Icon: Clock,         color: 'var(--warning)', bg: '#f4ebd8', title: 'Salvato in coda' }
+    : status === 'paper'
+    ? { Icon: FileCheck2,    color: 'var(--sea)',     bg: '#e2eef2', title: 'Contratto generato' }
+    : { Icon: Check,         color: 'var(--success)', bg: 'var(--success-soft)', title: 'Inviato a CARGOS' };
+
+  const subtitle = failed
+    ? 'Il contratto è salvato localmente: puoi riprovare l\'invio dalla lista Pratiche oppure usare il fallback CSV/PEC.'
+    : queued
+    ? 'Sei offline: il contratto è in coda. Quando la rete torna, viene inviato automaticamente.'
+    : status === 'paper'
+    ? `${t.label}: nessun invio CARGOS necessario. Contratto pronto per la firma.`
+    : 'La pratica è stata trasmessa alla Questura di Agrigento. Ricevuta archiviata.';
+
+  const VIcon = visual.Icon;
+
   return (
     <div className="max-w-2xl mx-auto text-center py-8">
-      <div className="w-16 h-16 rounded-full mx-auto mb-5 flex items-center justify-center" style={{ background: 'var(--success-soft)' }}>
-        <Check className="w-8 h-8" style={{ color: 'var(--success)' }} aria-hidden="true" />
+      <div className="w-16 h-16 rounded-full mx-auto mb-5 flex items-center justify-center" style={{ background: visual.bg }}>
+        <VIcon className="w-8 h-8" style={{ color: visual.color }} aria-hidden="true" />
       </div>
-      <h3 className="serif text-3xl font-medium mb-2" tabIndex={-1}>
-        {isCargosBound ? 'Inviato a CARGOS' : 'Contratto generato'}
-      </h3>
-      <p className="text-sm mb-6" style={{ color: 'var(--ink-2)' }}>
-        {isCargosBound
-          ? 'La pratica è stata trasmessa alla Questura di Agrigento. Ricevuta archiviata.'
-          : `${t.label}: nessun invio CARGOS necessario. Contratto pronto per la firma.`
-        }
-      </p>
+      <h3 className="serif text-3xl font-medium mb-2" tabIndex={-1}>{visual.title}</h3>
+      <p className="text-sm mb-6 max-w-md mx-auto" style={{ color: 'var(--ink-2)' }}>{subtitle}</p>
+
       <div className="card-paper p-6 text-left mb-6">
         <dl className="grid grid-cols-2 gap-x-6 gap-y-4">
-          <div><dt className="label">ID Pratica</dt><dd className="mono font-semibold">EDO-2026-0423</dd></div>
-          {isCargosBound && <div><dt className="label">Ricevuta CARGOS</dt><dd className="mono font-semibold">RIC-A8F4-2026</dd></div>}
+          <div><dt className="label">ID Pratica</dt><dd className="mono font-semibold text-xs">{contractId}</dd></div>
+          {status === 'sent' && submitResult?.receipt && (
+            <div><dt className="label">Ricevuta CARGOS</dt><dd className="mono font-semibold text-xs">{submitResult.receipt.slice(0, 20)}…</dd></div>
+          )}
           <div><dt className="label">Cliente</dt><dd>{data.cliente?.cognome} {data.cliente?.nome}</dd></div>
           <div><dt className="label">Veicolo</dt><dd>{data.veicolo?.marca} {data.veicolo?.modello}</dd></div>
           <div><dt className="label">Operatore</dt><dd>{operator.nome}</dd></div>
-          <div><dt className="label">Stato</dt><dd><StatusPill stato={isCargosBound ? 'inviato' : 'cartaceo'} /></dd></div>
+          <div><dt className="label">Stato</dt><dd><StatusPill stato={
+            failed ? 'errore' : queued ? 'bozza' : status === 'paper' ? 'cartaceo' : 'inviato'
+          } /></dd></div>
         </dl>
+        {failed && submitResult?.error && (
+          <div className="mt-4 p-3 rounded text-xs" style={{ background: 'var(--surface-2)', color: 'var(--ink-2)' }}>
+            <AlertCircle className="w-3.5 h-3.5 inline mr-1.5" style={{ color: 'var(--accent)' }} />
+            <strong>Dettaglio errore:</strong> {submitResult.error}
+          </div>
+        )}
       </div>
+
       <div className="flex gap-3 justify-center flex-wrap">
         <button type="button" onClick={onShowPdf} className="btn-accent px-5 py-2.5 rounded text-sm font-semibold flex items-center gap-2">
-          <FileText className="w-4 h-4" aria-hidden="true" /> Genera PDF contratto
+          <FileText className="w-4 h-4" aria-hidden="true" /> Stampa contratto
         </button>
-        {isCargosBound && (
+        {status === 'sent' && (
           <button type="button" className="btn-ghost px-5 py-2.5 rounded text-sm border flex items-center gap-2" style={{ borderColor: 'var(--border)' }}>
-            <FileCheck2 className="w-4 h-4" aria-hidden="true" /> Scarica ricevuta CARGOS
+            <Download className="w-4 h-4" aria-hidden="true" /> Ricevuta CARGOS
           </button>
         )}
         <button type="button" onClick={onClose} className="btn-primary px-5 py-2.5 rounded text-sm font-semibold flex items-center gap-2">
@@ -3188,7 +5060,7 @@ function ResultScreen({ data, onClose, operator, onShowPdf }) {
 // ═══════════════════════════════════════════════════════════════════
 // CONTRACT PDF MODAL
 // ═══════════════════════════════════════════════════════════════════
-function ContractPdfModal({ data, operator, partners, onClose }) {
+function ContractPdfModal({ data, operator, partners, onClose, agency }) {
   const printRef = useRef(null);
   const t = VEHICLE_TYPES[data.tipoVeicolo];
   const c = data.cliente?.full || {};
@@ -3289,12 +5161,12 @@ function ContractPdfModal({ data, operator, partners, onClose }) {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', paddingBottom: 14, borderBottom: '2px solid #1a1815', marginBottom: 16 }}>
               <div>
                 <h1 style={{ fontSize: 30, fontWeight: 600, margin: '0 0 4px', letterSpacing: '-0.01em' }}>Edonoleggio</h1>
-                <div style={{ fontSize: 11, color: '#8a847b', fontStyle: 'italic' }}>{AGENCY.slogan}</div>
+                <div style={{ fontSize: 11, color: '#8a847b', fontStyle: 'italic' }}>{agency.slogan}</div>
                 <div style={{ fontSize: 10.5, color: '#3a352e', marginTop: 10, lineHeight: 1.55 }}>
-                  {AGENCY.ragioneSociale}<br />
-                  {AGENCY.indirizzoLegale}, {AGENCY.cap} {AGENCY.citta} ({AGENCY.provincia})<br />
-                  Tel. {AGENCY.telefono} · {AGENCY.email}<br />
-                  P.IVA {AGENCY.piva} · CF {AGENCY.cf}
+                  {agency.ragioneSociale}<br />
+                  {agency.indirizzoLegale}, {agency.cap} {agency.citta} ({agency.provincia})<br />
+                  Tel. {agency.telefono} · {agency.email}<br />
+                  P.IVA {agency.piva} · CF {agency.cf}
                 </div>
               </div>
               <div style={{ textAlign: 'right' }}>
@@ -3435,8 +5307,8 @@ function ContractPdfModal({ data, operator, partners, onClose }) {
 
             {/* Footer */}
             <div style={{ marginTop: 20, fontSize: 8, color: '#8a847b', textAlign: 'center', fontStyle: 'italic', borderTop: '1px dashed #d4ccba', paddingTop: 8 }}>
-              Edonoleggio · {AGENCY.indirizzoLegale}, {AGENCY.citta} (AG) · www.edonoleggio.com<br />
-              {AGENCY.slogan} · Documento generato da Pratica
+              Edonoleggio · {agency.indirizzoLegale}, {agency.citta} (AG) · www.edonoleggio.com<br />
+              {agency.slogan} · Documento generato da Pratica
             </div>
           </div>
         </div>
@@ -3820,6 +5692,247 @@ function CargosConfigModal({ config, onClose, onSave }) {
   );
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// MODAL: API BASE URL — endpoint backend Pratica
+// ═══════════════════════════════════════════════════════════════════
+function ApiBaseModal({ current, onClose, onSave }) {
+  const [url, setUrl] = useState(current || '');
+  const trimmed = url.trim().replace(/\/$/, '');
+  const valid = /^https?:\/\/[^\s]+/.test(trimmed);
+  const presets = [
+    { label: 'Produzione · Render',     url: 'https://pratica-backend.onrender.com/api' },
+    { label: 'Sviluppo locale',         url: 'http://localhost:3000/api' },
+    { label: 'Server LAN banco',        url: 'http://192.168.1.100:3000/api' },
+  ];
+
+  return (
+    <ModalShell
+      id="api-base-title"
+      title="URL endpoint backend"
+      subtitle="Configurazione · admin"
+      onClose={onClose}
+      maxWidth="max-w-xl"
+      footer={
+        <>
+          <button type="button" onClick={onClose} className="btn-ghost px-4 py-2 rounded text-sm">Annulla</button>
+          <button type="button" onClick={() => valid && onSave(trimmed)} disabled={!valid} className="btn-primary px-4 py-2 rounded text-sm font-semibold inline-flex items-center gap-2 disabled:opacity-40">
+            <Save className="w-4 h-4" /> Salva URL
+          </button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <div className="text-xs p-3 rounded flex items-start gap-2" style={{ background: 'var(--surface-2)', color: 'var(--ink-2)' }}>
+          <Info className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+          <span>
+            Indirizzo del backend che invia i contratti a CARGOS. In produzione tipicamente <code className="mono">https://api.edonoleggio.com/api</code>. Lo stato della connessione si aggiorna automaticamente entro 30 secondi dal salvataggio.
+          </span>
+        </div>
+
+        <div>
+          <label htmlFor="api-url" className="label">Endpoint completo</label>
+          <input
+            id="api-url"
+            type="url"
+            className="input mono"
+            value={url}
+            onChange={e => setUrl(e.target.value)}
+            placeholder="https://server-edonoleggio.example.com/api"
+            autoComplete="off"
+          />
+          {url && !valid && (
+            <div className="text-[11px] mt-1" style={{ color: 'var(--accent)' }}>
+              URL non valido — deve iniziare con http:// o https://
+            </div>
+          )}
+        </div>
+
+        <div>
+          <div className="label mb-2">Preset rapidi</div>
+          <div className="space-y-1.5">
+            {presets.map(p => (
+              <button
+                key={p.url}
+                type="button"
+                onClick={() => setUrl(p.url)}
+                className={`w-full text-left p-2.5 rounded border text-sm transition-all hover:border-[var(--ink)] ${trimmed === p.url ? 'bg-[var(--surface)] border-[var(--ink)]' : 'bg-white'}`}
+                style={{ borderColor: trimmed === p.url ? 'var(--ink)' : 'var(--border)' }}
+              >
+                <div className="font-medium text-xs">{p.label}</div>
+                <div className="mono text-[11px] mt-0.5" style={{ color: 'var(--muted)' }}>{p.url}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    </ModalShell>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// MODAL: AGENCY CONFIG — anagrafica modificabile
+// ═══════════════════════════════════════════════════════════════════
+// I dati dell'agenzia (ragione sociale, P.IVA, indirizzi, contatti) sono editabili
+// dall'admin. Vengono usati nei contratti PDF, payload CARGOS, header di stampa.
+// Modifiche sincronizzate con il backend, quindi cambiano su tutti i tablet del banco.
+function AgencyConfigModal({ current, onClose, onSave }) {
+  const [form, setForm] = useState({ ...current, cellulari: [...(current.cellulari || [])] });
+  const upd = useCallback((k, v) => setForm(f => ({ ...f, [k]: v })), []);
+  const updCell = useCallback((idx, v) => setForm(f => {
+    const cellulari = [...f.cellulari];
+    cellulari[idx] = v;
+    return { ...f, cellulari };
+  }), []);
+  const addCell = useCallback(() => setForm(f => ({ ...f, cellulari: [...f.cellulari, ''] })), []);
+  const rmCell = useCallback((idx) => setForm(f => ({ ...f, cellulari: f.cellulari.filter((_, i) => i !== idx) })), []);
+
+  // Validation: P.IVA italiana (11 cifre), CF (16 caratteri), email base, CAP (5 cifre)
+  const errs = {};
+  if (form.piva && !/^\d{11}$/.test(form.piva.trim())) errs.piva = 'P.IVA italiana: 11 cifre';
+  if (form.cf && form.cf.length !== 16) errs.cf = 'Codice fiscale: 16 caratteri';
+  if (form.cap && !/^\d{5}$/.test(form.cap.trim())) errs.cap = 'CAP: 5 cifre';
+  if (form.email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(form.email)) errs.email = 'Email non valida';
+  if (form.pec && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(form.pec)) errs.pec = 'PEC non valida';
+  const valid = !form.ragioneSociale || (Object.keys(errs).length === 0 && form.nome && form.ragioneSociale);
+
+  const groups = [
+    {
+      title: 'Identità commerciale',
+      fields: [
+        { k: 'nome',           label: 'Nome agenzia',         wide: false, req: true },
+        { k: 'titolare',       label: 'Titolare',             wide: false, req: true },
+        { k: 'ragioneSociale', label: 'Ragione sociale',      wide: true,  req: true },
+        { k: 'slogan',         label: 'Slogan',               wide: true },
+        { k: 'fondazione',     label: 'Anno fondazione',      wide: false, type: 'number' },
+        { k: 'servizi',        label: 'Servizi offerti',      wide: true },
+        { k: 'orari',          label: 'Orari apertura',       wide: true },
+      ],
+    },
+    {
+      title: 'Sede e indirizzi',
+      fields: [
+        { k: 'indirizzoLegale', label: 'Indirizzo legale',     wide: true,  req: true },
+        { k: 'sedeOperativa',   label: 'Sede operativa',       wide: true },
+        { k: 'cap',             label: 'CAP',                  wide: false, err: errs.cap },
+        { k: 'citta',           label: 'Città',                wide: false, req: true },
+        { k: 'provincia',       label: 'Provincia (sigla)',    wide: false },
+        { k: 'istatLuogo',      label: 'Codice ISTAT',         wide: false, type: 'number', mono: true },
+        { k: 'catastale',       label: 'Codice catastale',     wide: false, mono: true },
+      ],
+    },
+    {
+      title: 'Identificativi fiscali',
+      fields: [
+        { k: 'piva',      label: 'Partita IVA',     wide: false, mono: true, err: errs.piva },
+        { k: 'cf',        label: 'Codice fiscale',  wide: false, mono: true, err: errs.cf },
+        { k: 'agenziaId', label: 'ID Agenzia',      wide: true,  mono: true, helper: 'Codice univoco usato nei contratti CARGOS' },
+      ],
+    },
+    {
+      title: 'Contatti',
+      fields: [
+        { k: 'telefono',    label: 'Telefono fisso',  wide: false, mono: true },
+        { k: 'email',       label: 'Email',           wide: true,  mono: true, err: errs.email },
+        { k: 'pec',         label: 'PEC agenzia',     wide: true,  mono: true, err: errs.pec },
+        { k: 'questuraPec', label: 'PEC Questura',    wide: true,  mono: true, helper: 'Destinatario fallback CARGOS via PEC' },
+      ],
+    },
+  ];
+
+  return (
+    <ModalShell
+      id="agency-modal-title"
+      title="Anagrafica agenzia"
+      subtitle="Dati visibili in contratti, PDF, payload CARGOS"
+      onClose={onClose}
+      maxWidth="max-w-3xl"
+      footer={
+        <>
+          <button type="button" onClick={onClose} className="btn-ghost px-4 py-2 rounded text-sm">Annulla</button>
+          <button
+            type="button"
+            onClick={() => valid && onSave({ ...form, cellulari: form.cellulari.filter(c => c.trim()) })}
+            disabled={!valid}
+            className="btn-primary px-4 py-2 rounded text-sm font-semibold inline-flex items-center gap-2 disabled:opacity-40"
+          >
+            <Save className="w-4 h-4" /> Salva modifiche
+          </button>
+        </>
+      }
+    >
+      <div className="space-y-5">
+        <div className="text-xs p-3 rounded flex items-start gap-2" style={{ background: 'var(--surface-2)', color: 'var(--ink-2)' }}>
+          <Info className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+          <span>
+            Le modifiche si sincronizzano automaticamente con tutti i dispositivi del banco entro pochi secondi.
+            <strong> Attenzione</strong>: cambiare <code className="mono">agenziaId</code> o codice ISTAT può creare problemi con i contratti già inviati a CARGOS — modificarli solo con conoscenza di causa.
+          </span>
+        </div>
+
+        {groups.map(g => (
+          <div key={g.title}>
+            <div className="text-[11px] uppercase tracking-widest font-semibold mb-3" style={{ color: 'var(--ink-2)' }}>{g.title}</div>
+            <div className="grid grid-cols-2 gap-3">
+              {g.fields.map(f => (
+                <div key={f.k} className={f.wide ? 'col-span-2' : ''}>
+                  <label htmlFor={`agency-${f.k}`} className="label">
+                    {f.label}{f.req && <span style={{ color: 'var(--accent)' }}> *</span>}
+                  </label>
+                  <input
+                    id={`agency-${f.k}`}
+                    type={f.type || 'text'}
+                    className={`input ${f.mono ? 'mono' : ''}`}
+                    value={form[f.k] ?? ''}
+                    onChange={e => upd(f.k, f.type === 'number' ? (e.target.value === '' ? '' : Number(e.target.value)) : e.target.value)}
+                    aria-invalid={!!f.err}
+                  />
+                  {f.err && <div className="text-[11px] mt-1" style={{ color: 'var(--accent)' }}>{f.err}</div>}
+                  {f.helper && !f.err && <div className="text-[11px] mt-1" style={{ color: 'var(--muted)' }}>{f.helper}</div>}
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+
+        {/* Cellulari array — gestione separata */}
+        <div>
+          <div className="text-[11px] uppercase tracking-widest font-semibold mb-3" style={{ color: 'var(--ink-2)' }}>Cellulari</div>
+          <div className="space-y-2">
+            {form.cellulari.map((cell, idx) => (
+              <div key={idx} className="flex gap-2 items-center">
+                <input
+                  type="tel"
+                  className="input mono flex-1"
+                  value={cell}
+                  onChange={e => updCell(idx, e.target.value)}
+                  placeholder="+39 ..."
+                />
+                <button
+                  type="button"
+                  onClick={() => rmCell(idx)}
+                  className="btn-ghost p-2 rounded border"
+                  style={{ borderColor: 'var(--border)' }}
+                  aria-label={`Rimuovi cellulare ${idx + 1}`}
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ))}
+            <button
+              type="button"
+              onClick={addCell}
+              className="btn-ghost px-3 py-1.5 rounded text-xs border inline-flex items-center gap-1.5"
+              style={{ borderColor: 'var(--border)' }}
+            >
+              <Plus className="w-3 h-3" /> Aggiungi cellulare
+            </button>
+          </div>
+        </div>
+      </div>
+    </ModalShell>
+  );
+}
+
 function NewCustomerModal({ customer, onClose, onSave }) {
   const editing = !!customer;
   const [form, setForm] = useState(customer || {
@@ -4130,11 +6243,16 @@ function PlateScanModal({ fleet, onClose }) {
 // ═══════════════════════════════════════════════════════════════════
 // MODAL: SHIFT CHANGE
 // ═══════════════════════════════════════════════════════════════════
-function ShiftChangeModal({ currentOperator, operators, onClose, onConfirm }) {
+function ShiftChangeModal({ currentOperator, operators, contracts, onClose, onConfirm }) {
   const [newOpId, setNewOpId] = useState(null);
   const [taken, setTaken] = useState({});
-  const openContracts = MOCK_CONTRACTS.filter(c => c.fuori || c.stato === 'bozza' || c.stato === 'errore');
-  const ops = operators || [];
+  // Contratti aperti = quelli in bozza o errore, oppure inviati ma con veicolo ancora "fuori"
+  // (in v11 abbiamo solo i contratti reali, niente più mock — il dato sui rientri verrà
+  // aggiunto in una iterazione successiva tracciando la consegna effettiva)
+  const openContracts = useMemo(() =>
+    (contracts || []).filter(c => c.status === 'pending' || c.status === 'queued' || c.status === 'error')
+  , [contracts]);
+  const ops = operators || MOCK_OPERATORS;
   const enabledOps = ops.filter(o => o.enabled !== false);
   const newOp = ops.find(o => o.id === newOpId);
   const takenCount = Object.values(taken).filter(Boolean).length;
@@ -4198,18 +6316,32 @@ function ShiftChangeModal({ currentOperator, operators, onClose, onConfirm }) {
           <p className="text-xs mb-4" style={{ color: 'var(--muted)' }}>
             Le pratiche selezionate continueranno con OPERATORE_ID = <span className="mono">{newOp.id}</span>. Le altre restano firmate da {currentOperator.nome.split(' ')[0]}.
           </p>
-          <div className="space-y-2" role="group" aria-label="Selezione pratiche da trasferire">
-            {openContracts.map(c => (
-              <label key={c.id} className="card-paper p-3 flex items-center gap-3 cursor-pointer hover:border-[var(--ink-2)] transition-all">
-                <input type="checkbox" checked={!!taken[c.id]} onChange={e => setTaken(t => ({ ...t, [c.id]: e.target.checked }))} className="w-4 h-4" />
-                <div className="flex-1">
-                  <div className="flex items-center gap-2"><span className="mono text-xs">{c.id}</span><StatusPill stato={c.stato} /></div>
-                  <div className="text-sm font-medium mt-0.5">{c.cliente}</div>
-                  <div className="text-xs" style={{ color: 'var(--muted)' }}>{c.veicolo} · rientro {c.consegnaTimestamp}</div>
-                </div>
-              </label>
-            ))}
-          </div>
+          {openContracts.length === 0 ? (
+            <div className="text-xs p-3 rounded" style={{ background: 'var(--surface-2)', color: 'var(--ink-2)' }}>
+              Nessuna pratica aperta in questo momento · nessuna consegna da trasferire.
+            </div>
+          ) : (
+            <div className="space-y-2" role="group" aria-label="Selezione pratiche da trasferire">
+              {openContracts.map(c => {
+                const r = c.record || {};
+                const stato = c.status === 'error' ? 'errore' : 'bozza';
+                return (
+                  <label key={c.contractId} className="card-paper p-3 flex items-center gap-3 cursor-pointer hover:border-[var(--ink-2)] transition-all">
+                    <input type="checkbox" checked={!!taken[c.contractId]} onChange={e => setTaken(t => ({ ...t, [c.contractId]: e.target.checked }))} className="w-4 h-4" />
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2"><span className="mono text-xs">{c.contractId.slice(-12)}</span><StatusPill stato={stato} /></div>
+                      <div className="text-sm font-medium mt-0.5">{r.CONDUCENTE_CONTRAENTE_COGNOME} {r.CONDUCENTE_CONTRAENTE_NOME}</div>
+                      <div className="text-xs" style={{ color: 'var(--muted)' }}>
+                        {r.VEICOLO_MARCA} {r.VEICOLO_MODELLO}
+                        {r.VEICOLO_TARGA && <span className="mono"> · {r.VEICOLO_TARGA}</span>}
+                        {r.CONTRATTO_CHECKIN_DATA && <> · rientro {r.CONTRATTO_CHECKIN_DATA}</>}
+                      </div>
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+          )}
         </>
       )}
     </ModalShell>
