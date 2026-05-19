@@ -20,30 +20,55 @@ import { CalendarDays, Receipt, BarChart2,
 // Convenzione: x.y.z dove x = major rewrite, y = feature, z = fix.
 // La data accanto aiuta a verificare al volo che il deploy sia andato a buon fine.
 const APP_VERSION = {
-  number: '0.15.0',
-  codename: 'Registro cassa · Storico cliente',
-  date: '2026-05-18',
+  number: '0.25.0',
+  codename: 'Autocomplete · Categoria OB · Deposito · Flotta live',
+  date: '2026-05-19',
   changelog: [
-    'Registro cassa: traccia acconti, saldi, rimborsi con export CSV',
-    'Storico cliente: storico completo prenotazioni e pratiche per cliente',
-    'RentMe sync live: disponibilità reale da gestionale (auto ogni 5 min)',
-    'Banco Rapido: walk-in con griglia disponibilità → prenotazione in un tap',
-    'PDF export preventivo: stampa / salva PDF direttamente dal preventivo',
-    'Editor stagioni: configura mesi bassa/media/alta dall\'interfaccia',
-    'Import flotta CSV: carica lista mezzi da file con anteprima',
-    'Alert stock: avvisi automatici quando categoria sotto soglia 25%',
-    'DisponibilitaView aggiornata: usa dati RentMe quando disponibili',
-    'Anagrafica agenzia editabile da Impostazioni → Modifica (admin)',
-    'Tracking reale veicoli fuori: pannello "Veicoli fuori" nella Dashboard',
-    'Calcolo automatico ritardo / imminente / programmato dai contratti reali',
-    'Aggiornamento live ogni 60s: i veicoli passano da "imminenti" a "in ritardo" da soli',
-    'Pulsante "Veicolo rientrato" su Dashboard e lista Pratiche',
-    'Filtro "In viaggio" nella lista Pratiche per veicoli ancora fuori',
-    'Reset archivi · zona pericolosa: svuota rubrica/contratti/tutto dal backend',
-    'Risolve i 3 clienti finti che riapparivano dal backend Render',
-    'Sync agenzia: i dati anagrafici sono coerenti tra tutti i tablet',
-    'Storage ibrido backend Render + localStorage di fallback',
-    'Error boundary globale · toggle CARGOS · mapping 46 campi CARGOS',
+    // v0.25.0 — 2026-05-19
+    'Autocomplete clienti: suggerisce dalla rubrica mentre si digita cognome o telefono, compila tutti i campi con un click',
+    'Anti-overbooking categoria: controlla disponibilità per tipo veicolo anche quando nessun mezzo specifico è assegnato',
+    'Deposito cauzionale: pulsante Deposito + Rimborsa con ciclo completo cassa (raccolta e restituzione)',
+    'Flotta live: le card mostrano badge \"In noleggio\" con nome cliente e data rientro quando il mezzo è fuori',
+    // v0.24.0 — 2026-05-19
+    'Registra saldo: pulsante diretto sulla prenotazione in_corso, pre-compila importo residuo, registra in cassa e chiude la pratica',
+    'Anti-overbooking: la dropdown veicoli mostra solo i mezzi liberi nel periodo, avviso rosso se conflitto, blocco al salvataggio',
+    // v0.23.0 — 2026-05-19
+    'Calendario flotta: griglia Gantt 4 settimane con navigazione, barre colorate per stato, pannello hover',
+    'Cassa integrata: campo metodo pagamento in prenotazione, auto-registrazione acconto al momento della conversione',
+    'PWA installabile: manifest iniettato dinamicamente, icona + colore tema + supporto iOS standalone',
+    // v0.22.0 — 2026-05-19
+    'Import backup JSON: ripristino completo da file (prenotazioni, flotta, clienti, cassa, scadenze)',
+    'Export CSV movimenti: partenze e rientri del giorno scaricabili dalla Dashboard Oggi',
+    'Paginazione prenotazioni: 20 per pagina con controlli prev/next e reset automatico sui filtri',
+    // v0.21.0 — 2026-05-19
+    'Ricerca globale ⌘K: cerca in prenotazioni, clienti, pratiche e flotta con risultati raggruppati',
+    'Backup JSON: esporta tutti i dati agenzia in un file timestampato da Impostazioni',
+    'Note veicolo: le note interne dei mezzi ora appaiono direttamente nella card flotta',
+    // v0.20.0 — 2026-05-19
+    'Dashboard Oggi: partenze, rientri, in corso, mezzi liberi, scadenze urgenti — orologio live aggiornato ogni minuto',
+    // v0.19.0 — 2026-05-19
+    'Push notifications browser: avviso desktop per scadenze urgenti/scadute',
+    'Stampa contratto trilingue IT/EN/ES: template print-ready con firma digitale embedded',
+    'Filtri avanzati prenotazioni: range date, categoria, mostra N/totale risultati',
+    'Firma digitale cliente: canvas touch/mouse, PNG salvato nella prenotazione e nel contratto',
+    // v0.18.0 — 2026-05-18
+    'Report avanzato: occupazione %, revenue mensile, top clienti, per operatore · export Excel',
+    'Preventivi multilingua: selettore 🇮🇹🇬🇧🇪🇸 — PDF e WhatsApp nella lingua del cliente',
+    'Foto check-in/out: scatta o carica foto consegna + rientro, confronto prima/dopo, badge contatore',
+    'Import storico RentMe: scarica storico impegni, preview con deduplication, crea clienti automaticamente',
+    // v0.17.0
+    'Scadenze flotta: revisione, assicurazione, tagliando, bollo · badge colorato e widget Dashboard',
+    'Reminder WhatsApp: widget Dashboard ritiri oggi/domani e rientri · link WhatsApp pre-compilato',
+    // v0.15–0.16
+    'Registro cassa: acconti, saldi, rimborsi, depositi · export CSV e filtri periodo/metodo',
+    'Storico cliente: KPI, storico completo prenotazioni e pratiche CARGOS per cliente',
+    'RentMe sync live: disponibilità reale auto ogni 5 min · roadmap indipendenza 4 fasi',
+    'Banco Rapido: walk-in con griglia disponibilità colorata → prenotazione in un tap',
+    'PDF preventivo multilingua: stampa/salva PDF con layout professionale · IT/EN/ES',
+    'Editor stagioni: configura mesi bassa/media/alta senza toccare il codice',
+    'Import flotta CSV: carica lista mezzi con anteprima e deduplication',
+    'Alert stock: avvisi automatici quando categoria sotto soglia 25% disponibilità',
+    'Flotta 193 mezzi reali · 22 strutture partner Lampedusa · dati puliti',
   ],
 };
 
@@ -1556,7 +1581,7 @@ function PrenoStatPill({ stato }) {
 }
 
 // ── PrenoCard ────────────────────────────────────────────────────────
-function PrenoCard({ p, onEdit, onConvert, onDelete }) {
+function PrenoCard({ p, onEdit, onConvert, onDelete, onFoto, onContratto, onFirma, onSaldo, onDeposito }) {
   const giorni = daysDiff(p.dal, p.al);
   return (
     <div style={{
@@ -1587,6 +1612,27 @@ function PrenoCard({ p, onEdit, onConvert, onDelete }) {
             {p.clienteCognome || p.clienteNome ? `${p.clienteCognome || ''} ${p.clienteNome || ''}`.trim() : 'Cliente da definire'}
           </span>
           <PrenoStatPill stato={p.stato} />
+          <FotoBadge preno={p} />
+          {p.firma && (
+            <span style={{ fontSize: 10, background: '#e8f5e9', color: '#2e6e3e', borderRadius: 10, padding: '2px 8px', fontWeight: 600 }}>
+              ✍️ firmato
+            </span>
+          )}
+          {p.saldoRegistrato && (
+            <span style={{ fontSize: 10, background: '#e8f0fa', color: '#1f5d83', borderRadius: 10, padding: '2px 8px', fontWeight: 600 }}>
+              💰 saldato
+            </span>
+          )}
+          {p.depositoRegistrato && !p.depositoRimborsato && (
+            <span style={{ fontSize: 10, background: '#fef5e7', color: '#b87333', borderRadius: 10, padding: '2px 8px', fontWeight: 600 }}>
+              📦 dep. €{p.depositoImporto}
+            </span>
+          )}
+          {p.depositoRimborsato && (
+            <span style={{ fontSize: 10, background: '#f5eefa', color: '#7d3c98', borderRadius: 10, padding: '2px 8px', fontWeight: 600 }}>
+              ↩ dep. rimborsato
+            </span>
+          )}
           {p.contractId && (
             <span style={{ fontSize: 10, color: 'var(--muted)', fontFamily: 'monospace' }}>
               ⟶ pratica
@@ -1618,6 +1664,39 @@ function PrenoCard({ p, onEdit, onConvert, onDelete }) {
             → Pratica
           </button>
         )}
+        <button type="button" onClick={() => onFoto && onFoto(p)}
+          style={{ fontSize: 11, padding: '4px 10px', borderRadius: 4, border: '1px solid var(--border)', background: 'transparent', color: '#1f5d83', cursor: 'pointer' }}>
+          📷 Foto
+        </button>
+        <button type="button" onClick={() => onFirma && onFirma(p)}
+          style={{ fontSize: 11, padding: '4px 10px', borderRadius: 4, border: '1px solid var(--border)', background: 'transparent', color: '#2e6e3e', cursor: 'pointer' }}>
+          ✍️ Firma
+        </button>
+        {(p.stato === 'in_corso' || p.stato === 'confermata') && !p.saldoRegistrato && (
+          <button type="button" onClick={() => onSaldo && onSaldo(p)}
+            style={{ fontSize: 11, padding: '4px 10px', borderRadius: 4, border: 'none',
+              background: '#1f5d83', color: 'white', fontWeight: 600, cursor: 'pointer' }}>
+            💰 Saldo
+          </button>
+        )}
+        {p.stato !== 'annullata' && !p.depositoRegistrato && (
+          <button type="button" onClick={() => onDeposito && onDeposito(p, 'prendi')}
+            style={{ fontSize: 11, padding: '4px 10px', borderRadius: 4, border: '1px solid #e8c88a',
+              background: 'transparent', color: '#b87333', cursor: 'pointer' }}>
+            📦 Deposito
+          </button>
+        )}
+        {p.depositoRegistrato && !p.depositoRimborsato && (
+          <button type="button" onClick={() => onDeposito && onDeposito(p, 'rimborsa')}
+            style={{ fontSize: 11, padding: '4px 10px', borderRadius: 4, border: '1px solid #d7bef0',
+              background: 'transparent', color: '#7d3c98', cursor: 'pointer' }}>
+            ↩ Rimborsa
+          </button>
+        )}
+        <button type="button" onClick={() => onContratto && onContratto(p)}
+          style={{ fontSize: 11, padding: '4px 10px', borderRadius: 4, border: '1px solid var(--border)', background: 'transparent', color: '#6a3d8f', cursor: 'pointer' }}>
+          🖨️ Contratto
+        </button>
         <button type="button" onClick={() => onDelete(p.id)}
           style={{ fontSize: 11, padding: '4px 10px', borderRadius: 4, border: '1px solid #f0d0d0', background: 'transparent', color: '#c85050', cursor: 'pointer' }}>
           Elimina
@@ -1628,12 +1707,12 @@ function PrenoCard({ p, onEdit, onConvert, onDelete }) {
 }
 
 // ── PrenoForm — add/edit ─────────────────────────────────────────────
-function PrenoForm({ initial, fleet, customers, onSave, onClose }) {
+function PrenoForm({ initial, fleet, prenotazioni, customers, onSave, onClose }) {
   const empty = {
     clienteNome: '', clienteCognome: '', clienteTel: '',
     vehicleId: '', vehicleLabel: '', vehicleType: 'auto',
     dal: todayISO(), al: '', stato: 'attesa', fonte: 'diretto',
-    prezzo: '', acconto: '', note: '',
+    prezzo: '', acconto: '', metodoPagamento: 'contanti', note: '',
   };
   const [f, setF] = useState(initial ? {
     ...empty,
@@ -1649,12 +1728,40 @@ function PrenoForm({ initial, fleet, customers, onSave, onClose }) {
     fonte: initial.fonte || 'diretto',
     prezzo: initial.prezzo != null ? String(initial.prezzo) : '',
     acconto: initial.acconto != null ? String(initial.acconto) : '',
+    metodoPagamento: initial.metodoPagamento || 'contanti',
     note: initial.note || '',
   } : empty);
 
   const set = (k, v) => setF(x => ({ ...x, [k]: v }));
 
-  const availableVehicles = (fleet || []).filter(v => v.stato === 'available');
+  // Anti-overbooking: esclude i veicoli già prenotati nel periodo selezionato
+  const bookedIds = useMemo(() => {
+    if (!f.dal || !f.al) return new Set();
+    return new Set(
+      (prenotazioni || [])
+        .filter(p =>
+          p.vehicleId &&
+          p.stato !== 'annullata' && p.stato !== 'completata' &&
+          p.id !== initial?.id &&
+          p.dal <= f.al && p.al >= f.dal
+        )
+        .map(p => p.vehicleId)
+    );
+  }, [prenotazioni, f.dal, f.al, initial?.id]);
+
+  const availableVehicles = (fleet || []).filter(v =>
+    v.stato === 'available' && !bookedIds.has(v.id)
+  );
+
+  // Conflitto diretto: il veicolo scelto è già prenotato in quel periodo
+  const conflitto = useMemo(() => {
+    if (!f.vehicleId || !f.dal || !f.al) return null;
+    return (prenotazioni || []).find(p =>
+      p.vehicleId === f.vehicleId && p.id !== initial?.id &&
+      p.stato !== 'annullata' && p.stato !== 'completata' &&
+      p.dal <= f.al && p.al >= f.dal
+    ) || null;
+  }, [prenotazioni, f.vehicleId, f.dal, f.al, initial?.id]);
 
   function handleVehicleChange(e) {
     const id = e.target.value;
@@ -1667,12 +1774,52 @@ function PrenoForm({ initial, fleet, customers, onSave, onClose }) {
   function handleSubmit(e) {
     e.preventDefault();
     if (!f.dal) return;
+    if (conflitto) {
+      alert(`⚠️ Conflitto orario!\n\n${[conflitto.clienteCognome, conflitto.clienteNome].filter(Boolean).join(' ') || 'Cliente'} ha già prenotato questo mezzo\ndal ${formatDate(conflitto.dal)} al ${formatDate(conflitto.al)}.\n\nScegli un altro veicolo o modifica le date.`);
+      return;
+    }
     onSave({
       ...f,
       prezzo: f.prezzo !== '' ? parseFloat(f.prezzo) : null,
       acconto: f.acconto !== '' ? parseFloat(f.acconto) : null,
+      metodoPagamento: f.metodoPagamento || 'contanti',
     });
   }
+
+  // Autocomplete dalla rubrica clienti
+  const acSuggestions = useMemo(() => {
+    const q = f.clienteCognome.trim().toLowerCase();
+    const t = f.clienteTel.replace(/\D/g, '');
+    if (q.length < 2 && t.length < 4) return [];
+    return (customers || []).filter(c => {
+      if (q.length >= 2 && (`${c.cognome||''} ${c.nome||''}`).toLowerCase().includes(q)) return true;
+      if (t.length >= 4 && (c.telefono||'').replace(/\D/g,'').includes(t)) return true;
+      return false;
+    }).slice(0, 5);
+  }, [customers, f.clienteCognome, f.clienteTel]);
+
+  function fillFromCustomer(c) {
+    set('clienteCognome', c.cognome || '');
+    set('clienteNome',    c.nome    || '');
+    set('clienteTel',     c.telefono|| '');
+  }
+
+  // Overbooking per categoria (quando nessun vehicleId è selezionato)
+  const categoriaOverbooking = useMemo(() => {
+    if (f.vehicleId || !f.vehicleType || !f.dal || !f.al) return null;
+    const totale = (fleet || []).filter(v =>
+      v.tipo === f.vehicleType && v.stato !== 'venduto' && v.stato !== 'fuori_uso'
+    ).length;
+    if (totale === 0) return null;
+    const occupati = (prenotazioni || []).filter(p =>
+      p.stato !== 'annullata' && p.stato !== 'completata' &&
+      p.id !== initial?.id &&
+      p.dal <= f.al && p.al >= f.dal &&
+      (p.vehicleType === f.vehicleType ||
+       (p.vehicleId && (fleet||[]).find(v => v.id === p.vehicleId)?.tipo === f.vehicleType))
+    ).length;
+    return { totale, occupati, liberi: Math.max(0, totale - occupati) };
+  }, [prenotazioni, fleet, f.vehicleType, f.vehicleId, f.dal, f.al, initial?.id]);
 
   const inp = { border: '1px solid var(--border)', borderRadius: 4, padding: '7px 10px', fontSize: 13, width: '100%', background: 'var(--bg)', color: 'var(--ink)', boxSizing: 'border-box' };
   const lbl = { display: 'block', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--ink-2)', marginBottom: 4 };
@@ -1719,6 +1866,29 @@ function PrenoForm({ initial, fleet, customers, onSave, onClose }) {
                 onChange={e => set('vehicleLabel', e.target.value)}
                 placeholder="es. Scooter 125cc standard" />
             )}
+            {!f.vehicleId && categoriaOverbooking && categoriaOverbooking.liberi === 0 && (
+              <div style={{ marginTop: 6, padding: '7px 10px', borderRadius: 5,
+                background: '#fff0f0', border: '1px solid #f0d0d0', fontSize: 11, color: '#c85050' }}>
+                ⚠️ <strong>Categoria esaurita</strong> · {categoriaOverbooking.occupati}/{categoriaOverbooking.totale} {f.vehicleType} già prenotati in questo periodo
+              </div>
+            )}
+            {!f.vehicleId && categoriaOverbooking && categoriaOverbooking.liberi > 0 && f.dal && f.al && (
+              <div style={{ marginTop: 5, fontSize: 11, color: '#2e6e3e' }}>
+                ✓ {categoriaOverbooking.liberi}/{categoriaOverbooking.totale} {f.vehicleType} disponibili nel periodo
+              </div>
+            )}
+            {conflitto && (
+              <div style={{ marginTop: 6, padding: '7px 10px', borderRadius: 5,
+                background: '#fff0f0', border: '1px solid #f0d0d0', fontSize: 11, color: '#c85050' }}>
+                ⚠️ <strong>Mezzo già occupato</strong> · {[conflitto.clienteCognome, conflitto.clienteNome].filter(Boolean).join(' ') || '—'}
+                &nbsp;·&nbsp;{formatDate(conflitto.dal)} → {formatDate(conflitto.al)}
+              </div>
+            )}
+            {f.vehicleId && !conflitto && f.dal && f.al && (
+              <div style={{ marginTop: 5, fontSize: 11, color: '#2e6e3e' }}>
+                ✓ Mezzo libero nel periodo selezionato
+              </div>
+            )}
           </div>
 
           {/* Date */}
@@ -1761,6 +1931,18 @@ function PrenoForm({ initial, fleet, customers, onSave, onClose }) {
             </div>
           </div>
 
+          {/* Metodo pagamento acconto */}
+          <div>
+            <label style={lbl}>Metodo pagamento acconto</label>
+            <select style={inp} value={f.metodoPagamento} onChange={e => set('metodoPagamento', e.target.value)}>
+              <option value="contanti">💵 Contanti</option>
+              <option value="carta">💳 Carta</option>
+              <option value="bonifico">🏦 Bonifico</option>
+              <option value="paypal">🅿 PayPal</option>
+              <option value="altro">• Altro</option>
+            </select>
+          </div>
+
           {/* Note */}
           <div>
             <label style={lbl}>Note</label>
@@ -1784,7 +1966,7 @@ function PrenoForm({ initial, fleet, customers, onSave, onClose }) {
 }
 
 // ── PrenotazioniPage ─────────────────────────────────────────────────
-function PrenotazioniPage({ prenotazioni, setPrenotazioni, fleet, customers, operator, onOpenWizard, pushToast, prefill, onClearPrefill }) {
+function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, customers, operator, onOpenWizard, pushToast, prefill, onClearPrefill }) {
   const [form, setForm] = useState(null); // null | 'new' | {record}
   const [showDisp, setShowDisp] = useState(false);
 
@@ -1797,6 +1979,18 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, fleet, customers, ope
   const [filterStato, setFilterStato] = useState('tutti');
   const [search, setSearch] = useState('');
   const [sortDir, setSortDir] = useState('asc'); // asc = prossime prima
+  // Filtri avanzati
+  const [filterDal, setFilterDal] = useState('');
+  const [filterAl, setFilterAl] = useState('');
+  const [filterTipo, setFilterTipo] = useState('');
+  const [showAdvFilter, setShowAdvFilter] = useState(false);
+  const [prePage, setPrePage] = useState(1);
+  const PAGE_SIZE = 20;
+  // Modali contratto e firma
+  const [contrattoPreno, setContrattoPreno] = useState(null);
+  const [firmaPreno, setFirmaPreno] = useState(null);
+  const [saldoPreno, setSaldoPreno]     = useState(null);
+  const [depositoPreno, setDepositoPreno] = useState(null); // { preno, mode }
 
   // CRUD
   function createPreno(data) {
@@ -1830,6 +2024,27 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, fleet, customers, ope
   }
 
   function convertToPratica(p) {
+    // Auto-registra acconto in cassa se presente e non ancora registrato
+    if (setCassa && p.acconto > 0) {
+      setCassa(prev => {
+        const already = (prev || []).some(r => r.prenotazioneId === p.id && r.tipo === 'acconto');
+        if (already) return prev;
+        return [{
+          id: 'cassa_' + Date.now() + '_' + Math.random().toString(36).slice(2,6),
+          createdAt: new Date().toISOString(),
+          data: todayISO(),
+          clienteNome: [p.clienteCognome, p.clienteNome].filter(Boolean).join(' ') || '',
+          prenotazioneId: p.id,
+          vehicleLabel: p.vehicleLabel || '',
+          importo: p.acconto,
+          metodo: p.metodoPagamento || 'contanti',
+          tipo: 'acconto',
+          nota: `Acconto pren. ${formatDate(p.dal)}→${formatDate(p.al)}`,
+          operatorId: operator?.id || '',
+          operatorName: operator?.nome || '',
+        }, ...(prev || [])];
+      });
+    }
     // Precompila il wizard Pratica con i dati della prenotazione
     const prefill = {
       cognome: p.clienteCognome || '',
@@ -1854,12 +2069,19 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, fleet, customers, ope
         const hay = `${p.clienteNome} ${p.clienteCognome} ${p.clienteTel} ${p.vehicleLabel} ${p.note}`.toLowerCase();
         if (!hay.includes(q)) return false;
       }
+      if (filterDal && p.dal && p.dal < filterDal) return false;
+      if (filterAl  && p.al  && p.al  > filterAl)  return false;
+      if (filterTipo && p.tipo !== filterTipo) return false;
       return true;
     })
     .sort((a, b) => {
       const da = a.dal || '9999', db = b.dal || '9999';
       return sortDir === 'asc' ? da.localeCompare(db) : db.localeCompare(da);
     });
+
+  // Paginazione — reset pagina quando cambiano i filtri
+  useEffect(() => { setPrePage(1); }, [search, filterStato, filterDal, filterAl, filterTipo]);
+  const paginated = filtered.slice((prePage - 1) * PAGE_SIZE, prePage * PAGE_SIZE);
 
   // KPI veloci
   const attive = (prenotazioni || []).filter(p => p.stato === 'confermata' || p.stato === 'in_corso').length;
@@ -1932,7 +2154,48 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, fleet, customers, ope
           style={{ marginLeft: 'auto', padding: '5px 12px', borderRadius: 20, fontSize: 12, border: '1px solid var(--border)', background: 'transparent', color: 'var(--ink-2)', cursor: 'pointer' }}>
           {sortDir === 'asc' ? '↑ Prossime' : '↓ Recenti'}
         </button>
+        <button type="button"
+          onClick={() => setShowAdvFilter(v => !v)}
+          style={{ padding: '5px 12px', borderRadius: 20, fontSize: 12, border: showAdvFilter ? 'none' : '1px solid var(--border)', background: showAdvFilter ? 'var(--ink)' : 'transparent', color: showAdvFilter ? 'var(--bg)' : 'var(--ink-2)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+          <Filter style={{ width: 12, height: 12 }} /> Filtri
+          {(filterDal || filterAl || filterTipo) && <span style={{ background: 'var(--accent)', color: '#fff', borderRadius: '50%', width: 14, height: 14, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700 }}>!</span>}
+        </button>
       </div>
+
+      {/* Filtri avanzati — pannello espandibile */}
+      {showAdvFilter && (
+        <div style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 8, padding: '14px 16px', marginBottom: 16, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <div>
+            <div style={{ fontSize: 10, color: 'var(--muted)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Dal</div>
+            <input type="date" value={filterDal} onChange={e => setFilterDal(e.target.value)}
+              style={{ padding: '5px 8px', border: '1px solid var(--border)', borderRadius: 5, fontSize: 12, background: 'var(--bg)', color: 'var(--ink)', cursor: 'pointer' }} />
+          </div>
+          <div>
+            <div style={{ fontSize: 10, color: 'var(--muted)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Al</div>
+            <input type="date" value={filterAl} onChange={e => setFilterAl(e.target.value)}
+              style={{ padding: '5px 8px', border: '1px solid var(--border)', borderRadius: 5, fontSize: 12, background: 'var(--bg)', color: 'var(--ink)', cursor: 'pointer' }} />
+          </div>
+          <div>
+            <div style={{ fontSize: 10, color: 'var(--muted)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Categoria</div>
+            <select value={filterTipo} onChange={e => setFilterTipo(e.target.value)}
+              style={{ padding: '5px 8px', border: '1px solid var(--border)', borderRadius: 5, fontSize: 12, background: 'var(--bg)', color: 'var(--ink)', cursor: 'pointer' }}>
+              <option value="">Tutte</option>
+              <option value="auto">Auto</option>
+              <option value="scooter">Scooter</option>
+              <option value="quad">Quad</option>
+              <option value="ebike">E-Bike</option>
+            </select>
+          </div>
+          <button type="button"
+            onClick={() => { setFilterDal(''); setFilterAl(''); setFilterTipo(''); }}
+            style={{ padding: '5px 12px', borderRadius: 5, border: '1px solid var(--border)', background: 'transparent', color: 'var(--ink-2)', fontSize: 12, cursor: 'pointer' }}>
+            ✕ Reset filtri
+          </button>
+          <div style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--muted)', alignSelf: 'center' }}>
+            {filtered.length} / {(prenotazioni||[]).length} prenotazioni
+          </div>
+        </div>
+      )}
 
       {/* Lista */}
       {filtered.length === 0 ? (
@@ -1947,15 +2210,44 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, fleet, customers, ope
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {filtered.map(p => (
+          {paginated.map(p => (
             <PrenoCard
               key={p.id}
               p={p}
               onEdit={(rec) => setForm(rec)}
               onConvert={convertToPratica}
               onDelete={deletePreno}
+              onFoto={(rec) => setFotoPreno(rec)}
+              onFirma={(rec) => setFirmaPreno(rec)}
+              onContratto={(rec) => setContrattoPreno(rec)}
+              onSaldo={(rec) => setSaldoPreno(rec)}
+              onDeposito={(rec, mode) => setDepositoPreno({ preno: rec, mode })}
             />
           ))}
+        </div>
+      )}
+
+      {/* Paginazione */}
+      {filtered.length > PAGE_SIZE && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 0 6px' }}>
+          <button type="button"
+            onClick={() => setPrePage(p => Math.max(1, p - 1))}
+            disabled={prePage === 1}
+            style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent',
+              color: prePage === 1 ? 'var(--muted)' : 'var(--ink)', cursor: prePage === 1 ? 'default' : 'pointer', fontSize: 12 }}>
+            ← Precedente
+          </button>
+          <span style={{ fontSize: 12, color: 'var(--muted)' }}>
+            {(prePage - 1) * PAGE_SIZE + 1}–{Math.min(prePage * PAGE_SIZE, filtered.length)} di {filtered.length}
+          </span>
+          <button type="button"
+            onClick={() => setPrePage(p => p + 1)}
+            disabled={prePage * PAGE_SIZE >= filtered.length}
+            style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent',
+              color: prePage * PAGE_SIZE >= filtered.length ? 'var(--muted)' : 'var(--ink)',
+              cursor: prePage * PAGE_SIZE >= filtered.length ? 'default' : 'pointer', fontSize: 12 }}>
+            Successiva →
+          </button>
         </div>
       )}
 
@@ -1977,6 +2269,31 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, fleet, customers, ope
           customers={customers}
           onSave={form === 'new' ? createPreno : updatePreno}
           onClose={() => setForm(null)}
+        />
+      )}
+      {/* Modal foto check-in / check-out */}
+      {firmaPreno && (
+        <FirmaModal
+          preno={firmaPreno}
+          onSave={data => { setPrenotazioni(ps => ps.map(p => p.id === data.id ? data : p)); setFirmaPreno(null); pushToast && pushToast({ tone: 'success', title: 'Firma salvata' }); }}
+          onClose={() => setFirmaPreno(null)}
+        />
+      )}
+      {contrattoPreno && (
+        <ContrattoModal
+          preno={contrattoPreno}
+          onClose={() => setContrattoPreno(null)}
+        />
+      )}
+      {fotoPreno && (
+        <FotoModal
+          prenotazione={fotoPreno}
+          onSave={(updated) => {
+            setPrenotazioni(ps => ps.map(p => p.id === updated.id ? updated : p));
+            setFotoPreno(null);
+            pushToast && pushToast({ tone: 'success', title: 'Foto salvate', message: `${(updated.foto?.consegna?.length||0) + (updated.foto?.rientro?.length||0)} foto` });
+          }}
+          onClose={() => setFotoPreno(null)}
         />
       )}
     </div>
@@ -2090,20 +2407,15 @@ function calcPreventivo(cat, dal, al) {
 // ── QuoteCard — singola categoria con prezzo calcolato ───────────────
 function QuoteCard({ cat, dal, al, onPrenota }) {
   const [open, setOpen] = useState(false);
+  const [lang, setLang] = useState('it');
   const q = calcPreventivo(cat, dal, al);
   if (!q) return null;
 
   const seas = EDO_SEASONS[q.season];
 
   function buildWhatsApp() {
-    const testo =
-      `Preventivo Edonoleggio Lampedusa\n` +
-      `Mezzo: ${cat.nome}\n` +
-      `Dal ${formatDate(dal)} al ${formatDate(al)} (${q.giorni} giorni)\n` +
-      `Stagione: ${seas.name}\n` +
-      `Totale: €${q.totale}` +
-      (q.risparmio > 0 ? ` (risparmi €${q.risparmio} con la tariffa settimanale)` : '') +
-      `\n\nConfermate disponibilità e prezzo? Grazie!`;
+    const i18n = PREVENTIVO_I18N[lang] || PREVENTIVO_I18N.it;
+    const testo = i18n.waText(cat.nome, formatDate(dal), formatDate(al), q.giorni, seas.name, q.totale, q.risparmio||0);
     return `https://wa.me/?text=${encodeURIComponent(testo)}`;
   }
 
@@ -2171,6 +2483,19 @@ function QuoteCard({ cat, dal, al, onPrenota }) {
             </div>
           </div>
 
+          {/* Selettore lingua */}
+          <div style={{ display: 'flex', gap: 5, marginBottom: 8 }}>
+            {PREVENTIVO_LANGS.map(l => (
+              <button key={l.id} type="button" onClick={() => setLang(l.id)}
+                title={l.label}
+                style={{ padding: '3px 9px', borderRadius: 5, border: `1px solid ${lang===l.id ? 'var(--ink)' : 'var(--border)'}`, background: lang===l.id ? 'var(--ink)' : 'var(--bg)', color: lang===l.id ? 'var(--bg)' : 'var(--ink-2)', fontSize: 13, cursor: 'pointer', fontWeight: lang===l.id ? 700 : 400 }}>
+                {l.flag}
+              </button>
+            ))}
+            <span style={{ fontSize: 10, color: 'var(--muted)', alignSelf: 'center', marginLeft: 4 }}>
+              {PREVENTIVO_LANGS.find(l => l.id === lang)?.label}
+            </span>
+          </div>
           <div style={{ display: 'flex', gap: 8 }}>
             <a
               href={buildWhatsApp()}
@@ -2192,7 +2517,7 @@ function QuoteCard({ cat, dal, al, onPrenota }) {
                 total: parseFloat(q.totale) || 0,
                 totalDays: q.giorni,
                 breakdown: (q.dettaglio || []).map(d => ({ label: d.label || '', gg: d.gg || 0, price: d.price || 0, subtotal: (d.gg||0)*(d.price||0) })),
-              })}
+              }, null, lang)}
               style={{
                 padding: '7px 12px', borderRadius: 5, border: 'none',
                 fontSize: 12, fontWeight: 600, cursor: 'pointer',
@@ -2608,143 +2933,516 @@ function DisponibilitaView({ prenotazioni, rentmeVehicles }) {
 // KPI, andamento prenotazioni, categorie più richieste, incasso stimato
 // ═══════════════════════════════════════════════════════════════════
 
-function ReportPage({ prenotazioni, contracts }) {
-  const today = new Date().toISOString().slice(0,10);
-  const thisMonth = today.slice(0,7);
-  const lastMonth = (() => {
-    const d = new Date(today + 'T12:00:00');
-    d.setMonth(d.getMonth() - 1);
-    return d.toISOString().slice(0,7);
-  })();
+// ═══════════════════════════════════════════════════════════════════
+// REPORT AVANZATO v0.18
+// Occupazione %, revenue per mese, top clienti, export CSV/Excel
+// Props: prenotazioni, contracts, cassa, customers, fleet, operators
+// ═══════════════════════════════════════════════════════════════════
 
-  const allP = prenotazioni || [];
-  const allC = contracts || [];
+function useReportData({ prenotazioni, contracts, cassa, customers, fleet, operators, year }) {
+  return useMemo(() => {
+    const allP = (prenotazioni || []).filter(p => (p.dal || '').startsWith(year));
+    const allC = (contracts    || []).filter(c => (c.createdAt || '').startsWith(year));
+    const allK = (cassa        || []).filter(k => (k.data || '').startsWith(year));
+    const allFleet = (fleet    || []).filter(v => v.stato !== 'venduto');
 
-  // KPI
-  const meseCorrente  = allP.filter(p => (p.dal || '').startsWith(thisMonth));
-  const mesePrecedente = allP.filter(p => (p.dal || '').startsWith(lastMonth));
-  const attive = allP.filter(p => p.stato === 'confermata' || p.stato === 'in_corso');
-  const incassoMese = meseCorrente.reduce((s, p) => s + (p.prezzo || 0), 0);
-  const accontiMese = meseCorrente.reduce((s, p) => s + (p.acconto || 0), 0);
-  const contrattiBimestre = allC.filter(c => {
-    const d = (c.createdAt || '').slice(0,7);
-    return d >= lastMonth;
-  }).length;
+    // ── KPI annuali ──────────────────────────────────────────────
+    const totPreno     = allP.length;
+    const totContratti = allC.length;
+    const incassoPreno = allP.reduce((s,p) => s + (p.prezzo||0), 0);
+    const incassoCassa = allK.filter(k => k.tipo !== 'rimborso').reduce((s,k) => s + (k.importo||0), 0);
+    const rimborsiCassa= allK.filter(k => k.tipo === 'rimborso').reduce((s,k) => s + (k.importo||0), 0);
+    const nettoCassa   = incassoCassa - rimborsiCassa;
 
-  // Categorie più richieste
-  const catCount = {};
-  allP.forEach(p => {
-    const k = (p.vehicleLabel || 'Non specificato').split(' ·')[0].trim() || 'Non specificato';
-    catCount[k] = (catCount[k] || 0) + 1;
+    // ── Mensile: prenotazioni + revenue ─────────────────────────
+    const mesi = Array.from({length:12}, (_,i) => {
+      const ym = `${year}-${String(i+1).padStart(2,'0')}`;
+      const prenoMese = allP.filter(p => (p.dal||'').startsWith(ym));
+      const cassaMese = allK.filter(k => (k.data||'').startsWith(ym) && k.tipo !== 'rimborso');
+      const label = new Date(`${ym}-15`).toLocaleDateString('it-IT', { month:'short' });
+      return {
+        ym, label, i,
+        preno: prenoMese.length,
+        revPreno: prenoMese.reduce((s,p) => s+(p.prezzo||0), 0),
+        revCassa: cassaMese.reduce((s,k) => s+(k.importo||0), 0),
+      };
+    });
+    const maxPreno = Math.max(...mesi.map(m => m.preno), 1);
+    const maxRev   = Math.max(...mesi.map(m => Math.max(m.revPreno, m.revCassa)), 1);
+
+    // ── Occupazione % per categoria per mese ────────────────────
+    // Per ogni mese calcola quanti giorni totali disponibili vs occupati per tipo
+    const tipiVehicle = ['auto','scooter','quad','ebike'];
+    const fleetByTipo = {};
+    tipiVehicle.forEach(t => { fleetByTipo[t] = allFleet.filter(v => v.tipo === t).length; });
+
+    const occupazione = mesi.map(m => {
+      const daysInMonth = new Date(parseInt(year), m.i+1, 0).getDate();
+      const result = { ym: m.ym, label: m.label };
+      tipiVehicle.forEach(tipo => {
+        const total = (fleetByTipo[tipo] || 0) * daysInMonth;
+        if (total === 0) { result[tipo] = 0; return; }
+        // Conta giorni-prenotazione per questo tipo in questo mese
+        let giorni = 0;
+        allP.filter(p => {
+          const vt = (p.vehicleType||'').toLowerCase();
+          const vl = (p.vehicleLabel||'').toLowerCase();
+          return vt === tipo || vt === ({auto:'a',scooter:'m',quad:'m',ebike:'e'}[tipo]||'') || vl.startsWith(tipo);
+        }).forEach(p => {
+          if (!p.dal || !p.al) return;
+          const start = new Date(Math.max(new Date(p.dal), new Date(`${m.ym}-01`)));
+          const end   = new Date(Math.min(new Date(p.al),  new Date(`${m.ym}-${String(daysInMonth).padStart(2,'0')}`)));
+          if (end >= start) giorni += Math.round((end - start) / 86400000) + 1;
+        });
+        result[tipo] = Math.min(100, Math.round((giorni / total) * 100));
+      });
+      return result;
+    });
+
+    // ── Top categorie ────────────────────────────────────────────
+    const catCount = {};
+    allP.forEach(p => {
+      const k = (p.vehicleLabel||'Non spec.').split('·')[0].trim() || 'Non spec.';
+      catCount[k] = (catCount[k]||0) + 1;
+    });
+    const topCats = Object.entries(catCount).sort((a,b)=>b[1]-a[1]).slice(0,8);
+
+    // ── Top 10 clienti per spesa ─────────────────────────────────
+    const clienteSpesa = {};
+    allK.filter(k => k.prenotazioneId && k.tipo !== 'rimborso').forEach(k => {
+      const id = k.clienteId || k.prenotazioneId;
+      if (!clienteSpesa[id]) clienteSpesa[id] = { id, nome: k.clienteNome || '—', spesa: 0, movimenti: 0 };
+      clienteSpesa[id].spesa     += (k.importo||0);
+      clienteSpesa[id].movimenti += 1;
+    });
+    // Arricchisci con dati clienti se disponibili
+    const topClienti = Object.values(clienteSpesa)
+      .sort((a,b) => b.spesa - a.spesa).slice(0,10)
+      .map(c => {
+        const cust = (customers||[]).find(x => x.id === c.id);
+        return { ...c, nome: cust ? `${cust.cognome} ${cust.nome}` : c.nome };
+      });
+
+    // ── Revenue per operatore ────────────────────────────────────
+    const opRev = {};
+    allK.filter(k => k.tipo !== 'rimborso').forEach(k => {
+      const op = k.operatore || 'Non assegnato';
+      if (!opRev[op]) opRev[op] = { nome: op, incasso: 0, movimenti: 0 };
+      opRev[op].incasso    += (k.importo||0);
+      opRev[op].movimenti  += 1;
+    });
+    const topOp = Object.values(opRev).sort((a,b) => b.incasso - a.incasso);
+
+    // ── Stato prenotazioni ───────────────────────────────────────
+    const statiPreno = {};
+    allP.forEach(p => { statiPreno[p.stato||'attesa'] = (statiPreno[p.stato||'attesa']||0)+1; });
+
+    return { totPreno, totContratti, incassoPreno, incassoCassa, rimborsiCassa, nettoCassa,
+             mesi, maxPreno, maxRev, occupazione, topCats, topClienti, topOp, statiPreno, allP, allK };
+  }, [prenotazioni, contracts, cassa, customers, fleet, operators, year]);
+}
+
+// Esporta dati in CSV
+// Carica SheetJS da CDN la prima volta che serve
+function loadSheetJS() {
+  return new Promise((resolve, reject) => {
+    if (window.XLSX) { resolve(window.XLSX); return; }
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    s.onload  = () => resolve(window.XLSX);
+    s.onerror = () => reject(new Error('Impossibile caricare SheetJS'));
+    document.head.appendChild(s);
   });
-  const topCats = Object.entries(catCount).sort((a,b) => b[1]-a[1]).slice(0,6);
-  const maxCount = topCats[0]?.[1] || 1;
+}
 
-  // Andamento ultimi 8 mesi
-  const trend = [];
-  for (let i = 7; i >= 0; i--) {
-    const d = new Date(today + 'T12:00:00');
-    d.setMonth(d.getMonth() - i);
-    const ym = d.toISOString().slice(0,7);
-    const label = d.toLocaleDateString('it-IT', { month:'short' });
-    const count = allP.filter(p => (p.dal || '').startsWith(ym)).length;
-    const rev = allP.filter(p => (p.dal || '').startsWith(ym)).reduce((s,p) => s+(p.prezzo||0), 0);
-    trend.push({ ym, label, count, rev });
+async function exportReportXLSX(data, year, pushToast) {
+  let XLSX;
+  try {
+    XLSX = await loadSheetJS();
+  } catch(e) {
+    pushToast && pushToast({ tone: 'warning', title: 'Export CSV (offline)', message: 'SheetJS non disponibile' });
+    const rows = [
+      ['REPORT EDONOLEGGIO', year], [],
+      ['Prenotazioni', data.totPreno], ['Incassato (cassa)', data.incassoCassa], ['Netto cassa', data.nettoCassa], [],
+      ['MESE','N.','Rev. Cassa €'], ...data.mesi.map(m => [m.label, m.preno, m.revCassa]), [],
+      ['TOP CLIENTI','Spesa €','Movimenti'], ...data.topClienti.map(c => [c.nome, c.spesa, c.movimenti]),
+    ];
+    const csv  = rows.map(r => r.join(',')).join('\n');
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url; a.download = `edonoleggio-report-${year}.csv`; a.click();
+    URL.revokeObjectURL(url);
+    return;
   }
-  const maxTrend = Math.max(...trend.map(t => t.count), 1);
 
-  const kpiCard = (label, value, sub, color = 'var(--ink)') => (
-    <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, padding: '16px 18px' }}>
-      <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>{label}</div>
-      <div style={{ fontSize: 26, fontWeight: 700, fontFamily: 'var(--font-serif)', color, lineHeight: 1 }}>{value}</div>
-      {sub && <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>{sub}</div>}
+  const wb = XLSX.utils.book_new();
+
+  // Foglio 1: Riepilogo
+  const wsR = XLSX.utils.aoa_to_sheet([
+    ['REPORT EDONOLEGGIO', year], [],
+    ['Prenotazioni totali',            data.totPreno],
+    ['Contratti CARGOS',               data.totContratti],
+    ['Incasso stimato (preventivi) €', data.incassoPreno],
+    ['Incassato (cassa) €',            data.incassoCassa],
+    ['Rimborsi €',                     data.rimborsiCassa],
+    ['Netto cassa €',                  data.nettoCassa],
+  ]);
+  wsR['!cols'] = [{ wch: 34 }, { wch: 16 }];
+  XLSX.utils.book_append_sheet(wb, wsR, 'Riepilogo');
+
+  // Foglio 2: Mensile
+  const wsM = XLSX.utils.aoa_to_sheet([
+    ['Mese', 'Prenotazioni', 'Rev. Preventivi €', 'Rev. Cassa €'],
+    ...data.mesi.map(m => [m.label + ' ' + year, m.preno, m.revPreno, m.revCassa]),
+    [], ['TOTALE',
+      data.mesi.reduce((s,m)=>s+m.preno,0),
+      data.mesi.reduce((s,m)=>s+m.revPreno,0),
+      data.mesi.reduce((s,m)=>s+m.revCassa,0)],
+  ]);
+  wsM['!cols'] = [{ wch: 14 }, { wch: 14 }, { wch: 20 }, { wch: 16 }];
+  XLSX.utils.book_append_sheet(wb, wsM, 'Mensile');
+
+  // Foglio 3: Occupazione %
+  const wsO = XLSX.utils.aoa_to_sheet([
+    ['Mese', 'Auto %', 'Scooter %', 'Quad %', 'E-bike %'],
+    ...data.occupazione.map(m => [m.label + ' ' + year, m.auto, m.scooter, m.quad, m.ebike]),
+  ]);
+  wsO['!cols'] = [{ wch: 14 }, { wch: 10 }, { wch: 12 }, { wch: 10 }, { wch: 10 }];
+  XLSX.utils.book_append_sheet(wb, wsO, 'Occupazione');
+
+  // Foglio 4: Top clienti
+  if (data.topClienti.length > 0) {
+    const wsC = XLSX.utils.aoa_to_sheet([
+      ['#', 'Cliente', 'Spesa €', 'Movimenti'],
+      ...data.topClienti.map((c,i) => [i+1, c.nome, c.spesa, c.movimenti]),
+    ]);
+    wsC['!cols'] = [{ wch: 4 }, { wch: 28 }, { wch: 12 }, { wch: 12 }];
+    XLSX.utils.book_append_sheet(wb, wsC, 'Top clienti');
+  }
+
+  // Foglio 5: Per operatore
+  if (data.topOp.length > 0) {
+    const wsP = XLSX.utils.aoa_to_sheet([
+      ['Operatore', 'Incasso €', 'Movimenti'],
+      ...data.topOp.map(o => [o.nome, o.incasso, o.movimenti]),
+    ]);
+    wsP['!cols'] = [{ wch: 22 }, { wch: 12 }, { wch: 12 }];
+    XLSX.utils.book_append_sheet(wb, wsP, 'Per operatore');
+  }
+
+  XLSX.writeFile(wb, `edonoleggio-report-${year}.xlsx`);
+  pushToast && pushToast({ tone: 'success', title: 'Excel esportato', message: `edonoleggio-report-${year}.xlsx · 5 fogli` });
+}
+
+
+function ReportPage({ prenotazioni, contracts, cassa, customers, fleet, operators, pushToast }) {
+  const currentYear = new Date().getFullYear().toString();
+  const [year, setYear] = useState(currentYear);
+  const [tab,  setTab]  = useState('overview'); // overview | occupazione | clienti | operatori
+
+  const availYears = useMemo(() => {
+    const years = new Set();
+    (prenotazioni||[]).forEach(p => { if (p.dal) years.add(p.dal.slice(0,4)); });
+    (cassa||[]).forEach(k => { if (k.data) years.add(k.data.slice(0,4)); });
+    years.add(currentYear);
+    return [...years].sort((a,b) => b-a);
+  }, [prenotazioni, cassa, currentYear]);
+
+  const d = useReportData({ prenotazioni, contracts, cassa, customers, fleet, operators, year });
+  const thisMonth = new Date().toISOString().slice(0,7);
+
+  const TABS = [
+    { id:'overview',    label:'Panoramica' },
+    { id:'occupazione', label:'Occupazione %' },
+    { id:'clienti',     label:'Top clienti' },
+    { id:'operatori',   label:'Per operatore' },
+  ];
+
+  const tabBtn = (t) => (
+    <button key={t.id} type="button" onClick={() => setTab(t.id)}
+      style={{ padding:'7px 18px', fontSize:13, fontWeight:600, borderRadius:5, border:'none', cursor:'pointer',
+        background: tab===t.id ? 'var(--ink)' : 'var(--surface-2)',
+        color:      tab===t.id ? 'var(--bg)'  : 'var(--ink-2)' }}>
+      {t.label}
+    </button>
+  );
+
+  const card = (label, value, sub, color='var(--ink)') => (
+    <div style={{ background:'var(--bg)', border:'1px solid var(--border)', borderRadius:8, padding:'16px 18px' }}>
+      <div style={{ fontSize:11, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:6 }}>{label}</div>
+      <div style={{ fontSize:26, fontWeight:700, fontFamily:'var(--font-serif)', color, lineHeight:1 }}>{value}</div>
+      {sub && <div style={{ fontSize:11, color:'var(--muted)', marginTop:4 }}>{sub}</div>}
     </div>
   );
 
+  const maxTopCat = d.topCats[0]?.[1] || 1;
+
   return (
-    <div style={{ padding: '28px 32px', maxWidth: 900, margin: '0 auto' }}>
-      <div style={{ marginBottom: 24 }}>
-        <h1 style={{ margin: 0, fontSize: 22, fontFamily: 'var(--font-serif)', fontWeight: 600 }}>Report</h1>
-        <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--muted)' }}>Andamento prenotazioni, incassi e saturazione flotta.</p>
-      </div>
-
-      {/* KPI principali */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 28 }}>
-        {kpiCard('Prenotazioni questo mese', meseCorrente.length, `${mesePrecedente.length} il mese scorso`)}
-        {kpiCard('Attive ora', attive.length, 'confermate + in corso', '#2e6e3e')}
-        {kpiCard('Incasso stimato mese', `€${incassoMese.toLocaleString('it-IT')}`, `Acconti: €${accontiMese}`, '#1f5d83')}
-        {kpiCard('Pratiche bimestre', contrattiBimestre, 'contratti firmati', '#b87333')}
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 28 }}>
-        {/* Trend mensile */}
-        <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, padding: '16px 18px' }}>
-          <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--ink-2)', marginBottom: 14 }}>
-            Prenotazioni · ultimi 8 mesi
-          </div>
-          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 100 }}>
-            {trend.map(t => (
-              <div key={t.ym} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-                <div style={{ fontSize: 9, color: 'var(--muted)', fontWeight: 600 }}>{t.count || ''}</div>
-                <div style={{
-                  width: '100%', borderRadius: '3px 3px 0 0',
-                  height: `${Math.max(4, (t.count / maxTrend) * 80)}px`,
-                  background: t.ym === thisMonth ? 'var(--accent)' : 'var(--ink)',
-                  opacity: t.ym === thisMonth ? 1 : 0.25 + (t.count / maxTrend) * 0.55,
-                  transition: 'height 0.3s',
-                }} />
-                <div style={{ fontSize: 9, color: 'var(--muted)' }}>{t.label}</div>
-              </div>
-            ))}
-          </div>
+    <div style={{ padding:'28px 32px', maxWidth:960, margin:'0 auto' }}>
+      {/* Header */}
+      <div style={{ display:'flex', alignItems:'flex-end', justifyContent:'space-between', marginBottom:20 }}>
+        <div>
+          <h1 style={{ margin:0, fontSize:22, fontFamily:'var(--font-serif)', fontWeight:600 }}>Report</h1>
+          <p style={{ margin:'4px 0 0', fontSize:13, color:'var(--muted)' }}>
+            Analisi occupazione, incassi e clienti · anno {year}
+          </p>
         </div>
+        <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+          <select value={year} onChange={e => setYear(e.target.value)}
+            style={{ padding:'7px 12px', border:'1px solid var(--border)', borderRadius:5, fontSize:13, background:'var(--bg)', color:'var(--ink)', cursor:'pointer' }}>
+            {availYears.map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
+          <button type="button" onClick={() => exportReportXLSX(d, year, pushToast)}
+            style={{ display:'flex', alignItems:'center', gap:6, padding:'7px 16px', background:'var(--ink)', color:'var(--bg)', border:'none', borderRadius:5, fontSize:13, fontWeight:600, cursor:'pointer' }}>
+            <Download className="w-4 h-4" /> Export Excel (.xlsx)
+          </button>
+        </div>
+      </div>
 
-        {/* Top categorie */}
-        <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, padding: '16px 18px' }}>
-          <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--ink-2)', marginBottom: 14 }}>
-            Categorie più richieste
+      {/* KPI */}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12, marginBottom:24 }}>
+        {card('Prenotazioni '+year, d.totPreno, `${d.totPreno} totali`)}
+        {card('Incassato (cassa)', `€${d.incassoCassa.toLocaleString('it-IT')}`, `Rimborsi: €${d.rimborsiCassa}`, '#1f5d83')}
+        {card('Netto cassa', `€${d.nettoCassa.toLocaleString('it-IT')}`, `${d.totContratti} contratti CARGOS`, '#2e6e3e')}
+      </div>
+
+      {/* Tab nav */}
+      <div style={{ display:'flex', gap:6, marginBottom:20 }}>
+        {TABS.map(tabBtn)}
+      </div>
+
+      {/* ── PANORAMICA ────────────────────────────────────────── */}
+      {tab === 'overview' && (
+        <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
+          {/* Grafico prenotazioni mensili */}
+          <div style={{ background:'var(--bg)', border:'1px solid var(--border)', borderRadius:8, padding:'16px 18px' }}>
+            <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', color:'var(--ink-2)', marginBottom:16 }}>
+              Prenotazioni per mese
+            </div>
+            <div style={{ display:'flex', alignItems:'flex-end', gap:4, height:110 }}>
+              {d.mesi.map(m => (
+                <div key={m.ym} style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:3 }}>
+                  <div style={{ fontSize:9, color:'var(--muted)', fontWeight:600 }}>{m.preno||''}</div>
+                  <div style={{
+                    width:'100%', borderRadius:'3px 3px 0 0',
+                    height:`${Math.max(4, (m.preno/d.maxPreno)*90)}px`,
+                    background: m.ym===thisMonth ? '#1f5d83' : 'var(--ink)',
+                    opacity: m.ym===thisMonth ? 1 : 0.2+(m.preno/d.maxPreno)*0.6,
+                    transition:'height .3s',
+                  }} />
+                  <div style={{ fontSize:9, color:'var(--muted)' }}>{m.label}</div>
+                </div>
+              ))}
+            </div>
           </div>
-          {topCats.length === 0 ? (
-            <div style={{ fontSize: 12, color: 'var(--muted)', fontStyle: 'italic' }}>Nessuna prenotazione ancora</div>
-          ) : topCats.map(([cat, n]) => (
-            <div key={cat} style={{ marginBottom: 8 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 3 }}>
-                <span style={{ color: 'var(--ink)', fontWeight: 500 }}>{cat}</span>
-                <span style={{ color: 'var(--muted)' }}>{n}</span>
+
+          {/* Revenue mensile */}
+          <div style={{ background:'var(--bg)', border:'1px solid var(--border)', borderRadius:8, padding:'16px 18px' }}>
+            <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', color:'var(--ink-2)', marginBottom:16 }}>
+              Revenue per mese (€)
+            </div>
+            <div style={{ display:'flex', alignItems:'flex-end', gap:4, height:110 }}>
+              {d.mesi.map(m => (
+                <div key={m.ym} style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:3 }}>
+                  <div style={{ fontSize:9, color:'var(--muted)', fontWeight:600 }}>{m.revCassa>0?`€${(m.revCassa/1000).toFixed(1)}k`:''}</div>
+                  <div title={`Cassa: €${m.revCassa} / Preventivi: €${m.revPreno}`} style={{
+                    width:'100%', borderRadius:'3px 3px 0 0',
+                    height:`${Math.max(4, (Math.max(m.revCassa,m.revPreno)/d.maxRev)*90)}px`,
+                    background: m.revCassa>0 ? '#2e6e3e' : 'var(--ink)',
+                    opacity: m.revCassa>0 ? 0.7+(m.revCassa/d.maxRev)*0.3 : 0.15,
+                    transition:'height .3s',
+                  }} />
+                  <div style={{ fontSize:9, color:'var(--muted)' }}>{m.label}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{ display:'flex', gap:16, marginTop:10, fontSize:10, color:'var(--muted)' }}>
+              <span style={{ display:'flex', alignItems:'center', gap:4 }}>
+                <span style={{ width:10, height:10, borderRadius:2, background:'#2e6e3e', display:'inline-block' }} />
+                Incassato (cassa)
+              </span>
+              <span style={{ display:'flex', alignItems:'center', gap:4 }}>
+                <span style={{ width:10, height:10, borderRadius:2, background:'var(--ink)', opacity:.3, display:'inline-block' }} />
+                Stimato (preventivi)
+              </span>
+            </div>
+          </div>
+
+          {/* Top categorie + stati */}
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:20 }}>
+            <div style={{ background:'var(--bg)', border:'1px solid var(--border)', borderRadius:8, padding:'16px 18px' }}>
+              <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', color:'var(--ink-2)', marginBottom:14 }}>
+                Categorie più richieste
               </div>
-              <div style={{ height: 6, background: 'var(--surface-2)', borderRadius: 3, overflow: 'hidden' }}>
-                <div style={{ height: '100%', width: `${(n/maxCount)*100}%`, background: 'var(--ink)', borderRadius: 3, transition: 'width 0.4s' }} />
+              {d.topCats.length===0
+                ? <div style={{ fontSize:12, color:'var(--muted)', fontStyle:'italic' }}>Nessuna prenotazione</div>
+                : d.topCats.map(([cat,n]) => (
+                  <div key={cat} style={{ marginBottom:8 }}>
+                    <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, marginBottom:3 }}>
+                      <span style={{ color:'var(--ink)', fontWeight:500 }}>{cat}</span>
+                      <span style={{ color:'var(--muted)' }}>{n}</span>
+                    </div>
+                    <div style={{ height:6, background:'var(--surface-2)', borderRadius:3, overflow:'hidden' }}>
+                      <div style={{ height:'100%', width:`${(n/maxTopCat)*100}%`, background:'var(--ink)', borderRadius:3 }} />
+                    </div>
+                  </div>
+                ))
+              }
+            </div>
+
+            <div style={{ background:'var(--bg)', border:'1px solid var(--border)', borderRadius:8, padding:'16px 18px' }}>
+              <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', color:'var(--ink-2)', marginBottom:14 }}>
+                Stato prenotazioni · {year}
+              </div>
+              <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                {Object.entries({
+                  confermata:'Confermate', completata:'Completate', in_corso:'In corso',
+                  attesa:'In attesa', cancellata:'Cancellate'
+                }).map(([stato, label]) => {
+                  const n = d.statiPreno[stato]||0;
+                  const s = PRENO_STATI[stato] || { color:'var(--ink)', bg:'var(--surface-2)' };
+                  return (
+                    <div key={stato} style={{ display:'flex', alignItems:'center', gap:10 }}>
+                      <div style={{ width:80, fontSize:12, color:'var(--ink-2)' }}>{label}</div>
+                      <div style={{ flex:1, height:8, background:'var(--surface-2)', borderRadius:4, overflow:'hidden' }}>
+                        <div style={{ height:'100%', width:`${d.totPreno>0?(n/d.totPreno)*100:0}%`, background:s.color, borderRadius:4 }} />
+                      </div>
+                      <div style={{ width:24, fontSize:12, fontWeight:600, textAlign:'right', color:s.color }}>{n}</div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
-          ))}
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* Ripartizione stati */}
-      <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, padding: '16px 18px' }}>
-        <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--ink-2)', marginBottom: 14 }}>
-          Stato prenotazioni · tutte
+      {/* ── OCCUPAZIONE % ─────────────────────────────────────── */}
+      {tab === 'occupazione' && (
+        <div style={{ background:'var(--bg)', border:'1px solid var(--border)', borderRadius:8, padding:'20px 22px' }}>
+          <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', color:'var(--ink-2)', marginBottom:20 }}>
+            Occupazione % per categoria · {year}
+          </div>
+          <div style={{ overflowX:'auto' }}>
+            <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
+              <thead>
+                <tr>
+                  <th style={{ padding:'8px 12px', textAlign:'left', fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', color:'var(--muted)', borderBottom:'2px solid var(--border)' }}>Mese</th>
+                  {['auto','scooter','quad','ebike'].map(t => (
+                    <th key={t} style={{ padding:'8px 12px', textAlign:'center', fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', color:'var(--muted)', borderBottom:'2px solid var(--border)' }}>{t}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {d.occupazione.map(m => (
+                  <tr key={m.ym} style={{ borderBottom:'1px solid var(--border)' }}>
+                    <td style={{ padding:'10px 12px', fontWeight:500 }}>{m.label} {year}</td>
+                    {['auto','scooter','quad','ebike'].map(tipo => {
+                      const pct = m[tipo];
+                      const color = pct>=80 ? '#c0392b' : pct>=50 ? '#e67e22' : pct>=20 ? '#27ae60' : 'var(--muted)';
+                      return (
+                        <td key={tipo} style={{ padding:'10px 12px', textAlign:'center' }}>
+                          {pct > 0 ? (
+                            <div style={{ display:'inline-flex', flexDirection:'column', alignItems:'center', gap:3, minWidth:60 }}>
+                              <span style={{ fontWeight:700, color, fontSize:14 }}>{pct}%</span>
+                              <div style={{ width:52, height:5, background:'var(--surface-2)', borderRadius:3, overflow:'hidden' }}>
+                                <div style={{ height:'100%', width:`${pct}%`, background:color, borderRadius:3 }} />
+                              </div>
+                            </div>
+                          ) : <span style={{ color:'var(--muted)', fontSize:12 }}>—</span>}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div style={{ marginTop:14, display:'flex', gap:16, fontSize:11, color:'var(--muted)' }}>
+            <span style={{ display:'flex', alignItems:'center', gap:5 }}><span style={{ width:10,height:10,borderRadius:2,background:'#27ae60',display:'inline-block' }} /> &lt;50% normale</span>
+            <span style={{ display:'flex', alignItems:'center', gap:5 }}><span style={{ width:10,height:10,borderRadius:2,background:'#e67e22',display:'inline-block' }} /> 50–79% alta domanda</span>
+            <span style={{ display:'flex', alignItems:'center', gap:5 }}><span style={{ width:10,height:10,borderRadius:2,background:'#c0392b',display:'inline-block' }} /> ≥80% saturazione</span>
+          </div>
         </div>
-        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-          {Object.entries({
-            attesa: 'In attesa', confermata: 'Confermate', in_corso: 'In corso',
-            completata: 'Completate', cancellata: 'Cancellate',
-          }).map(([stato, label]) => {
-            const n = allP.filter(p => p.stato === stato).length;
-            const s = PRENO_STATI[stato];
-            return (
-              <div key={stato} style={{ flex: '1 1 120px', background: s.bg, borderRadius: 6, padding: '10px 14px', textAlign: 'center' }}>
-                <div style={{ fontSize: 22, fontWeight: 700, fontFamily: 'var(--font-serif)', color: s.color }}>{n}</div>
-                <div style={{ fontSize: 10, color: s.color, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginTop: 2 }}>{label}</div>
+      )}
+
+      {/* ── TOP CLIENTI ───────────────────────────────────────── */}
+      {tab === 'clienti' && (
+        <div style={{ background:'var(--bg)', border:'1px solid var(--border)', borderRadius:8, padding:'20px 22px' }}>
+          <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', color:'var(--ink-2)', marginBottom:16 }}>
+            Top clienti per spesa · {year}
+          </div>
+          {d.topClienti.length === 0 ? (
+            <div style={{ fontSize:13, color:'var(--muted)', fontStyle:'italic', padding:'20px 0' }}>
+              Nessun movimento di cassa registrato per {year}. I dati appaiono quando si usano i pagamenti nel Registro Cassa.
+            </div>
+          ) : (
+            <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
+              <thead>
+                <tr>
+                  {['#','Cliente','Spesa (€)','Movimenti'].map(h => (
+                    <th key={h} style={{ padding:'8px 12px', textAlign: h==='Spesa (€)'||h==='Movimenti'||h==='#' ? 'center':'left', fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', color:'var(--muted)', borderBottom:'2px solid var(--border)' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {d.topClienti.map((c,i) => (
+                  <tr key={c.id} style={{ borderBottom:'1px solid var(--border)' }}>
+                    <td style={{ padding:'10px 12px', textAlign:'center', color:'var(--muted)', fontSize:12 }}>{i+1}</td>
+                    <td style={{ padding:'10px 12px', fontWeight:500 }}>{c.nome}</td>
+                    <td style={{ padding:'10px 12px', textAlign:'center', fontWeight:700, color:'#1f5d83', fontFamily:'var(--font-mono,monospace)' }}>€{c.spesa.toLocaleString('it-IT')}</td>
+                    <td style={{ padding:'10px 12px', textAlign:'center', color:'var(--muted)' }}>{c.movimenti}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+
+      {/* ── OPERATORI ─────────────────────────────────────────── */}
+      {tab === 'operatori' && (
+        <div style={{ background:'var(--bg)', border:'1px solid var(--border)', borderRadius:8, padding:'20px 22px' }}>
+          <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', color:'var(--ink-2)', marginBottom:16 }}>
+            Revenue per operatore · {year}
+          </div>
+          {d.topOp.length === 0 ? (
+            <div style={{ fontSize:13, color:'var(--muted)', fontStyle:'italic', padding:'20px 0' }}>
+              Nessun movimento con operatore assegnato per {year}.
+            </div>
+          ) : (
+            <>
+              <div style={{ display:'flex', flexDirection:'column', gap:12, marginBottom:20 }}>
+                {d.topOp.map((o,i) => {
+                  const maxInc = d.topOp[0].incasso || 1;
+                  return (
+                    <div key={o.nome}>
+                      <div style={{ display:'flex', justifyContent:'space-between', fontSize:13, marginBottom:4 }}>
+                        <span style={{ fontWeight:600 }}>{o.nome}</span>
+                        <span style={{ color:'#2e6e3e', fontWeight:700 }}>€{o.incasso.toLocaleString('it-IT')}</span>
+                      </div>
+                      <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                        <div style={{ flex:1, height:8, background:'var(--surface-2)', borderRadius:4, overflow:'hidden' }}>
+                          <div style={{ height:'100%', width:`${(o.incasso/maxInc)*100}%`, background:'#2e6e3e', borderRadius:4 }} />
+                        </div>
+                        <span style={{ fontSize:11, color:'var(--muted)', width:60, textAlign:'right' }}>{o.movimenti} mov.</span>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-            );
-          })}
+              <div style={{ borderTop:'1px solid var(--border)', paddingTop:12, display:'flex', gap:20, fontSize:13 }}>
+                <span style={{ color:'var(--muted)' }}>Totale incassato: <strong style={{ color:'var(--ink)' }}>€{d.incassoCassa.toLocaleString('it-IT')}</strong></span>
+                <span style={{ color:'var(--muted)' }}>Movimenti: <strong style={{ color:'var(--ink)' }}>{d.topOp.reduce((s,o)=>s+o.movimenti,0)}</strong></span>
+              </div>
+            </>
+          )}
         </div>
-      </div>
+      )}
     </div>
   );
 }
-
 // ═══════════════════════════════════════════════════════════════════
 // LISTINO EDITOR — gestione prezzi in Impostazioni (v0.17)
 // Modifica tariffe giornaliere e settimanali per stagione
@@ -3233,7 +3931,8 @@ function BancoRapidoPage({ rentmeVehicles, prenotazioni, fleet, setPage, setPren
 // Apre una nuova finestra con HTML formattato e lancia window.print().
 // Nessuna dipendenza esterna — funziona ovunque.
 // ═══════════════════════════════════════════════════════════════════
-function exportPreventivoPDF(quote, agencyInfo) {
+function exportPreventivoPDF(quote, agencyInfo, lang = 'it') {
+  const i18n = PREVENTIVO_I18N[lang] || PREVENTIVO_I18N.it;
   const agency = agencyInfo || {};
   const nomeAzienda = agency.nome || 'Edonoleggio';
   const indirizzo   = agency.indirizzoLegale ? `${agency.indirizzoLegale}, ${agency.citta || ''}` : 'Via Emerico Amari, 8 — Lampedusa (AG)';
@@ -3241,18 +3940,19 @@ function exportPreventivoPDF(quote, agencyInfo) {
   const email       = agency.email || '';
   const piva        = agency.piva ? `P.IVA ${agency.piva}` : '';
 
-  const today = new Date().toLocaleDateString('it-IT', { day:'2-digit', month:'long', year:'numeric' });
-  const fmtDate = (d) => d ? new Date(d + 'T12:00:00').toLocaleDateString('it-IT', { day:'2-digit', month:'long', year:'numeric' }) : '—';
+  const locale = lang === 'es' ? 'es-ES' : lang === 'en' ? 'en-GB' : 'it-IT';
+  const today = new Date().toLocaleDateString(locale, { day:'2-digit', month:'long', year:'numeric' });
+  const fmtDate = (d) => d ? new Date(d + 'T12:00:00').toLocaleDateString(locale, { day:'2-digit', month:'long', year:'numeric' }) : '—';
 
   const rows = (quote.breakdown || []).map(b =>
     `<tr><td>${b.label}</td><td style="text-align:right">${b.gg} gg</td><td style="text-align:right">€${b.price.toFixed(2)}</td><td style="text-align:right;font-weight:600">€${b.subtotal.toFixed(2)}</td></tr>`
   ).join('');
 
   const html = `<!DOCTYPE html>
-<html lang="it">
+<html lang="${lang}">
 <head>
 <meta charset="UTF-8">
-<title>Preventivo · ${nomeAzienda}</title>
+<title>${i18n.docTitle} · ${nomeAzienda}</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,400;0,600;1,400&family=DM+Sans:wght@400;600&display=swap');
   *{box-sizing:border-box;margin:0;padding:0}
@@ -3288,48 +3988,48 @@ function exportPreventivoPDF(quote, agencyInfo) {
     ${piva ? `<p>${piva}</p>` : ''}
   </div>
   <div class="doc-meta">
-    <strong>PREVENTIVO</strong>
+    <strong>${i18n.docTitle}</strong>
     <span>${today}</span>
   </div>
 </div>
 
 <div class="section">
-  <h3>Dettagli noleggio</h3>
-  <div class="info-row"><span class="info-label">Categoria</span><span>${quote.catName || '—'}</span></div>
-  <div class="info-row"><span class="info-label">Dal</span><span>${fmtDate(quote.dal)}</span></div>
-  <div class="info-row"><span class="info-label">Al</span><span>${fmtDate(quote.al)}</span></div>
-  <div class="info-row"><span class="info-label">Stagione</span><span>${quote.stagione ? quote.stagione.charAt(0).toUpperCase() + quote.stagione.slice(1) : '—'}</span></div>
-  <div class="info-row"><span class="info-label">Tipo tariffa</span><span>${quote.isWeekly ? 'Settimanale (più conveniente)' : 'Giornaliera'}</span></div>
+  <h3>${i18n.dettagliTitle}</h3>
+  <div class="info-row"><span class="info-label">${i18n.categoria}</span><span>${quote.catName || '—'}</span></div>
+  <div class="info-row"><span class="info-label">${i18n.dal}</span><span>${fmtDate(quote.dal)}</span></div>
+  <div class="info-row"><span class="info-label">${i18n.al}</span><span>${fmtDate(quote.al)}</span></div>
+  <div class="info-row"><span class="info-label">${i18n.stagione}</span><span>${quote.stagione ? quote.stagione.charAt(0).toUpperCase() + quote.stagione.slice(1) : '—'}</span></div>
+  <div class="info-row"><span class="info-label">${i18n.tariffaTipo}</span><span>${quote.isWeekly ? i18n.settimanale : i18n.giornaliera}</span></div>
 </div>
 
 ${(quote.breakdown||[]).length > 0 ? `
 <div class="section">
-  <h3>Dettaglio tariffe</h3>
+  <h3>${i18n.tariffeTitle}</h3>
   <table>
-    <thead><tr><th>Periodo</th><th style="text-align:right">Giorni</th><th style="text-align:right">Tariffa/gg</th><th style="text-align:right">Subtotale</th></tr></thead>
+    <thead><tr><th>${i18n.periodo}</th><th style="text-align:right">${i18n.giorni}</th><th style="text-align:right">${i18n.tariffa}</th><th style="text-align:right">${i18n.subtotale}</th></tr></thead>
     <tbody>${rows}</tbody>
   </table>
 </div>` : ''}
 
 <div class="highlight">
   <div>
-    <div class="price-label">Totale preventivo</div>
+    <div class="price-label">${i18n.totaleLabel}</div>
     <div class="price">€${(quote.total||0).toFixed(2)}</div>
   </div>
   <div style="font-size:12px;color:#6a6057;text-align:right">
-    ${quote.totalDays || 0} giorni · IVA inclusa<br>
-    Salvo disponibilità alla conferma
+    ${quote.totalDays || 0} ${lang==='en'?'days':'lang'==='es'?'días':'giorni'} · ${i18n.ivaInclusa}<br>
+    ${i18n.disponibilita}
   </div>
 </div>
 
 <div class="footer">
-  Questo preventivo è indicativo e non costituisce contratto. Valido 7 giorni dalla data di emissione.<br>
+  ${i18n.disclaimer}<br>
   ${nomeAzienda} · ${indirizzo} · Lampedusa, Isole Pelagie
 </div>
 
 <div style="text-align:center;margin-top:24px">
   <button onclick="window.print()" style="padding:10px 28px;background:#1a1815;color:#fff;border:none;border-radius:6px;font-size:14px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">
-    🖨 Stampa / Salva PDF
+    🖨 ${lang==='en'?'Print / Save PDF':lang==='es'?'Imprimir / Guardar PDF':'Stampa / Salva PDF'}
   </button>
 </div>
 </body>
@@ -4077,6 +4777,2391 @@ function ClienteStoricoPanel({ cliente, prenotazioni, contracts, onClose }) {
   );
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// SCADENZE FLOTTA
+// Traccia revisione, assicurazione, tagliando, bollo per ogni mezzo.
+// Persistente su edo:v1:scadenze — sincronizzato su tutti i tablet.
+// Badge colorato in FleetPage; widget riassuntivo in Dashboard.
+// ═══════════════════════════════════════════════════════════════════
+const SCADENZE_TIPI = {
+  revisione:      { label: 'Revisione',     icon: '🔧', urgencyDays: 30 },
+  assicurazione:  { label: 'Assicurazione', icon: '🛡',  urgencyDays: 30 },
+  tagliando:      { label: 'Tagliando',     icon: '⚙️',  urgencyDays: 14 },
+  bollo:          { label: 'Bollo',         icon: '📄',  urgencyDays: 30 },
+};
+
+// Restituisce 'scaduto' | 'urgente' | 'ok' | null per una data ISO
+function scadenzaStatus(dataISO) {
+  if (!dataISO) return null;
+  const today  = new Date(); today.setHours(0,0,0,0);
+  const target = new Date(dataISO + 'T00:00:00');
+  const diffDays = Math.round((target - today) / 86400000);
+  if (diffDays < 0)  return 'scaduto';
+  if (diffDays <= 30) return 'urgente';
+  return 'ok';
+}
+
+const SCAD_COLOR = {
+  scaduto: { bg: '#fdecea', border: '#c0392b', text: '#c0392b', dot: '#c0392b' },
+  urgente: { bg: '#fff8e6', border: '#e67e22', text: '#d35400', dot: '#e67e22' },
+  ok:      { bg: '#eafaf1', border: '#27ae60', text: '#1e8449', dot: '#27ae60' },
+};
+
+// Calcola il peggiore stato scadenze per un veicolo
+function worstScadenza(vehScadenze) {
+  if (!vehScadenze) return null;
+  const statuses = Object.values(vehScadenze).map(s => scadenzaStatus(s?.data)).filter(Boolean);
+  if (statuses.includes('scaduto')) return 'scaduto';
+  if (statuses.includes('urgente')) return 'urgente';
+  if (statuses.includes('ok'))      return 'ok';
+  return null;
+}
+
+// Badge inline per FleetPage
+function ScadenzaBadge({ stato }) {
+  if (!stato) return null;
+  const c = SCAD_COLOR[stato];
+  const label = stato === 'scaduto' ? 'Scaduto' : stato === 'urgente' ? 'In scadenza' : null;
+  if (!label) return null;
+  return (
+    <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', padding: '2px 7px', borderRadius: 10, background: c.bg, color: c.text, border: `1px solid ${c.border}`, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+      <span style={{ width: 5, height: 5, borderRadius: '50%', background: c.dot, display: 'inline-block' }} />
+      {label}
+    </span>
+  );
+}
+
+// Modal per gestire tutte le scadenze di un veicolo
+function ScadenzeModal({ vehicle, scadenze, onSave, onClose }) {
+  const initVeh = scadenze?.[vehicle.id] || {};
+  const [draft, setDraft] = useState(() =>
+    Object.fromEntries(Object.keys(SCADENZE_TIPI).map(k => [k, { data: initVeh[k]?.data || '', note: initVeh[k]?.note || '' }]))
+  );
+  const [saved, setSaved] = useState(false);
+
+  const set = (tipo, field, val) => setDraft(d => ({ ...d, [tipo]: { ...d[tipo], [field]: val } }));
+
+  const handleSave = () => {
+    onSave({ ...scadenze, [vehicle.id]: draft });
+    setSaved(true);
+    setTimeout(() => { setSaved(false); onClose(); }, 900);
+  };
+
+  const oggi = new Date().toISOString().slice(0,10);
+  const inputStyle = { width: '100%', padding: '7px 10px', border: '1px solid var(--border)', borderRadius: 5, fontSize: 13, background: 'var(--bg)', color: 'var(--ink)', fontFamily: 'var(--font-sans)', boxSizing: 'border-box' };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ background: 'var(--bg)', borderRadius: 10, padding: '28px 32px', width: 520, maxWidth: '95vw', maxHeight: '90vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,.25)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
+          <div>
+            <h2 style={{ margin: 0, fontSize: 18, fontFamily: 'var(--font-serif)', fontWeight: 600 }}>Scadenze mezzo</h2>
+            <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 3 }}>
+              {vehicle.targa} · {vehicle.marca} {vehicle.modello}
+            </div>
+          </div>
+          <button type="button" onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', fontSize: 22 }}>×</button>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {Object.entries(SCADENZE_TIPI).map(([tipo, def]) => {
+            const val  = draft[tipo];
+            const stato = scadenzaStatus(val.data);
+            const c = stato ? SCAD_COLOR[stato] : null;
+            const diffDays = val.data ? Math.round((new Date(val.data+'T00:00:00') - new Date(oggi+'T00:00:00')) / 86400000) : null;
+            return (
+              <div key={tipo} style={{ padding: '14px 16px', border: `1.5px solid ${c ? c.border : 'var(--border)'}`, borderRadius: 8, background: c ? c.bg : 'var(--surface-2)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                  <span style={{ fontSize: 16 }}>{def.icon}</span>
+                  <span style={{ fontWeight: 700, fontSize: 14, color: c ? c.text : 'var(--ink)' }}>{def.label}</span>
+                  {stato && <ScadenzaBadge stato={stato} />}
+                  {diffDays !== null && (
+                    <span style={{ fontSize: 11, color: 'var(--muted)', marginLeft: 'auto' }}>
+                      {diffDays < 0 ? `${Math.abs(diffDays)}gg fa` : diffDays === 0 ? 'Oggi' : `tra ${diffDays} gg`}
+                    </span>
+                  )}
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  <div>
+                    <label style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--ink-2)', display: 'block', marginBottom: 4 }}>Data scadenza</label>
+                    <input type="date" value={val.data} onChange={e => set(tipo, 'data', e.target.value)} style={inputStyle} />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--ink-2)', display: 'block', marginBottom: 4 }}>Nota</label>
+                    <input type="text" value={val.note} onChange={e => set(tipo, 'note', e.target.value)} placeholder="Officina, riferimento…" style={inputStyle} />
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
+          <button type="button" onClick={handleSave}
+            style={{ flex: 1, padding: '10px', background: saved ? '#27ae60' : 'var(--ink)', color: '#fff', border: 'none', borderRadius: 5, fontSize: 14, fontWeight: 600, cursor: 'pointer', transition: 'background .2s' }}>
+            {saved ? '✓ Salvato' : 'Salva scadenze'}
+          </button>
+          <button type="button" onClick={onClose}
+            style={{ padding: '10px 20px', background: 'var(--surface-2)', color: 'var(--ink)', border: '1px solid var(--border)', borderRadius: 5, fontSize: 14, cursor: 'pointer' }}>
+            Annulla
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Widget scadenze per Dashboard — mostra i mezzi con problemi
+function ScadenzeWidget({ fleet, scadenze, onGoFlotta }) {
+  const today = new Date().toISOString().slice(0,10);
+
+  const problemi = useMemo(() => {
+    const result = [];
+    (fleet || []).forEach(v => {
+      if (v.stato === 'venduto') return;
+      const vScad = scadenze?.[v.id];
+      if (!vScad) return;
+      Object.entries(SCADENZE_TIPI).forEach(([tipo, def]) => {
+        const data = vScad[tipo]?.data;
+        if (!data) return;
+        const stato = scadenzaStatus(data);
+        if (stato === 'ok') return;
+        const diffDays = Math.round((new Date(data+'T00:00:00') - new Date(today+'T00:00:00')) / 86400000);
+        result.push({ vehicle: v, tipo, def, data, stato, diffDays });
+      });
+    });
+    return result.sort((a,b) => a.diffDays - b.diffDays).slice(0, 6);
+  }, [fleet, scadenze, today]);
+
+  if (problemi.length === 0) return null;
+
+  const scaduti = problemi.filter(p => p.stato === 'scaduto').length;
+  const urgenti = problemi.filter(p => p.stato === 'urgente').length;
+
+  return (
+    <div className="card-paper" style={{ marginBottom: 20 }}>
+      <div className="px-5 py-4 border-b flex items-center justify-between" style={{ borderColor: 'var(--border)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <AlertTriangle className="w-4 h-4" style={{ color: scaduti > 0 ? '#c0392b' : '#e67e22' }} />
+          <h3 className="serif text-lg font-medium">Scadenze mezzo</h3>
+          {scaduti > 0 && <span style={{ fontSize: 10, fontWeight: 700, background: '#fdecea', color: '#c0392b', border: '1px solid #c0392b', padding: '1px 7px', borderRadius: 10 }}>{scaduti} SCADUTI</span>}
+          {urgenti > 0 && <span style={{ fontSize: 10, fontWeight: 700, background: '#fff8e6', color: '#d35400', border: '1px solid #e67e22', padding: '1px 7px', borderRadius: 10 }}>{urgenti} urgenti</span>}
+        </div>
+        <button type="button" onClick={onGoFlotta}
+          style={{ fontSize: 12, color: 'var(--ink-2)', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+          Gestisci <ChevronRight className="w-3 h-3" />
+        </button>
+      </div>
+      <div style={{ padding: '8px 0' }}>
+        {problemi.map((p, i) => {
+          const c = SCAD_COLOR[p.stato];
+          return (
+            <div key={`${p.vehicle.id}-${p.tipo}`} style={{ padding: '8px 20px', display: 'flex', alignItems: 'center', gap: 12, borderBottom: i < problemi.length-1 ? '1px solid var(--border)' : 'none' }}>
+              <span style={{ fontSize: 14 }}>{p.def.icon}</span>
+              <div style={{ flex: 1 }}>
+                <span style={{ fontWeight: 600, fontSize: 13 }}>{p.vehicle.targa}</span>
+                <span style={{ fontSize: 12, color: 'var(--muted)', marginLeft: 6 }}>{p.vehicle.marca} {p.vehicle.modello}</span>
+                <span style={{ fontSize: 12, color: 'var(--muted)', marginLeft: 6 }}>· {p.def.label}</span>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <ScadenzaBadge stato={p.stato} />
+                <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 2 }}>
+                  {p.diffDays < 0 ? `${Math.abs(p.diffDays)} giorni fa` : p.diffDays === 0 ? 'Oggi' : `${p.diffDays} giorni`}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// REMINDER WHATSAPP — ritiri e rientri del giorno
+// Widget Dashboard: mostra prenotazioni con ritiro oggi/domani
+// e rientri attesi oggi. Link WhatsApp pre-compilato per ogni cliente.
+// ═══════════════════════════════════════════════════════════════════
+function buildWAReminder(preno, agency, tipo) {
+  const nome   = [preno.clienteNome, preno.clienteCognome].filter(Boolean).join(' ') || 'cliente';
+  const mezzo  = preno.vehicleLabel || 'mezzo';
+  const agenzia = agency?.nome || 'Edonoleggio';
+  const tel     = agency?.telefono ? `\nInfo: ${agency.telefono}` : '';
+
+  let testo = '';
+  if (tipo === 'ritiro_oggi') {
+    testo = `Ciao ${nome}! 👋\nTi confermiamo il noleggio di un/una *${mezzo}* per *oggi ${preno.dal}*.\nPuoi ritirare il mezzo presso ${agenzia}, Lampedusa.${tel}\n\nA presto! 🌊`;
+  } else if (tipo === 'ritiro_domani') {
+    testo = `Ciao ${nome}! 👋\nTi ricordiamo che domani inizia il tuo noleggio: *${mezzo}* dal *${preno.dal}*.\nPassaci a trovare domani mattina presso ${agenzia}, Lampedusa.${tel}\n\nA presto! 🌊`;
+  } else if (tipo === 'rientro') {
+    testo = `Ciao ${nome}! 👋\nTi ricordiamo che oggi *${preno.al}* è l'ultimo giorno del tuo noleggio.\nPuoi riconsegnare il mezzo presso ${agenzia} entro le ore 19:00.${tel}\n\nGrazie e arrivederci! 🌊`;
+  }
+
+  const rawPhone = (preno.clienteTel || '').replace(/\D/g,'').replace(/^0+/,'');
+  const phone = rawPhone.startsWith('390') ? rawPhone.replace(/^390/,'39') : rawPhone;
+  const base  = phone ? `https://wa.me/${phone.startsWith('39') ? phone : '39'+phone}` : 'https://wa.me/';
+  return `${base}?text=${encodeURIComponent(testo)}`;
+}
+
+function RitiriWidget({ prenotazioni, agency, setPage }) {
+  const today    = new Date().toISOString().slice(0,10);
+  const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0,10);
+
+  const ritiriOggi   = (prenotazioni||[]).filter(p => p.dal === today    && p.stato !== 'cancellata' && p.fonte !== 'rentme');
+  const ritiriDomani = (prenotazioni||[]).filter(p => p.dal === tomorrow  && p.stato !== 'cancellata' && p.fonte !== 'rentme');
+  const rientriOggi  = (prenotazioni||[]).filter(p => p.al === today     && p.stato !== 'cancellata' && p.fonte !== 'rentme' && p.stato !== 'completata');
+
+  const total = ritiriOggi.length + ritiriDomani.length + rientriOggi.length;
+  if (total === 0) return null;
+
+  const fmtName = (p) => [p.clienteCognome, p.clienteNome].filter(Boolean).join(' ') || '—';
+
+  const Row = ({ p, tipo }) => {
+    const waUrl   = buildWAReminder(p, agency, tipo);
+    const hasTel  = !!(p.clienteTel || '').trim();
+    const tipoLabel = tipo === 'ritiro_oggi' ? 'Ritiro oggi' : tipo === 'ritiro_domani' ? 'Ritiro domani' : 'Rientro oggi';
+    const tipoColor = tipo === 'rientro' ? '#7d3c98' : tipo === 'ritiro_oggi' ? '#27ae60' : '#1f5d83';
+    return (
+      <div style={{ padding: '10px 20px', display: 'flex', alignItems: 'center', gap: 12, borderBottom: '1px solid var(--border)' }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 600, fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
+            {fmtName(p)}
+            <span style={{ fontSize: 10, fontWeight: 700, background: tipoColor+'18', color: tipoColor, border: `1px solid ${tipoColor}44`, padding: '1px 7px', borderRadius: 10, textTransform: 'uppercase', letterSpacing: '.04em' }}>{tipoLabel}</span>
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>
+            {p.vehicleLabel}
+            {p.clienteTel && <span style={{ marginLeft: 8 }}>· {p.clienteTel}</span>}
+          </div>
+        </div>
+        <a href={waUrl} target="_blank" rel="noopener noreferrer"
+          title={hasTel ? `WhatsApp a ${p.clienteTel}` : 'Nessun telefono — si aprirà WhatsApp vuoto'}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 12px', background: hasTel ? '#25d366' : '#aaa', color: '#fff', borderRadius: 5, textDecoration: 'none', fontSize: 12, fontWeight: 600, flexShrink: 0 }}>
+          <Send className="w-3 h-3" /> WhatsApp
+        </a>
+      </div>
+    );
+  };
+
+  return (
+    <div className="card-paper" style={{ marginBottom: 20 }}>
+      <div className="px-5 py-4 border-b flex items-center justify-between" style={{ borderColor: 'var(--border)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <PhoneCall className="w-4 h-4" style={{ color: '#27ae60' }} />
+          <h3 className="serif text-lg font-medium">Reminder WhatsApp</h3>
+          <span style={{ fontSize: 11, color: 'var(--muted)' }}>{total} movimenti</span>
+        </div>
+        <button type="button" onClick={() => setPage('prenotazioni')}
+          style={{ fontSize: 12, color: 'var(--ink-2)', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+          Tutte <ChevronRight className="w-3 h-3" />
+        </button>
+      </div>
+      {ritiriOggi.map(p   => <Row key={p.id} p={p} tipo="ritiro_oggi" />)}
+      {rientriOggi.map(p  => <Row key={p.id} p={p} tipo="rientro" />)}
+      {ritiriDomani.map(p => <Row key={p.id} p={p} tipo="ritiro_domani" />)}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// PREVENTIVI MULTILINGUA — IT / EN / ES
+// Traduzione testi per PDF preventivo e messaggio WhatsApp.
+// ═══════════════════════════════════════════════════════════════════
+
+const PREVENTIVO_LANGS = [
+  { id: 'it', flag: '🇮🇹', label: 'Italiano' },
+  { id: 'en', flag: '🇬🇧', label: 'English'  },
+  { id: 'es', flag: '🇪🇸', label: 'Español'  },
+];
+
+const PREVENTIVO_I18N = {
+  it: {
+    docTitle:      'PREVENTIVO',
+    dettagliTitle: 'Dettagli noleggio',
+    categoria:     'Categoria',
+    dal:           'Dal',
+    al:            'Al',
+    stagione:      'Stagione',
+    tariffaTipo:   'Tipo tariffa',
+    tariffeTitle:  'Dettaglio tariffe',
+    periodo:       'Periodo',
+    giorni:        'Giorni',
+    tariffa:       'Tariffa/gg',
+    subtotale:     'Subtotale',
+    totaleLabel:   'Totale preventivo',
+    ivaInclusa:    'IVA inclusa',
+    disponibilita: 'Salvo disponibilità alla conferma',
+    disclaimer:    'Questo preventivo è indicativo e non costituisce contratto. Valido 7 giorni dalla data di emissione.',
+    settimanale:   'Settimanale (più conveniente)',
+    giornaliera:   'Giornaliera',
+    waText: (cat, dal, al, giorni, seas, totale, risparmio) =>
+      `Preventivo Edonoleggio Lampedusa\nMezzo: ${cat}\nDal ${dal} al ${al} (${giorni} giorni)\nStagione: ${seas}\nTotale: €${totale}` +
+      (risparmio > 0 ? ` (risparmi €${risparmio} con la tariffa settimanale)` : '') +
+      `\n\nConfermate disponibilità e prezzo? Grazie!`,
+  },
+  en: {
+    docTitle:      'QUOTE',
+    dettagliTitle: 'Rental details',
+    categoria:     'Category',
+    dal:           'From',
+    al:            'To',
+    stagione:      'Season',
+    tariffaTipo:   'Rate type',
+    tariffeTitle:  'Rate breakdown',
+    periodo:       'Period',
+    giorni:        'Days',
+    tariffa:       'Rate/day',
+    subtotale:     'Subtotal',
+    totaleLabel:   'Total estimate',
+    ivaInclusa:    'VAT included',
+    disponibilita: 'Subject to availability at confirmation',
+    disclaimer:    'This quote is for information only and does not constitute a contract. Valid for 7 days from issue date.',
+    settimanale:   'Weekly rate (best value)',
+    giornaliera:   'Daily rate',
+    waText: (cat, dal, al, giorni, seas, totale, risparmio) =>
+      `Quote from Edonoleggio Lampedusa\nVehicle: ${cat}\nFrom ${dal} to ${al} (${giorni} days)\nSeason: ${seas}\nTotal: €${totale}` +
+      (risparmio > 0 ? ` (save €${risparmio} with weekly rate)` : '') +
+      `\n\nCan you confirm availability and price? Thank you!`,
+  },
+  es: {
+    docTitle:      'PRESUPUESTO',
+    dettagliTitle: 'Detalles del alquiler',
+    categoria:     'Categoría',
+    dal:           'Desde',
+    al:            'Hasta',
+    stagione:      'Temporada',
+    tariffaTipo:   'Tipo de tarifa',
+    tariffeTitle:  'Desglose de tarifas',
+    periodo:       'Período',
+    giorni:        'Días',
+    tariffa:       'Tarifa/día',
+    subtotale:     'Subtotal',
+    totaleLabel:   'Total estimado',
+    ivaInclusa:    'IVA incluido',
+    disponibilita: 'Sujeto a disponibilidad al confirmar',
+    disclaimer:    'Este presupuesto es orientativo y no constituye contrato. Válido 7 días desde la fecha de emisión.',
+    settimanale:   'Tarifa semanal (más económico)',
+    giornaliera:   'Tarifa diaria',
+    waText: (cat, dal, al, giorni, seas, totale, risparmio) =>
+      `Presupuesto Edonoleggio Lampedusa\nVehículo: ${cat}\nDel ${dal} al ${al} (${giorni} días)\nTemporada: ${seas}\nTotal: €${totale}` +
+      (risparmio > 0 ? ` (ahorra €${risparmio} con tarifa semanal)` : '') +
+      `\n\n¿Podéis confirmar disponibilidad y precio? ¡Gracias!`,
+  },
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPORT STORICO RENTME
+// Scarica TUTTO lo storico prenotazioni da RentMe, mostra anteprima,
+// poi importa in Pratica con deduplication clienti.
+// Aggiunge le prenotazioni storiche senza sovrascrivere i dati locali.
+// ═══════════════════════════════════════════════════════════════════
+
+function ImportStoricoModal({ existingPreno, existingCustomers, onImport, onClose, pushToast }) {
+  const [step,    setStep]    = useState('idle'); // idle | loading | preview | done
+  const [rawRows, setRawRows] = useState([]);
+  const [selected, setSelected] = useState(new Set());
+  const [error,   setError]   = useState(null);
+  const [stats,   setStats]   = useState(null);
+
+  // Chiave univoca per identificare duplicati: targa + dal
+  const existingKeys = useMemo(() => {
+    const s = new Set();
+    (existingPreno || []).forEach(p => {
+      if (p.rentmeTarga && p.dal) s.add(`${p.rentmeTarga}_${p.dal}`);
+    });
+    return s;
+  }, [existingPreno]);
+
+  async function fetchStorico() {
+    setStep('loading');
+    setError(null);
+    try {
+      const r = await fetch(`${RENTME_API_BASE}/user/getVeicoli/${RENTME_USER_ID}`);
+      if (!r.ok) throw new Error(`RentMe API: ${r.status}`);
+      const data = await r.json();
+      const veicoli = data.listObject || [];
+
+      const rows = [];
+      veicoli.forEach(v => {
+        (v.dateImpegno || []).forEach(di => {
+          const p = di.split('|');
+          if (p.length < 2 || !p[0] || !p[1]) return;
+          const clienteFull = (p[2]||'').trim();
+          const parti = clienteFull.split(' ');
+          const key = `${v.targa}_${p[0]}`;
+          rows.push({
+            key,
+            targa:    v.targa,
+            mezzo:    [v.tipo, v.marca, v.modello, v.cilindrata].filter(Boolean).join(' '),
+            tipoVeh:  v.tipo || '',
+            slugVeh:  [v.tipo, v.marca, v.modello, v.cilindrata].join('-').toLowerCase().replace(/\s+/g,'').replace(/[^a-z0-9-]/g,''),
+            dal:      p[0],
+            al:       p[1],
+            cliente:  clienteFull,
+            nome:     parti[0] || '',
+            cognome:  parti.slice(1).join(' ') || clienteFull,
+            acconto:  parseFloat(p[3]) || 0,
+            prezzo:   parseFloat(p[4]) || 0,
+            note:     (p[5]||'').trim(),
+            isDup:    existingKeys.has(key),
+          });
+        });
+      });
+
+      // Ordina per data decrescente
+      rows.sort((a,b) => b.dal.localeCompare(a.dal));
+
+      // Seleziona solo i non-duplicati di default
+      const newSel = new Set(rows.filter(r => !r.isDup).map(r => r.key));
+      setRawRows(rows);
+      setSelected(newSel);
+
+      // Calcola stats
+      const nuovi = rows.filter(r => !r.isDup).length;
+      const dup   = rows.filter(r => r.isDup).length;
+      // Clienti unici (per nome)
+      const clientiUnici = new Set(rows.map(r => r.cliente.toLowerCase().trim()).filter(Boolean));
+      const clientiEsist = new Set((existingCustomers||[]).map(c => `${c.cognome} ${c.nome}`.toLowerCase().trim()));
+      const clientiNuovi = [...clientiUnici].filter(c => !clientiEsist.has(c)).length;
+      setStats({ tot: rows.length, nuovi, dup, clientiUnici: clientiUnici.size, clientiNuovi });
+      setStep('preview');
+    } catch(e) {
+      setError(e.message);
+      setStep('idle');
+    }
+  }
+
+  function toggleRow(key) {
+    setSelected(prev => {
+      const next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
+      return next;
+    });
+  }
+
+  function toggleAll() {
+    const nonDup = rawRows.filter(r => !r.isDup).map(r => r.key);
+    setSelected(prev => prev.size === nonDup.length ? new Set() : new Set(nonDup));
+  }
+
+  function doImport() {
+    const toImport = rawRows.filter(r => selected.has(r.key));
+    if (!toImport.length) return;
+
+    // Costruisce prenotazioni
+    const newPreno = toImport.map(r => ({
+      id:            `rm_hist_${r.targa}_${r.dal.replace(/-/g,'')}`,
+      createdAt:     new Date().toISOString(),
+      updatedAt:     new Date().toISOString(),
+      clienteNome:   r.nome,
+      clienteCognome:r.cognome,
+      clienteTel:    '',
+      vehicleId:     r.slugVeh,
+      vehicleLabel:  r.mezzo,
+      vehicleType:   r.tipoVeh,
+      dal:           r.dal,
+      al:            r.al,
+      stato:         new Date(r.al) < new Date() ? 'completata' : 'confermata',
+      fonte:         'rentme_storico',
+      prezzo:        r.prezzo,
+      acconto:       r.acconto,
+      note:          r.note,
+      rentmeTarga:   r.targa,
+    }));
+
+    // Costruisce clienti nuovi (deduplication sul nome completo)
+    const clientiEsistMap = {};
+    (existingCustomers||[]).forEach(c => {
+      clientiEsistMap[`${c.cognome} ${c.nome}`.toLowerCase().trim()] = c;
+    });
+    const clientiNuovi = [];
+    const visti = new Set();
+    toImport.forEach(r => {
+      const k = r.cliente.toLowerCase().trim();
+      if (k && !clientiEsistMap[k] && !visti.has(k)) {
+        visti.add(k);
+        clientiNuovi.push({
+          id:        `cust_rm_${Date.now()}_${Math.random().toString(36).slice(2,6)}`,
+          nome:      r.nome,
+          cognome:   r.cognome,
+          tel:       '',
+          email:     '',
+          createdAt: new Date().toISOString(),
+          note:      'Importato da RentMe storico',
+        });
+      }
+    });
+
+    onImport({ prenotazioni: newPreno, clienti: clientiNuovi });
+    setStats(s => ({ ...s, importati: newPreno.length, clientiCreati: clientiNuovi.length }));
+    setStep('done');
+    pushToast && pushToast({
+      tone: 'success',
+      title: 'Storico importato',
+      message: `${newPreno.length} prenotazioni · ${clientiNuovi.length} clienti nuovi`,
+    });
+  }
+
+  const inputS = { padding: '4px 8px', border: '1px solid var(--border)', borderRadius: 4, fontSize: 12, background: 'var(--bg)', color: 'var(--ink)' };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 900, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div style={{ background: 'var(--bg)', borderRadius: 10, padding: '24px 28px', width: 740, maxWidth: '100%', maxHeight: '90vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,.25)' }}>
+
+        {/* Header */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
+          <div>
+            <h2 style={{ margin: 0, fontSize: 18, fontFamily: 'var(--font-serif)', fontWeight: 600 }}>Import storico da RentMe</h2>
+            <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--muted)' }}>
+              Scarica tutte le prenotazioni passate da RentMe e importale in Pratica.
+            </p>
+          </div>
+          <button type="button" onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', fontSize: 22 }}>×</button>
+        </div>
+
+        {/* IDLE — pulsante start */}
+        {step === 'idle' && (
+          <div style={{ textAlign: 'center', padding: '32px 0' }}>
+            {error && (
+              <div style={{ background: '#fdecea', color: '#c0392b', border: '1px solid #e8b4b8', borderRadius: 6, padding: '10px 14px', marginBottom: 16, fontSize: 13 }}>
+                ⚠️ {error}
+              </div>
+            )}
+            <div style={{ fontSize: 14, color: 'var(--ink-2)', marginBottom: 20 }}>
+              Connette a RentMe e scarica l'elenco completo degli impegni per tutti i mezzi della flotta.
+            </div>
+            <button type="button" onClick={fetchStorico}
+              style={{ padding: '12px 28px', background: 'var(--ink)', color: 'var(--bg)', border: 'none', borderRadius: 6, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
+              Scarica da RentMe
+            </button>
+          </div>
+        )}
+
+        {/* LOADING */}
+        {step === 'loading' && (
+          <div style={{ textAlign: 'center', padding: '48px 0', color: 'var(--muted)' }}>
+            <div style={{ fontSize: 32, marginBottom: 12 }}>⏳</div>
+            <div style={{ fontSize: 14 }}>Connessione a RentMe in corso…</div>
+          </div>
+        )}
+
+        {/* PREVIEW */}
+        {step === 'preview' && stats && (
+          <>
+            {/* Stats */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10, marginBottom: 18 }}>
+              {[
+                { label: 'Totale trovati',   value: stats.tot,           color: 'var(--ink)' },
+                { label: 'Nuovi (da import)',value: stats.nuovi,         color: '#27ae60' },
+                { label: 'Già presenti',     value: stats.dup,           color: 'var(--muted)' },
+                { label: 'Clienti nuovi',    value: stats.clientiNuovi,  color: '#1f5d83' },
+              ].map(s => (
+                <div key={s.label} style={{ background: 'var(--surface-2)', borderRadius: 6, padding: '10px 12px', textAlign: 'center' }}>
+                  <div style={{ fontSize: 22, fontWeight: 700, fontFamily: 'var(--font-serif)', color: s.color }}>{s.value}</div>
+                  <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 3, textTransform: 'uppercase', letterSpacing: '.05em' }}>{s.label}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Toggle selezione */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+              <button type="button" onClick={toggleAll}
+                style={{ fontSize: 12, padding: '4px 12px', borderRadius: 4, border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--ink-2)', cursor: 'pointer' }}>
+                {selected.size > 0 ? 'Deseleziona tutti' : 'Seleziona tutti i nuovi'}
+              </button>
+              <span style={{ fontSize: 12, color: 'var(--muted)' }}>{selected.size} selezionati</span>
+            </div>
+
+            {/* Tabella preview */}
+            <div style={{ border: '1px solid var(--border)', borderRadius: 6, overflow: 'hidden', maxHeight: 360, overflowY: 'auto', marginBottom: 16 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                <thead style={{ position: 'sticky', top: 0, background: 'var(--surface-2)', zIndex: 1 }}>
+                  <tr>
+                    {['', 'Dal', 'Al', 'Cliente', 'Mezzo', '€', 'Stato'].map(h => (
+                      <th key={h} style={{ padding: '7px 10px', textAlign: 'left', fontWeight: 700, fontSize: 10, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--muted)', borderBottom: '1px solid var(--border)' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {rawRows.map(r => (
+                    <tr key={r.key}
+                      style={{ borderBottom: '1px solid var(--border)', opacity: r.isDup ? 0.45 : 1, background: selected.has(r.key) ? 'var(--surface-2)' : 'transparent', cursor: r.isDup ? 'default' : 'pointer' }}
+                      onClick={() => !r.isDup && toggleRow(r.key)}>
+                      <td style={{ padding: '7px 10px', width: 28 }}>
+                        {r.isDup
+                          ? <span title="Già presente" style={{ color: 'var(--muted)', fontSize: 14 }}>✓</span>
+                          : <input type="checkbox" checked={selected.has(r.key)} onChange={() => toggleRow(r.key)} onClick={e => e.stopPropagation()} />
+                        }
+                      </td>
+                      <td style={{ padding: '7px 10px', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>{r.dal}</td>
+                      <td style={{ padding: '7px 10px', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>{r.al}</td>
+                      <td style={{ padding: '7px 10px', fontWeight: 500 }}>{r.cliente || '—'}</td>
+                      <td style={{ padding: '7px 10px', color: 'var(--muted)' }}>{r.mezzo}</td>
+                      <td style={{ padding: '7px 10px', textAlign: 'right', fontFamily: 'monospace' }}>{r.prezzo > 0 ? `€${r.prezzo}` : '—'}</td>
+                      <td style={{ padding: '7px 10px' }}>
+                        {r.isDup
+                          ? <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase' }}>già importato</span>
+                          : new Date(r.al) < new Date()
+                            ? <span style={{ fontSize: 9, fontWeight: 700, color: '#1e8449', textTransform: 'uppercase' }}>storico</span>
+                            : <span style={{ fontSize: 9, fontWeight: 700, color: '#1f5d83', textTransform: 'uppercase' }}>futuro</span>
+                        }
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Actions */}
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button type="button" onClick={doImport} disabled={selected.size === 0}
+                style={{ flex: 1, padding: '11px', background: selected.size === 0 ? 'var(--muted)' : 'var(--ink)', color: '#fff', border: 'none', borderRadius: 5, fontSize: 14, fontWeight: 600, cursor: selected.size === 0 ? 'not-allowed' : 'pointer' }}>
+                Importa {selected.size} prenotazioni
+              </button>
+              <button type="button" onClick={onClose}
+                style={{ padding: '11px 22px', background: 'var(--surface-2)', color: 'var(--ink)', border: '1px solid var(--border)', borderRadius: 5, fontSize: 14, cursor: 'pointer' }}>
+                Annulla
+              </button>
+            </div>
+          </>
+        )}
+
+        {/* DONE */}
+        {step === 'done' && stats && (
+          <div style={{ textAlign: 'center', padding: '32px 0' }}>
+            <div style={{ fontSize: 48, marginBottom: 12 }}>✅</div>
+            <div style={{ fontSize: 18, fontFamily: 'var(--font-serif)', fontWeight: 600, marginBottom: 6 }}>
+              Import completato
+            </div>
+            <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 24 }}>
+              {stats.importati} prenotazioni importate · {stats.clientiCreati} clienti nuovi creati
+            </div>
+            <button type="button" onClick={onClose}
+              style={{ padding: '10px 28px', background: 'var(--ink)', color: '#fff', border: 'none', borderRadius: 5, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
+              Chiudi
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// CHECK-IN/OUT FOTOGRAFICO
+// Scatta o carica foto alla consegna (check-in) e al rientro (check-out).
+// Foto compresse a max 800px e salvate in base64 nella prenotazione.
+// Struttura: preno.foto = { consegna: [dataUrl,...], rientro: [dataUrl,...] }
+// ═══════════════════════════════════════════════════════════════════
+
+// Comprime un'immagine a max maxW px di larghezza, qualità 0.75
+function compressImage(file, maxW = 800) {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const scale = Math.min(1, maxW / img.width);
+        const w = Math.round(img.width * scale);
+        const h = Math.round(img.height * scale);
+        const canvas = document.createElement('canvas');
+        canvas.width  = w;
+        canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', 0.75));
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+// Badge con contatore foto per PrenoCard
+function FotoBadge({ preno }) {
+  const n = ((preno?.foto?.consegna?.length || 0) + (preno?.foto?.rientro?.length || 0));
+  if (n === 0) return null;
+  return (
+    <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 7px', borderRadius: 10,
+      background: '#eaf4fb', color: '#1f5d83', border: '1px solid #c0dff0',
+      display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+      📷 {n}
+    </span>
+  );
+}
+
+function FotoModal({ prenotazione, onSave, onClose }) {
+  const [foto, setFoto] = useState(() => ({
+    consegna: prenotazione?.foto?.consegna || [],
+    rientro:  prenotazione?.foto?.rientro  || [],
+  }));
+  const [loading, setLoading] = useState(false);
+  const [preview, setPreview] = useState(null); // { src, fase }
+  const [saved,   setSaved]   = useState(false);
+  const MAX_FOTO = 4;
+
+  async function handleFiles(fase, files) {
+    if (!files?.length) return;
+    setLoading(true);
+    const compressed = await Promise.all([...files].slice(0, MAX_FOTO - foto[fase].length).map(f => compressImage(f)));
+    setFoto(prev => ({ ...prev, [fase]: [...prev[fase], ...compressed].slice(0, MAX_FOTO) }));
+    setLoading(false);
+  }
+
+  function removeFoto(fase, idx) {
+    setFoto(prev => ({ ...prev, [fase]: prev[fase].filter((_, i) => i !== idx) }));
+  }
+
+  function handleSave() {
+    onSave({ ...prenotazione, foto });
+    setSaved(true);
+    setTimeout(() => { setSaved(false); onClose(); }, 900);
+  }
+
+  const cliente = [prenotazione.clienteCognome, prenotazione.clienteNome].filter(Boolean).join(' ') || 'Cliente';
+  const veicolo = prenotazione.vehicleLabel || 'Mezzo';
+
+  const FaseSection = ({ fase, label, color }) => {
+    const inputRef = useRef();
+    const hasPhotos = foto[fase].length > 0;
+    return (
+      <div style={{ flex: 1 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+          <div style={{ fontWeight: 700, fontSize: 13, color }}>
+            {fase === 'consegna' ? '📤' : '📥'} {label}
+            <span style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 400, marginLeft: 6 }}>
+              {foto[fase].length}/{MAX_FOTO} foto
+            </span>
+          </div>
+          {foto[fase].length < MAX_FOTO && (
+            <button type="button" onClick={() => inputRef.current?.click()}
+              disabled={loading}
+              style={{ fontSize: 11, padding: '4px 10px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--ink-2)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+              {loading ? '…' : '+ Aggiungi'}
+            </button>
+          )}
+          <input ref={inputRef} type="file" accept="image/*" capture="environment" multiple
+            style={{ display: 'none' }}
+            onChange={e => handleFiles(fase, e.target.files)} />
+        </div>
+
+        {hasPhotos ? (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 6 }}>
+            {foto[fase].map((src, i) => (
+              <div key={i} style={{ position: 'relative', aspectRatio: '4/3', borderRadius: 6, overflow: 'hidden', cursor: 'pointer', border: '1px solid var(--border)' }}>
+                <img src={src} alt={`${label} ${i+1}`}
+                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                  onClick={() => setPreview({ src, fase })} />
+                <button type="button" onClick={() => removeFoto(fase, i)}
+                  style={{ position: 'absolute', top: 4, right: 4, width: 20, height: 20, borderRadius: '50%', background: 'rgba(0,0,0,.55)', border: 'none', color: '#fff', fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}>
+                  ×
+                </button>
+              </div>
+            ))}
+            {foto[fase].length < MAX_FOTO && (
+              <div onClick={() => inputRef.current?.click()}
+                style={{ aspectRatio: '4/3', borderRadius: 6, border: '2px dashed var(--border)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--muted)', fontSize: 11 }}>
+                <span style={{ fontSize: 22, marginBottom: 4 }}>+</span>
+                Aggiungi
+              </div>
+            )}
+          </div>
+        ) : (
+          <div onClick={() => inputRef.current?.click()}
+            style={{ border: '2px dashed var(--border)', borderRadius: 8, padding: '28px 16px', textAlign: 'center', cursor: 'pointer', color: 'var(--muted)' }}>
+            <div style={{ fontSize: 28, marginBottom: 8 }}>📷</div>
+            <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--ink-2)' }}>Aggiungi foto {label.toLowerCase()}</div>
+            <div style={{ fontSize: 11, marginTop: 4 }}>Scatta con la fotocamera o carica dal file</div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 900, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div style={{ background: 'var(--bg)', borderRadius: 10, padding: '24px 28px', width: 620, maxWidth: '100%', maxHeight: '90vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,.25)' }}>
+        {/* Header */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
+          <div>
+            <h2 style={{ margin: 0, fontSize: 17, fontFamily: 'var(--font-serif)', fontWeight: 600 }}>Foto check-in / check-out</h2>
+            <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 3 }}>
+              {cliente} · {veicolo} · {formatDate(prenotazione.dal)} → {formatDate(prenotazione.al)}
+            </div>
+          </div>
+          <button type="button" onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', fontSize: 22, lineHeight: 1 }}>×</button>
+        </div>
+
+        {/* Due colonne consegna / rientro */}
+        <div style={{ display: 'flex', gap: 20, marginBottom: 20 }}>
+          <FaseSection fase="consegna" label="Consegna" color="#1f5d83" />
+          <div style={{ width: 1, background: 'var(--border)', flexShrink: 0 }} />
+          <FaseSection fase="rientro"  label="Rientro"  color="#6a3d8f" />
+        </div>
+
+        {/* Confronto rapido se ci sono foto in entrambe le fasi */}
+        {foto.consegna.length > 0 && foto.rientro.length > 0 && (
+          <div style={{ background: 'var(--surface-2)', borderRadius: 8, padding: '12px 14px', marginBottom: 20 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--muted)', marginBottom: 8 }}>Confronto prima / dopo</div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <div style={{ flex: 1 }}>
+                <img src={foto.consegna[0]} alt="consegna" style={{ width: '100%', aspectRatio: '4/3', objectFit: 'cover', borderRadius: 5, border: '2px solid #1f5d83' }} />
+                <div style={{ fontSize: 10, textAlign: 'center', color: '#1f5d83', fontWeight: 600, marginTop: 4 }}>CONSEGNA</div>
+              </div>
+              <div style={{ flex: 1 }}>
+                <img src={foto.rientro[0]} alt="rientro" style={{ width: '100%', aspectRatio: '4/3', objectFit: 'cover', borderRadius: 5, border: '2px solid #6a3d8f' }} />
+                <div style={{ fontSize: 10, textAlign: 'center', color: '#6a3d8f', fontWeight: 600, marginTop: 4 }}>RIENTRO</div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Pulsanti */}
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button type="button" onClick={handleSave}
+            style={{ flex: 1, padding: '10px', background: saved ? '#27ae60' : 'var(--ink)', color: '#fff', border: 'none', borderRadius: 5, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
+            {saved ? '✓ Salvato' : 'Salva foto'}
+          </button>
+          <button type="button" onClick={onClose}
+            style={{ padding: '10px 20px', background: 'var(--surface-2)', color: 'var(--ink)', border: '1px solid var(--border)', borderRadius: 5, fontSize: 14, cursor: 'pointer' }}>
+            Chiudi
+          </button>
+        </div>
+      </div>
+
+      {/* Lightbox */}
+      {preview && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.85)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          onClick={() => setPreview(null)}>
+          <img src={preview.src} alt="preview" style={{ maxWidth: '90vw', maxHeight: '90vh', borderRadius: 8, boxShadow: '0 0 40px rgba(0,0,0,.5)' }} />
+          <button type="button" onClick={() => setPreview(null)}
+            style={{ position: 'fixed', top: 20, right: 28, background: 'rgba(255,255,255,.15)', border: 'none', color: '#fff', fontSize: 28, cursor: 'pointer', borderRadius: '50%', width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// PUSH NOTIFICATIONS — scadenze urgenti / scadute
+// ═══════════════════════════════════════════════════════════════════
+function useScadenzeNotifications(scadenze, fleet) {
+  const notifiedRef = useRef(new Set());
+
+  useEffect(() => {
+    if (!('Notification' in window)) return;
+    if (Notification.permission === 'denied') return;
+    if (!scadenze || !fleet || fleet.length === 0) return;
+
+    const today = new Date().toISOString().slice(0, 10);
+    const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+    const tipoLabel = { revisione: 'Revisione', assicurazione: 'Assicurazione', tagliando: 'Tagliando', bollo: 'Bollo' };
+
+    const urgenti = [];
+    fleet.forEach(v => {
+      const vs = scadenze[v.id];
+      if (!vs) return;
+      Object.entries(vs).forEach(([tipo, data]) => {
+        if (!data) return;
+        const stato = data <= today ? 'SCADUTA' : data <= tomorrow ? 'URGENTE' : null;
+        if (!stato) return;
+        const key = `${v.id}:${tipo}:${data}`;
+        if (notifiedRef.current.has(key)) return;
+        urgenti.push({ v, tipo, data, stato, key });
+      });
+    });
+
+    if (urgenti.length === 0) return;
+
+    async function fire() {
+      if (Notification.permission === 'default') {
+        const perm = await Notification.requestPermission();
+        if (perm !== 'granted') return;
+      }
+      if (Notification.permission !== 'granted') return;
+      urgenti.slice(0, 5).forEach(({ v, tipo, data, stato, key }) => {
+        notifiedRef.current.add(key);
+        new Notification(`⚠️ Edonoleggio — ${tipoLabel[tipo] || tipo} ${stato}`, {
+          body: `${v.targa || v.id} · scadenza ${data}`,
+          tag: key,
+          icon: '/favicon.ico',
+        });
+      });
+      if (urgenti.length > 5) {
+        new Notification(`⚠️ Edonoleggio — ${urgenti.length} scadenze da controllare`, {
+          body: 'Apri la sezione Flotta per i dettagli.',
+          tag: 'edo:scadenze:bulk',
+        });
+      }
+    }
+
+    const timer = setTimeout(fire, 2000); // piccolo delay per non bloccare il bootstrap
+    return () => clearTimeout(timer);
+  }, [scadenze, fleet]);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// CONTRATTO DI NOLEGGIO — IT / EN / ES
+// ═══════════════════════════════════════════════════════════════════
+const CONTRATTO_I18N = {
+  it: {
+    title: 'CONTRATTO DI NOLEGGIO',
+    subtitle: 'Edonoleggio — Lampedusa (AG) · Italy',
+    sections: {
+      renter: 'DATI CONDUCENTE',
+      vehicle: 'VEICOLO NOLEGGIATO',
+      period: 'PERIODO DI NOLEGGIO',
+      price: 'CORRISPETTIVO',
+      conditions: 'CONDIZIONI GENERALI',
+      signature: 'FIRME',
+    },
+    fields: {
+      name: 'Nome e Cognome', dob: 'Data di nascita', doc: 'Documento identità',
+      plate: 'Targa', model: 'Modello / Mezzo', type: 'Categoria',
+      from: 'Dal', to: 'Al', days: 'Giorni',
+      total: 'Totale noleggio', deposit: 'Deposito cauzionale',
+      advance: 'Acconto versato', balance: 'Saldo da corrispondere',
+      signDate: 'Data e luogo', clientSig: 'Firma del conducente / Renter signature',
+      agencySig: 'Per Edonoleggio',
+    },
+    conditions: [
+      'Il conducente si impegna a riconsegnare il veicolo nelle stesse condizioni di ritiro, pulito e con il serbatoio al livello di consegna.',
+      'Il veicolo non può essere guidato da persone non indicate nel presente contratto.',
+      'Sono vietati l\'uso off-road, il trasporto di merci o carichi non consentiti e l\'uscita dall\'isola senza autorizzazione scritta.',
+      'In caso di incidente, guasto o furto, il conducente deve avvisare immediatamente l\'agenzia e non spostare il veicolo prima dell\'arrivo dei soccorsi.',
+      'Il deposito cauzionale sarà restituito entro 48h dalla riconsegna del veicolo in buono stato, previa verifica dei danni.',
+      'Il carburante è a carico del conducente: il veicolo deve essere riconsegnato con lo stesso livello di carburante.',
+      'In caso di danni non segnalati al ritiro, il conducente risponde per l\'intero importo di riparazione a insindacabile giudizio dell\'agenzia.',
+      'Velocità massima consentita: nel rispetto del Codice della Strada in vigore.',
+    ],
+    print: 'Stampa contratto',
+  },
+  en: {
+    title: 'RENTAL AGREEMENT',
+    subtitle: 'Edonoleggio — Lampedusa (AG) · Italy',
+    sections: {
+      renter: 'RENTER INFORMATION',
+      vehicle: 'RENTED VEHICLE',
+      period: 'RENTAL PERIOD',
+      price: 'RENTAL FEES',
+      conditions: 'TERMS & CONDITIONS',
+      signature: 'SIGNATURES',
+    },
+    fields: {
+      name: 'Full name', dob: 'Date of birth', doc: 'Identity document',
+      plate: 'Plate / License', model: 'Model / Vehicle', type: 'Category',
+      from: 'From', to: 'To', days: 'Days',
+      total: 'Rental total', deposit: 'Security deposit',
+      advance: 'Advance paid', balance: 'Balance due',
+      signDate: 'Date and place', clientSig: 'Renter signature / Firma del conducente',
+      agencySig: 'For Edonoleggio',
+    },
+    conditions: [
+      'The renter undertakes to return the vehicle in the same condition as received, clean and with the fuel level as at delivery.',
+      'The vehicle may not be driven by persons not listed in this agreement.',
+      'Off-road use, transport of unauthorised goods or loads, and leaving the island without written authorisation are prohibited.',
+      'In case of accident, breakdown or theft, the renter must immediately notify the agency and must not move the vehicle before assistance arrives.',
+      'The security deposit will be refunded within 48h of the vehicle\'s return in good condition, subject to damage inspection.',
+      'Fuel is at the renter\'s expense: the vehicle must be returned with the same fuel level as at delivery.',
+      'Any damage not reported at pick-up is the full financial responsibility of the renter, at the sole discretion of the agency.',
+      'Maximum speed: in compliance with the applicable Highway Code.',
+    ],
+    print: 'Print contract',
+  },
+  es: {
+    title: 'CONTRATO DE ALQUILER',
+    subtitle: 'Edonoleggio — Lampedusa (AG) · Italy',
+    sections: {
+      renter: 'DATOS DEL CONDUCTOR',
+      vehicle: 'VEHÍCULO ALQUILADO',
+      period: 'PERÍODO DE ALQUILER',
+      price: 'TARIFAS',
+      conditions: 'TÉRMINOS Y CONDICIONES',
+      signature: 'FIRMAS',
+    },
+    fields: {
+      name: 'Nombre y apellido', dob: 'Fecha de nacimiento', doc: 'Documento de identidad',
+      plate: 'Matrícula', model: 'Modelo / Vehículo', type: 'Categoría',
+      from: 'Desde', to: 'Hasta', days: 'Días',
+      total: 'Total alquiler', deposit: 'Depósito de garantía',
+      advance: 'Anticipo pagado', balance: 'Saldo pendiente',
+      signDate: 'Fecha y lugar', clientSig: 'Firma del conductor / Renter signature',
+      agencySig: 'Por Edonoleggio',
+    },
+    conditions: [
+      'El conductor se compromete a devolver el vehículo en las mismas condiciones de recogida, limpio y con el nivel de combustible de la entrega.',
+      'El vehículo no puede ser conducido por personas no indicadas en el presente contrato.',
+      'Se prohíben el uso todoterreno, el transporte de mercancías o cargas no autorizadas y salir de la isla sin autorización escrita.',
+      'En caso de accidente, avería o robo, el conductor debe avisar inmediatamente a la agencia y no mover el vehículo antes de la llegada de asistencia.',
+      'El depósito de garantía será devuelto en 48h tras la entrega del vehículo en buen estado, previa inspección de daños.',
+      'El combustible corre a cargo del conductor: el vehículo debe devolverse con el mismo nivel que en la entrega.',
+      'Los daños no declarados al recoger el vehículo son responsabilidad íntegra del conductor, a criterio exclusivo de la agencia.',
+      'Velocidad máxima: según el Código de Circulación vigente.',
+    ],
+    print: 'Imprimir contrato',
+  },
+};
+
+function ContrattoModal({ preno, onClose }) {
+  const [lang, setLang] = useState('it');
+  const t = CONTRATTO_I18N[lang];
+  const f = t.fields;
+  const s = t.sections;
+
+  const cliente = [preno.clienteCognome, preno.clienteNome].filter(Boolean).join(' ') || '—';
+  const giorni = daysDiff(preno.dal, preno.al);
+  const saldo = (preno.prezzo || 0) - (preno.acconto || 0);
+  const typeLabel = { auto: 'Autovettura / Car / Coche', scooter: 'Scooter', quad: 'Quad / ATV', ebike: 'E-Bike' };
+
+  function printContratto() {
+    const w = window.open('', '_blank', 'width=820,height=960');
+    if (!w) { alert('Abilita i popup per stampare'); return; }
+    w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8">
+<title>${t.title}</title>
+<style>
+  *{box-sizing:border-box}
+  body{font-family:Georgia,serif;max-width:760px;margin:0 auto;padding:32px 44px;color:#1a1a1a;font-size:13px;line-height:1.5}
+  h1{font-size:21px;text-align:center;letter-spacing:3px;margin:0 0 4px;font-weight:700}
+  .sub{text-align:center;font-size:12px;color:#666;margin-bottom:28px;letter-spacing:1px}
+  .sec{font-size:10px;font-weight:700;letter-spacing:2.5px;text-transform:uppercase;border-bottom:1.5px solid #333;padding-bottom:5px;margin:22px 0 12px;color:#333}
+  .g2{display:grid;grid-template-columns:1fr 1fr;gap:6px 28px}
+  .g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px 20px}
+  .fld{margin-bottom:6px}
+  .lbl{font-size:10px;color:#888;text-transform:uppercase;letter-spacing:1px;margin-bottom:2px}
+  .val{font-size:13px;border-bottom:1px solid #ccc;padding-bottom:3px;min-height:19px;font-weight:600;color:#1a1a1a}
+  .box{background:#f7f6f2;border:1px solid #ddd;border-radius:4px;padding:12px 16px;margin:0}
+  .cond{font-size:11.5px;line-height:1.75;padding-left:0}
+  .cond li{margin-bottom:5px;list-style:none;padding-left:16px;position:relative}
+  .cond li::before{content:"→";position:absolute;left:0;color:#888}
+  .srow{display:grid;grid-template-columns:1fr 1fr;gap:48px;margin-top:44px}
+  .sbox{border-top:2px solid #1a1a1a;padding-top:10px}
+  .slbl{font-size:10px;color:#666;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px}
+  .sspace{height:72px}
+  .fimg{max-width:200px;height:72px;object-fit:contain}
+  .footer{font-size:10px;color:#bbb;margin-top:36px;text-align:center;border-top:1px solid #eee;padding-top:12px}
+  @media print{body{padding:20px 32px}@page{margin:1.5cm}}
+</style></head><body>
+<h1>${t.title}</h1>
+<div class="sub">${t.subtitle}</div>
+
+<div class="sec">${s.renter}</div>
+<div class="g2">
+  <div class="fld"><div class="lbl">${f.name}</div><div class="val">${cliente}</div></div>
+  <div class="fld"><div class="lbl">${f.doc}</div><div class="val">${preno.clienteDoc || '&nbsp;'}</div></div>
+  <div class="fld"><div class="lbl">${f.dob}</div><div class="val">${preno.clienteDdn ? formatDate(preno.clienteDdn) : '&nbsp;'}</div></div>
+  <div class="fld"><div class="lbl">Tel</div><div class="val">${preno.clienteTel || '&nbsp;'}</div></div>
+</div>
+
+<div class="sec">${s.vehicle}</div>
+<div class="g3">
+  <div class="fld"><div class="lbl">${f.plate}</div><div class="val">${preno.vehicleTarga || preno.vehicleLabel?.split(' ')[0] || '&nbsp;'}</div></div>
+  <div class="fld"><div class="lbl">${f.model}</div><div class="val">${preno.vehicleLabel || '&nbsp;'}</div></div>
+  <div class="fld"><div class="lbl">${f.type}</div><div class="val">${typeLabel[preno.tipo] || preno.tipo || '&nbsp;'}</div></div>
+</div>
+
+<div class="sec">${s.period}</div>
+<div class="g3">
+  <div class="fld"><div class="lbl">${f.from}</div><div class="val">${preno.dal ? formatDate(preno.dal) : '&nbsp;'}</div></div>
+  <div class="fld"><div class="lbl">${f.to}</div><div class="val">${preno.al ? formatDate(preno.al) : '&nbsp;'}</div></div>
+  <div class="fld"><div class="lbl">${f.days}</div><div class="val">${giorni}</div></div>
+</div>
+
+<div class="sec">${s.price}</div>
+<div class="box">
+<div class="g2">
+  <div class="fld"><div class="lbl">${f.total}</div><div class="val">€ ${preno.prezzo ?? '&nbsp;'}</div></div>
+  <div class="fld"><div class="lbl">${f.deposit}</div><div class="val">€ ${preno.deposito ?? '&nbsp;'}</div></div>
+  <div class="fld"><div class="lbl">${f.advance}</div><div class="val">€ ${preno.acconto ?? 0}</div></div>
+  <div class="fld"><div class="lbl">${f.balance}</div><div class="val">€ ${saldo >= 0 ? saldo : '&nbsp;'}</div></div>
+</div>
+</div>
+
+<div class="sec">${s.conditions}</div>
+<ul class="cond">${t.conditions.map(c => `<li>${c}</li>`).join('')}</ul>
+
+<div class="sec">${s.signature}</div>
+<div class="srow">
+  <div class="sbox">
+    <div class="slbl">${f.clientSig}</div>
+    ${preno.firma ? `<img class="fimg" src="${preno.firma}" alt="firma" />` : '<div class="sspace"></div>'}
+  </div>
+  <div class="sbox">
+    <div class="slbl">${f.agencySig}</div>
+    <div class="sspace"></div>
+  </div>
+</div>
+<div class="footer">Edonoleggio · Lampedusa (AG) · Italy · gius.dibella@gmail.com</div>
+</body></html>`);
+    w.document.close();
+    w.focus();
+    setTimeout(() => w.print(), 500);
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 900, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div style={{ background: 'var(--bg)', borderRadius: 10, padding: '24px 28px', width: 480, maxWidth: '100%', maxHeight: '90vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,.25)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
+          <div>
+            <h2 style={{ margin: 0, fontSize: 17, fontFamily: 'var(--font-serif)', fontWeight: 600 }}>Stampa contratto</h2>
+            <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 3 }}>
+              {cliente} · {preno.vehicleLabel || '—'} · {formatDate(preno.dal)} → {formatDate(preno.al)}
+            </div>
+          </div>
+          <button type="button" onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', fontSize: 22, lineHeight: 1 }}>×</button>
+        </div>
+
+        {/* Selettore lingua */}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
+          {[{id:'it',flag:'🇮🇹',label:'Italiano'},{id:'en',flag:'🇬🇧',label:'English'},{id:'es',flag:'🇪🇸',label:'Español'}].map(l => (
+            <button key={l.id} type="button" onClick={() => setLang(l.id)}
+              style={{ flex: 1, padding: '8px 6px', borderRadius: 6, border: lang === l.id ? '2px solid var(--ink)' : '1px solid var(--border)', background: lang === l.id ? 'var(--surface-2)' : 'transparent', cursor: 'pointer', fontSize: 13, fontWeight: lang === l.id ? 700 : 400 }}>
+              {l.flag} {l.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Anteprima riepilogo */}
+        <div style={{ background: 'var(--surface-2)', borderRadius: 8, padding: '14px 16px', marginBottom: 20, fontSize: 13 }}>
+          <div style={{ fontWeight: 700, marginBottom: 8, fontSize: 12, textTransform: 'uppercase', letterSpacing: '1px', color: 'var(--muted)' }}>{t.title}</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 16px', fontSize: 12 }}>
+            <div><span style={{ color: 'var(--muted)' }}>{f.name}: </span><strong>{cliente}</strong></div>
+            <div><span style={{ color: 'var(--muted)' }}>{f.plate}: </span><strong>{preno.vehicleTarga || preno.vehicleLabel?.split(' ')[0] || '—'}</strong></div>
+            <div><span style={{ color: 'var(--muted)' }}>{f.from}: </span><strong>{formatDate(preno.dal)}</strong></div>
+            <div><span style={{ color: 'var(--muted)' }}>{f.to}: </span><strong>{formatDate(preno.al)}</strong></div>
+            <div><span style={{ color: 'var(--muted)' }}>{f.total}: </span><strong>€{preno.prezzo ?? '—'}</strong></div>
+            <div><span style={{ color: 'var(--muted)' }}>{f.balance}: </span><strong>€{saldo >= 0 ? saldo : '—'}</strong></div>
+          </div>
+          {preno.firma && <div style={{ marginTop: 10, fontSize: 11, color: '#2e6e3e', fontWeight: 600 }}>✍️ Firma digitale presente nel contratto</div>}
+          {!preno.firma && <div style={{ marginTop: 10, fontSize: 11, color: 'var(--muted)' }}>Nessuna firma — usa "Firma" per raccoglierla prima di stampare</div>}
+        </div>
+
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button type="button" onClick={printContratto}
+            style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '10px', background: 'var(--ink)', color: '#fff', border: 'none', borderRadius: 5, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
+            🖨️ {t.print}
+          </button>
+          <button type="button" onClick={onClose}
+            style={{ padding: '10px 20px', background: 'var(--surface-2)', color: 'var(--ink)', border: '1px solid var(--border)', borderRadius: 5, fontSize: 14, cursor: 'pointer' }}>
+            Chiudi
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// FIRMA DIGITALE — canvas touch / mouse
+// ═══════════════════════════════════════════════════════════════════
+function FirmaModal({ preno, onSave, onClose }) {
+  const canvasRef = useRef();
+  const [drawing, setDrawing] = useState(false);
+  const [hasFirma, setHasFirma] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const lastPos = useRef(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.strokeStyle = '#1a1815';
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    if (preno.firma) {
+      const img = new Image();
+      img.onload = () => ctx.drawImage(img, 0, 0);
+      img.src = preno.firma;
+      setHasFirma(true);
+    }
+  }, []);
+
+  function getPos(e, canvas) {
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const src = e.touches ? e.touches[0] : e;
+    return {
+      x: (src.clientX - rect.left) * scaleX,
+      y: (src.clientY - rect.top) * scaleY,
+    };
+  }
+
+  function startDraw(e) {
+    e.preventDefault();
+    setDrawing(true);
+    setHasFirma(true);
+    lastPos.current = getPos(e, canvasRef.current);
+  }
+
+  function draw(e) {
+    if (!drawing) return;
+    e.preventDefault();
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    const pos = getPos(e, canvas);
+    ctx.beginPath();
+    ctx.moveTo(lastPos.current.x, lastPos.current.y);
+    ctx.lineTo(pos.x, pos.y);
+    ctx.stroke();
+    lastPos.current = pos;
+  }
+
+  function stopDraw() { setDrawing(false); lastPos.current = null; }
+
+  function clearFirma() {
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    setHasFirma(false);
+  }
+
+  function handleSave() {
+    if (!hasFirma) return;
+    const firma = canvasRef.current.toDataURL('image/png');
+    onSave({ ...preno, firma });
+    setSaved(true);
+    setTimeout(() => { setSaved(false); onClose(); }, 900);
+  }
+
+  const cliente = [preno.clienteCognome, preno.clienteNome].filter(Boolean).join(' ') || 'Cliente';
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 900, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div style={{ background: 'var(--bg)', borderRadius: 10, padding: '24px 28px', width: 500, maxWidth: '100%', boxShadow: '0 20px 60px rgba(0,0,0,.25)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+          <div>
+            <h2 style={{ margin: 0, fontSize: 17, fontFamily: 'var(--font-serif)', fontWeight: 600 }}>✍️ Firma digitale</h2>
+            <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 3 }}>
+              {cliente} · {preno.vehicleLabel || '—'} · {formatDate(preno.dal)}
+            </div>
+          </div>
+          <button type="button" onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', fontSize: 22, lineHeight: 1 }}>×</button>
+        </div>
+
+        <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 8, textAlign: 'center' }}>
+          Firma qui sotto — dito su tablet, mouse su desktop
+        </div>
+
+        <canvas
+          ref={canvasRef}
+          width={440}
+          height={180}
+          style={{ width: '100%', height: 180, border: '2px solid var(--border)', borderRadius: 8, background: '#fff', cursor: 'crosshair', touchAction: 'none', display: 'block' }}
+          onMouseDown={startDraw}
+          onMouseMove={draw}
+          onMouseUp={stopDraw}
+          onMouseLeave={stopDraw}
+          onTouchStart={startDraw}
+          onTouchMove={draw}
+          onTouchEnd={stopDraw}
+        />
+
+        <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6, marginBottom: 12, textAlign: 'center' }}>
+          La firma sarà inclusa automaticamente nel contratto stampato
+        </div>
+
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button type="button" onClick={handleSave} disabled={!hasFirma}
+            style={{ flex: 1, padding: '10px', background: saved ? '#27ae60' : hasFirma ? 'var(--ink)' : 'var(--surface-2)', color: hasFirma ? '#fff' : 'var(--muted)', border: 'none', borderRadius: 5, fontSize: 14, fontWeight: 600, cursor: hasFirma ? 'pointer' : 'not-allowed' }}>
+            {saved ? '✓ Salvato' : '✍️ Salva firma'}
+          </button>
+          <button type="button" onClick={clearFirma}
+            style={{ padding: '10px 16px', background: 'var(--surface-2)', color: 'var(--ink-2)', border: '1px solid var(--border)', borderRadius: 5, fontSize: 13, cursor: 'pointer' }}>
+            Cancella
+          </button>
+          <button type="button" onClick={onClose}
+            style={{ padding: '10px 16px', background: 'transparent', color: 'var(--ink-2)', border: '1px solid var(--border)', borderRadius: 5, fontSize: 13, cursor: 'pointer' }}>
+            Chiudi
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+// ═══════════════════════════════════════════════════════════════════
+// OGGI PAGE — partenze, rientri, in corso, mezzi liberi, scadenze
+// ═══════════════════════════════════════════════════════════════════
+
+function OggiPage({ prenotazioni, fleet, scadenze, customers, setPage }) {
+  const [now, setNow] = useState(() => new Date());
+
+  // Orologio live — aggiorna ogni minuto
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 60000);
+    return () => clearInterval(id);
+  }, []);
+
+  const today = now.toISOString().slice(0, 10);
+  const tomorrow = new Date(now.getTime() + 86400000).toISOString().slice(0, 10);
+
+  const STATO_COLOR = {
+    confermata: '#2e6e3e', in_corso: '#1f5d83', attesa: '#b87333',
+    completata: '#888', annullata: '#c85050',
+  };
+  const TIPO_EMOJI = { auto: '🚗', scooter: '🛵', quad: '🏎', ebike: '⚡' };
+
+  // ── Calcoli ──────────────────────────────────────────────────────
+  const prenoList = prenotazioni || [];
+  const fleetList = fleet || [];
+
+  const partenze  = prenoList.filter(p => p.dal === today && p.stato !== 'annullata');
+  const rientri   = prenoList.filter(p => p.al  === today && p.stato !== 'annullata');
+  const inCorso   = prenoList.filter(p =>
+    p.dal < today && p.al >= today && (p.stato === 'confermata' || p.stato === 'in_corso')
+  );
+
+  // Veicoli occupati oggi (dal <= today <= al, stato attivo)
+  const occupatiIds = new Set(
+    prenoList
+      .filter(p => p.dal <= today && p.al >= today && p.stato !== 'annullata' && p.stato !== 'completata')
+      .map(p => p.vehicleId)
+      .filter(Boolean)
+  );
+  const liberi = fleetList.filter(v => v.status !== 'fuori_uso' && !occupatiIds.has(v.id));
+  const liberiCount = liberi.length;
+  const totaleFlotta = fleetList.filter(v => v.status !== 'fuori_uso').length;
+
+  // Scadenze urgenti/scadute
+  const TIPO_LABEL = { revisione: 'Revisione', assicurazione: 'Assicurazione', tagliando: 'Tagliando', bollo: 'Bollo' };
+  const scadenzeAlert = [];
+  fleetList.forEach(v => {
+    const vs = (scadenze || {})[v.id];
+    if (!vs) return;
+    Object.entries(vs).forEach(([tipo, data]) => {
+      if (!data) return;
+      const stato = data <= today ? 'scaduta' : data <= tomorrow ? 'urgente' : null;
+      if (stato) scadenzeAlert.push({ v, tipo, data, stato });
+    });
+  });
+  scadenzeAlert.sort((a, b) => a.data.localeCompare(b.data));
+
+  // Prenotazioni domani (anticipo)
+  const domani = prenoList.filter(p => p.dal === tomorrow && p.stato !== 'annullata');
+
+  // Export CSV movimenti del giorno — partenze + rientri
+  function exportMovimenti() {
+    const rows = [
+      ['Tipo','Cliente','Telefono','Mezzo','Targa','Dal','Al','Stato','Prezzo'],
+      ...partenze.map(p => ['Partenza',
+        `${p.clienteCognome||''} ${p.clienteNome||''}`.trim(), p.clienteTel||'',
+        p.vehicleLabel||'', p.vehicleTarga||'', p.dal, p.al, p.stato,
+        p.prezzo != null ? `€${p.prezzo}` : '']),
+      ...rientri.map(p => ['Rientro',
+        `${p.clienteCognome||''} ${p.clienteNome||''}`.trim(), p.clienteTel||'',
+        p.vehicleLabel||'', p.vehicleTarga||'', p.dal, p.al, p.stato,
+        p.prezzo != null ? `€${p.prezzo}` : '']),
+    ];
+    const csv = rows.map(r =>
+      r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')
+    ).join('\n');
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `movimenti-${today}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  // ── Helpers UI ───────────────────────────────────────────────────
+  const ore = now.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+  const dataLabel = now.toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+
+  function clienteLabel(p) {
+    return [p.clienteCognome, p.clienteNome].filter(Boolean).join(' ') || 'Cliente';
+  }
+
+  const Card = ({ color = 'var(--border)', children, style = {} }) => (
+    <div style={{
+      background: 'var(--bg)', border: `1px solid var(--border)`,
+      borderLeft: `3px solid ${color}`,
+      borderRadius: 8, padding: '12px 14px',
+      ...style,
+    }}>
+      {children}
+    </div>
+  );
+
+  const SectionTitle = ({ icon, label, count, color = 'var(--ink)' }) => (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, marginTop: 24 }}>
+      <span style={{ fontSize: 16 }}>{icon}</span>
+      <span style={{ fontFamily: 'var(--font-serif)', fontWeight: 600, fontSize: 15, color }}>{label}</span>
+      <span style={{
+        background: count === 0 ? 'var(--surface-2)' : color,
+        color: count === 0 ? 'var(--muted)' : '#fff',
+        borderRadius: 12, padding: '1px 8px', fontSize: 11, fontWeight: 700, lineHeight: '18px',
+      }}>{count}</span>
+    </div>
+  );
+
+  function PrenoRow({ p, accentColor }) {
+    return (
+      <Card color={accentColor}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+              <span style={{ fontSize: 14 }}>{TIPO_EMOJI[p.tipo] || '🚗'}</span>
+              <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--ink)' }}>{clienteLabel(p)}</span>
+              {p.clienteTel && (
+                <a href={`tel:${p.clienteTel}`}
+                  style={{ fontSize: 11, color: 'var(--muted)', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 3 }}
+                  onClick={e => e.stopPropagation()}>
+                  📞 {p.clienteTel}
+                </a>
+              )}
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--ink-2)' }}>
+              {p.vehicleLabel || 'Mezzo da assegnare'}
+              {p.vehicleTarga && <span style={{ fontFamily: 'monospace', fontSize: 11, marginLeft: 6, color: 'var(--muted)' }}>{p.vehicleTarga}</span>}
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
+              {formatDate(p.dal)} → {formatDate(p.al)}
+              {p.prezzo != null && <> · <strong style={{ color: 'var(--ink)' }}>€{p.prezzo}</strong></>}
+              {p.acconto > 0 && <> · acc. €{p.acconto}</>}
+              {p.fonte && <> · {p.fonte}</>}
+            </div>
+            {p.note && (
+              <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 3, fontStyle: 'italic',
+                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 340 }}>
+                {p.note}
+              </div>
+            )}
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flexShrink: 0 }}>
+            <span style={{
+              fontSize: 10, padding: '2px 8px', borderRadius: 10, fontWeight: 600,
+              background: STATO_COLOR[p.stato] ? STATO_COLOR[p.stato] + '22' : 'var(--surface-2)',
+              color: STATO_COLOR[p.stato] || 'var(--muted)',
+            }}>{p.stato || '—'}</span>
+            {p.firma && <span style={{ fontSize: 10, color: '#2e6e3e', fontWeight: 600 }}>✍️ firmato</span>}
+          </div>
+        </div>
+      </Card>
+    );
+  }
+
+  function VeicoloChip({ v }) {
+    const ws = (scadenze || {})[v.id];
+    const hasAlert = ws && Object.values(ws).some(d => d && d <= tomorrow);
+    return (
+      <div style={{
+        display: 'inline-flex', alignItems: 'center', gap: 5,
+        padding: '5px 10px', borderRadius: 20,
+        border: '1px solid var(--border)', background: 'var(--surface-2)',
+        fontSize: 12, color: 'var(--ink-2)',
+      }}>
+        <span>{TIPO_EMOJI[v.tipo] || '🚗'}</span>
+        <span style={{ fontWeight: 600 }}>{v.targa || v.id}</span>
+        {v.label && <span style={{ color: 'var(--muted)' }}>{v.label}</span>}
+        {hasAlert && <span style={{ color: '#c85050', fontWeight: 700 }}>⚠️</span>}
+      </div>
+    );
+  }
+
+  // ── Render ────────────────────────────────────────────────────────
+  return (
+    <div style={{ padding: '28px 32px', maxWidth: 860, margin: '0 auto' }}>
+
+      {/* Header — orologio live */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
+        <div>
+          <h1 style={{ margin: 0, fontSize: 26, fontFamily: 'var(--font-serif)', fontWeight: 600, letterSpacing: '-0.01em' }}>
+            Oggi
+          </h1>
+          <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--muted)', textTransform: 'capitalize' }}>
+            {dataLabel}
+          </p>
+        </div>
+        <div style={{ textAlign: 'right' }}>
+          <div style={{ fontSize: 32, fontWeight: 700, fontFamily: 'var(--font-serif)', color: 'var(--ink)', lineHeight: 1 }}>
+            {ore}
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 3 }}>
+            {liberiCount}/{totaleFlotta} mezzi liberi
+          </div>
+          {(partenze.length > 0 || rientri.length > 0) && (
+            <button type="button" onClick={exportMovimenti}
+              style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 5,
+                border: '1px solid var(--border)', background: 'transparent', color: 'var(--muted)',
+                fontSize: 11, cursor: 'pointer' }}>
+              <Download style={{ width: 11, height: 11 }} /> CSV movimenti
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* KPI strip */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 4 }}>
+        {[
+          { label: 'Partenze oggi',  value: partenze.length,  color: '#2e6e3e', emoji: '📤' },
+          { label: 'Rientri oggi',   value: rientri.length,   color: '#6a3d8f', emoji: '📥' },
+          { label: 'In corso',       value: inCorso.length,   color: '#1f5d83', emoji: '🔄' },
+          { label: 'Domani',         value: domani.length,    color: '#b87333', emoji: '📅' },
+        ].map(k => (
+          <div key={k.label} style={{
+            background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8,
+            padding: '12px 14px', textAlign: 'center',
+          }}>
+            <div style={{ fontSize: 11, marginBottom: 4 }}>{k.emoji}</div>
+            <div style={{ fontSize: 24, fontWeight: 700, fontFamily: 'var(--font-serif)', color: k.value > 0 ? k.color : 'var(--muted)', lineHeight: 1 }}>
+              {k.value}
+            </div>
+            <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 3 }}>{k.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* ── PARTENZE ────────────────────────────────────────────────── */}
+      <SectionTitle icon="📤" label="Partenze oggi" count={partenze.length} color="#2e6e3e" />
+      {partenze.length === 0
+        ? <div style={{ fontSize: 13, color: 'var(--muted)', padding: '10px 0' }}>Nessuna partenza oggi</div>
+        : <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {partenze.map(p => <PrenoRow key={p.id} p={p} accentColor="#2e6e3e" />)}
+          </div>
+      }
+
+      {/* ── RIENTRI ─────────────────────────────────────────────────── */}
+      <SectionTitle icon="📥" label="Rientri oggi" count={rientri.length} color="#6a3d8f" />
+      {rientri.length === 0
+        ? <div style={{ fontSize: 13, color: 'var(--muted)', padding: '10px 0' }}>Nessun rientro oggi</div>
+        : <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {rientri.map(p => <PrenoRow key={p.id} p={p} accentColor="#6a3d8f" />)}
+          </div>
+      }
+
+      {/* ── IN CORSO ─────────────────────────────────────────────────── */}
+      {inCorso.length > 0 && (
+        <>
+          <SectionTitle icon="🔄" label="In corso" count={inCorso.length} color="#1f5d83" />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {inCorso.map(p => <PrenoRow key={p.id} p={p} accentColor="#1f5d83" />)}
+          </div>
+        </>
+      )}
+
+      {/* ── MEZZI LIBERI ─────────────────────────────────────────────── */}
+      <SectionTitle icon="✅" label={`Mezzi liberi ora`} count={liberiCount} color="#1f5d83" />
+      {liberiCount === 0
+        ? <div style={{ fontSize: 13, color: 'var(--muted)', padding: '10px 0' }}>Tutti i mezzi sono occupati</div>
+        : <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {liberi.map(v => <VeicoloChip key={v.id} v={v} />)}
+          </div>
+      }
+
+      {/* ── SCADENZE URGENTI ─────────────────────────────────────────── */}
+      {scadenzeAlert.length > 0 && (
+        <>
+          <SectionTitle icon="⚠️" label="Scadenze urgenti / scadute" count={scadenzeAlert.length} color="#c85050" />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {scadenzeAlert.slice(0, 8).map(({ v, tipo, data, stato }) => (
+              <div key={`${v.id}:${tipo}`} style={{
+                display: 'flex', alignItems: 'center', gap: 10,
+                background: stato === 'scaduta' ? '#fff0f0' : '#fff8e6',
+                border: `1px solid ${stato === 'scaduta' ? '#f0b0b0' : '#f0d080'}`,
+                borderRadius: 6, padding: '8px 12px', fontSize: 12,
+              }}>
+                <span style={{ fontWeight: 700, color: stato === 'scaduta' ? '#c85050' : '#b87333', minWidth: 60 }}>
+                  {stato.toUpperCase()}
+                </span>
+                <span style={{ fontWeight: 600, color: 'var(--ink)' }}>{v.targa || v.id}</span>
+                <span style={{ color: 'var(--ink-2)' }}>{v.label || ''}</span>
+                <span style={{ color: 'var(--muted)', flex: 1 }}>{TIPO_LABEL[tipo] || tipo}</span>
+                <span style={{ fontFamily: 'monospace', color: 'var(--ink)', fontWeight: 600 }}>{data}</span>
+              </div>
+            ))}
+            {scadenzeAlert.length > 8 && (
+              <div style={{ fontSize: 12, color: 'var(--muted)', textAlign: 'center', marginTop: 4 }}>
+                + altri {scadenzeAlert.length - 8} — vai alla sezione Flotta per tutti i dettagli
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* ── DOMANI IN ANTICIPO ───────────────────────────────────────── */}
+      {domani.length > 0 && (
+        <>
+          <SectionTitle icon="📅" label="Partenze domani" count={domani.length} color="#b87333" />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {domani.map(p => <PrenoRow key={p.id} p={p} accentColor="#b87333" />)}
+          </div>
+        </>
+      )}
+
+      {/* Footer con link rapidi */}
+      <div style={{ marginTop: 32, paddingTop: 20, borderTop: '1px solid var(--border)', display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        {[
+          { label: '+ Nuova prenotazione', page: 'prenotazioni', color: 'var(--accent)' },
+          { label: 'Tutte le prenotazioni', page: 'prenotazioni', color: 'var(--ink-2)' },
+          { label: 'Flotta', page: 'fleet', color: 'var(--ink-2)' },
+        ].map(l => (
+          <button key={l.label} type="button" onClick={() => setPage(l.page)}
+            style={{ fontSize: 12, padding: '6px 14px', borderRadius: 20, border: '1px solid var(--border)', background: 'transparent', color: l.color, cursor: 'pointer', fontWeight: l.color === 'var(--accent)' ? 700 : 400 }}>
+            {l.label}
+          </button>
+        ))}
+        <div style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--muted)', alignSelf: 'center' }}>
+          aggiornato ogni minuto
+        </div>
+      </div>
+
+    </div>
+  );
+}
+
+
+// ═══════════════════════════════════════════════════════════════════
+// RICERCA GLOBALE — modal Cmd+K su prenotazioni + clienti + pratiche
+// ═══════════════════════════════════════════════════════════════════
+function GlobalSearchModal({ prenotazioni, customers, contracts, fleet, onClose, setPage }) {
+  const [q, setQ] = useState('');
+  const inputRef = useRef();
+
+  useEffect(() => {
+    inputRef.current?.focus();
+    function onKey(e) {
+      if (e.key === 'Escape') onClose();
+    }
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
+
+  const lower = q.trim().toLowerCase();
+
+  const results = useMemo(() => {
+    if (lower.length < 2) return { prenotazioni: [], customers: [], contracts: [], fleet: [] };
+
+    const preno = (prenotazioni || []).filter(p => {
+      const hay = `${p.clienteNome} ${p.clienteCognome} ${p.clienteTel} ${p.vehicleLabel} ${p.note}`.toLowerCase();
+      return hay.includes(lower);
+    }).slice(0, 5);
+
+    const cust = (customers || []).filter(c => {
+      const hay = `${c.nome} ${c.cognome} ${c.telefono} ${c.email} ${c.documento}`.toLowerCase();
+      return hay.includes(lower);
+    }).slice(0, 5);
+
+    const contr = (contracts || []).filter(c => {
+      const hay = `${c.cognome} ${c.nome} ${c.targa} ${c.id}`.toLowerCase();
+      return hay.includes(lower);
+    }).slice(0, 5);
+
+    const veh = (fleet || []).filter(v => {
+      const hay = `${v.marca} ${v.modello} ${v.targa} ${v.note}`.toLowerCase();
+      return hay.includes(lower);
+    }).slice(0, 5);
+
+    return { prenotazioni: preno, customers: cust, contracts: contr, fleet: veh };
+  }, [lower, prenotazioni, customers, contracts, fleet]);
+
+  const totalCount = Object.values(results).reduce((n, arr) => n + arr.length, 0);
+
+  const STATO_COLOR = { confermata: '#2e6e3e', in_corso: '#1f5d83', attesa: '#b87333', completata: '#888', annullata: '#c85050' };
+
+  function Row({ icon, primary, secondary, pill, pillColor, onClick }) {
+    return (
+      <button type="button" onClick={() => { onClick(); onClose(); }}
+        style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 6, border: 'none', background: 'transparent', cursor: 'pointer', textAlign: 'left' }}
+        onMouseEnter={e => e.currentTarget.style.background = 'var(--surface-2)'}
+        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+        <span style={{ fontSize: 16, flexShrink: 0 }}>{icon}</span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{primary}</div>
+          {secondary && <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 1 }}>{secondary}</div>}
+        </div>
+        {pill && (
+          <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 10, background: (pillColor || '#888') + '22', color: pillColor || '#888', fontWeight: 600, flexShrink: 0 }}>
+            {pill}
+          </span>
+        )}
+      </button>
+    );
+  }
+
+  function SectionHead({ label, count }) {
+    return (
+      <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--muted)', padding: '6px 12px 2px' }}>
+        {label} ({count})
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 1000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: '10vh' }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div style={{ background: 'var(--bg)', borderRadius: 12, width: 560, maxWidth: '95vw', boxShadow: '0 24px 64px rgba(0,0,0,.25)', overflow: 'hidden' }}>
+
+        {/* Input */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 16px', borderBottom: '1px solid var(--border)' }}>
+          <Search style={{ width: 18, height: 18, color: 'var(--muted)', flexShrink: 0 }} />
+          <input
+            ref={inputRef}
+            value={q}
+            onChange={e => setQ(e.target.value)}
+            placeholder="Cerca cliente, targa, mezzo, pratica…"
+            style={{ flex: 1, border: 'none', outline: 'none', fontSize: 15, background: 'transparent', color: 'var(--ink)' }}
+          />
+          <kbd style={{ fontSize: 10, padding: '2px 6px', border: '1px solid var(--border)', borderRadius: 4, color: 'var(--muted)' }}>ESC</kbd>
+        </div>
+
+        {/* Risultati */}
+        <div style={{ maxHeight: 420, overflowY: 'auto' }}>
+          {lower.length < 2 && (
+            <div style={{ padding: '24px 16px', textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>
+              Digita almeno 2 caratteri per cercare
+            </div>
+          )}
+
+          {lower.length >= 2 && totalCount === 0 && (
+            <div style={{ padding: '24px 16px', textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>
+              Nessun risultato per <strong>"{q}"</strong>
+            </div>
+          )}
+
+          {results.prenotazioni.length > 0 && (
+            <>
+              <SectionHead label="Prenotazioni" count={results.prenotazioni.length} />
+              {results.prenotazioni.map(p => (
+                <Row key={p.id}
+                  icon="📅"
+                  primary={`${p.clienteCognome || ''} ${p.clienteNome || ''}`.trim() || 'Cliente'}
+                  secondary={`${p.vehicleLabel || '—'} · ${formatDate(p.dal)} → ${formatDate(p.al)}`}
+                  pill={p.stato}
+                  pillColor={STATO_COLOR[p.stato]}
+                  onClick={() => setPage('prenotazioni')}
+                />
+              ))}
+            </>
+          )}
+
+          {results.customers.length > 0 && (
+            <>
+              <SectionHead label="Clienti" count={results.customers.length} />
+              {results.customers.map(c => (
+                <Row key={c.id}
+                  icon="👤"
+                  primary={`${c.cognome || ''} ${c.nome || ''}`.trim() || c.email || 'Cliente'}
+                  secondary={[c.telefono, c.email].filter(Boolean).join(' · ')}
+                  onClick={() => setPage('customers')}
+                />
+              ))}
+            </>
+          )}
+
+          {results.contracts.length > 0 && (
+            <>
+              <SectionHead label="Pratiche" count={results.contracts.length} />
+              {results.contracts.map(c => (
+                <Row key={c.id}
+                  icon="📋"
+                  primary={`${c.cognome || ''} ${c.nome || ''}`.trim() || c.id}
+                  secondary={`${c.targa || '—'} · ${formatDate(c.dal)} → ${formatDate(c.al)}`}
+                  onClick={() => setPage('contracts')}
+                />
+              ))}
+            </>
+          )}
+
+          {results.fleet.length > 0 && (
+            <>
+              <SectionHead label="Flotta" count={results.fleet.length} />
+              {results.fleet.map(v => (
+                <Row key={v.id}
+                  icon="🚗"
+                  primary={`${v.marca} ${v.modello}`}
+                  secondary={[v.targa, v.colore, v.cilindrata].filter(Boolean).join(' · ')}
+                  pill={v.targa}
+                  onClick={() => setPage('fleet')}
+                />
+              ))}
+            </>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div style={{ padding: '8px 16px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+            {lower.length >= 2 ? `${totalCount} risultati` : 'Ricerca globale'}
+          </span>
+          <span style={{ fontSize: 11, color: 'var(--muted)' }}>↵ vai alla sezione</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+// ═══════════════════════════════════════════════════════════════════
+// CALENDARIO FLOTTA — griglia Gantt mezzo × giorno (4 settimane)
+// ═══════════════════════════════════════════════════════════════════
+function CalendarioFlottaPage({ prenotazioni, fleet, setPage }) {
+  const [weekOffset, setWeekOffset] = useState(0);
+  const COLS = 28; // 4 settimane
+  const today = todayISO();
+
+  const days = useMemo(() => {
+    return Array.from({ length: COLS }, (_, i) => {
+      const d = new Date();
+      d.setDate(d.getDate() + weekOffset * 7 + i - d.getDay() + 1); // lunedì corrente
+      return d.toISOString().slice(0, 10);
+    });
+  }, [weekOffset]);
+
+  const STATO_COLOR = {
+    confermata: '#2e6e3e',
+    in_corso:   '#1f5d83',
+    attesa:     '#c88a2e',
+  };
+
+  const fleetList = useMemo(() =>
+    (fleet || [])
+      .filter(v => v.status !== 'fuori_uso')
+      .sort((a, b) => (a.tipo || '').localeCompare(b.tipo || '') || (a.targa || '').localeCompare(b.targa || '')),
+    [fleet]
+  );
+
+  const prenoList = useMemo(() =>
+    (prenotazioni || []).filter(p => p.stato !== 'annullata' && p.stato !== 'completata'),
+    [prenotazioni]
+  );
+
+  // Mappa (vehicleId|day) → prenotazione
+  const cellMap = useMemo(() => {
+    const m = {};
+    prenoList.forEach(p => {
+      if (!p.vehicleId) return;
+      days.forEach(d => {
+        if (p.dal <= d && p.al >= d) m[`${p.vehicleId}|${d}`] = p;
+      });
+    });
+    return m;
+  }, [prenoList, days]);
+
+  const [hovered, setHovered] = useState(null);
+  const hoveredPreno = hovered ? prenoList.find(p => p.id === hovered) : null;
+
+  const COL_W = 34;
+  const ROW_H = 42;
+  const LABEL_W = 152;
+
+  // Mesi — etichetta quando cambia
+  const monthChanges = useMemo(() => {
+    const out = {};
+    let last = null;
+    days.forEach((d, i) => {
+      const m = d.slice(0, 7);
+      if (m !== last) { out[i] = new Date(d + 'T12:00:00').toLocaleDateString('it-IT', { month: 'short', year: '2-digit' }); last = m; }
+    });
+    return out;
+  }, [days]);
+
+  const btnNav = (label, onClick) => (
+    <button type="button" onClick={onClick} style={{
+      padding: '6px 12px', borderRadius: 6, fontSize: 12, cursor: 'pointer',
+      border: '1px solid var(--border)', background: 'transparent', color: 'var(--ink-2)',
+    }}>{label}</button>
+  );
+
+  return (
+    <div style={{ padding: '28px 32px', maxWidth: '100%' }}>
+
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
+        <div>
+          <h1 style={{ margin: 0, fontSize: 22, fontFamily: 'var(--font-serif)', fontWeight: 600 }}>Calendario flotta</h1>
+          <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--muted)' }}>
+            {fleetList.length} mezzi attivi · {prenoList.length} prenotazioni attive
+          </p>
+        </div>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          {weekOffset !== 0 && (
+            <button type="button" onClick={() => setWeekOffset(0)} style={{
+              padding: '6px 12px', borderRadius: 6, fontSize: 12, cursor: 'pointer',
+              border: 'none', background: 'var(--ink)', color: 'var(--bg)', fontWeight: 600,
+            }}>Oggi</button>
+          )}
+          {btnNav('← Prec.', () => setWeekOffset(w => w - 1))}
+          {btnNav('Succ. →', () => setWeekOffset(w => w + 1))}
+        </div>
+      </div>
+
+      {/* Griglia */}
+      <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: 8, background: 'var(--bg)' }}>
+        <div style={{ minWidth: LABEL_W + COLS * COL_W }}>
+
+          {/* Header mesi */}
+          <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', background: 'var(--surface-2)' }}>
+            <div style={{ width: LABEL_W, flexShrink: 0, borderRight: '1px solid var(--border)' }} />
+            {days.map((d, i) => (
+              <div key={d} style={{ width: COL_W, flexShrink: 0, borderLeft: '1px solid var(--border)',
+                fontSize: 9, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase',
+                letterSpacing: '.06em', paddingTop: 3, paddingLeft: 3 }}>
+                {monthChanges[i] || ''}
+              </div>
+            ))}
+          </div>
+
+          {/* Header giorni */}
+          <div style={{ display: 'flex', borderBottom: '2px solid var(--border)', background: 'var(--surface-2)', position: 'sticky', top: 0, zIndex: 2 }}>
+            <div style={{ width: LABEL_W, flexShrink: 0, padding: '6px 12px',
+              fontSize: 10, fontWeight: 700, letterSpacing: '.06em', color: 'var(--muted)',
+              textTransform: 'uppercase', borderRight: '1px solid var(--border)' }}>
+              MEZZO
+            </div>
+            {days.map(d => {
+              const dt = new Date(d + 'T12:00:00');
+              const isToday = d === today;
+              const isWeekend = [0, 6].includes(dt.getDay());
+              return (
+                <div key={d} style={{
+                  width: COL_W, flexShrink: 0, textAlign: 'center', padding: '5px 0',
+                  background: isToday ? 'var(--accent)' : 'transparent',
+                  color: isToday ? 'white' : isWeekend ? 'var(--muted)' : 'var(--ink-2)',
+                  borderLeft: '1px solid var(--border)',
+                  borderLeft: isToday ? '2px solid var(--accent)' : '1px solid var(--border)',
+                }}>
+                  <div style={{ fontSize: 12, fontWeight: isToday ? 700 : isWeekend ? 400 : 500, lineHeight: 1 }}>
+                    {dt.getDate()}
+                  </div>
+                  <div style={{ fontSize: 9, marginTop: 1, opacity: .7 }}>
+                    {dt.toLocaleDateString('it-IT', { weekday: 'narrow' })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Righe veicoli */}
+          {fleetList.length === 0 ? (
+            <div style={{ padding: '48px', textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>
+              Nessun mezzo attivo in flotta
+            </div>
+          ) : fleetList.map((v, vi) => (
+            <div key={v.id} style={{ display: 'flex', alignItems: 'center',
+              borderTop: vi === 0 ? 'none' : '1px solid var(--border)',
+              background: vi % 2 === 1 ? 'var(--surface-2)' : 'var(--bg)' }}>
+
+              {/* Label mezzo */}
+              <div style={{ width: LABEL_W, flexShrink: 0, padding: '8px 12px',
+                borderRight: '1px solid var(--border)' }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink)',
+                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {v.marca} {v.modello}
+                </div>
+                <div style={{ fontSize: 10, color: 'var(--muted)', fontFamily: 'monospace', marginTop: 1 }}>
+                  {v.targa || '—'}
+                </div>
+              </div>
+
+              {/* Celle giorni */}
+              {days.map(d => {
+                const preno = cellMap[`${v.id}|${d}`];
+                const isToday = d === today;
+                const isStart = preno && preno.dal === d;
+                const isEnd   = preno && preno.al   === d;
+                const color   = preno ? (STATO_COLOR[preno.stato] || '#888') : null;
+                const isHov   = preno && preno.id === hovered;
+                const dt      = new Date(d + 'T12:00:00');
+                const isWeekend = [0, 6].includes(dt.getDay());
+
+                return (
+                  <div key={d}
+                    onMouseEnter={() => preno && setHovered(preno.id)}
+                    onMouseLeave={() => setHovered(null)}
+                    style={{
+                      width: COL_W, height: ROW_H, flexShrink: 0, position: 'relative',
+                      borderLeft: isToday ? '2px solid var(--accent)' : '1px solid var(--border)',
+                      background: preno ? 'transparent' : isToday ? 'rgba(46,110,62,.06)' : isWeekend ? 'rgba(0,0,0,.015)' : 'transparent',
+                      cursor: preno ? 'pointer' : 'default',
+                    }}>
+                    {preno && (
+                      <div style={{
+                        position: 'absolute',
+                        top: 5, bottom: 5,
+                        left: isStart ? 3 : 0,
+                        right: isEnd   ? 3 : -1,
+                        background: color + (isHov ? 'bb' : '55'),
+                        borderRadius: `${isStart ? 4 : 0}px ${isEnd ? 4 : 0}px ${isEnd ? 4 : 0}px ${isStart ? 4 : 0}px`,
+                        borderLeft: isStart ? `2px solid ${color}` : 'none',
+                        display: 'flex', alignItems: 'center', overflow: 'hidden',
+                        transition: 'background .1s',
+                      }}>
+                        {isStart && (
+                          <span style={{
+                            fontSize: 9, fontWeight: 700, color: color,
+                            paddingLeft: 4, whiteSpace: 'nowrap', overflow: 'hidden',
+                            textOverflow: 'ellipsis', maxWidth: '100%',
+                          }}>
+                            {preno.clienteCognome || preno.clienteNome || '?'}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+
+        </div>
+      </div>
+
+      {/* Legenda */}
+      <div style={{ display: 'flex', gap: 16, marginTop: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+        {Object.entries({ confermata: 'Confermata', in_corso: 'In corso', attesa: 'In attesa' }).map(([k, l]) => (
+          <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--muted)' }}>
+            <div style={{ width: 16, height: 10, borderRadius: 2, background: STATO_COLOR[k] + '88',
+              borderLeft: `2px solid ${STATO_COLOR[k]}` }} />
+            {l}
+          </div>
+        ))}
+        <div style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--muted)' }}>
+          Passa il mouse su una cella per i dettagli
+        </div>
+      </div>
+
+      {/* Pannello hover — angolo in basso a destra */}
+      {hoveredPreno && (
+        <div style={{
+          position: 'fixed', bottom: 24, right: 24, zIndex: 200,
+          background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8,
+          padding: '12px 16px', boxShadow: '0 8px 28px rgba(0,0,0,.18)',
+          minWidth: 220, pointerEvents: 'none',
+        }}>
+          <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 3 }}>
+            {[hoveredPreno.clienteCognome, hoveredPreno.clienteNome].filter(Boolean).join(' ') || 'Cliente'}
+          </div>
+          {hoveredPreno.clienteTel && (
+            <div style={{ fontSize: 11, color: 'var(--muted)' }}>📞 {hoveredPreno.clienteTel}</div>
+          )}
+          <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
+            {hoveredPreno.vehicleLabel || '—'}
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
+            {formatDate(hoveredPreno.dal)} → {formatDate(hoveredPreno.al)}
+          </div>
+          {hoveredPreno.prezzo != null && (
+            <div style={{ fontWeight: 600, fontSize: 12, marginTop: 4, color: 'var(--ink)' }}>
+              €{hoveredPreno.prezzo}
+              {hoveredPreno.acconto > 0 && <span style={{ fontWeight: 400, color: 'var(--muted)', marginLeft: 6 }}>acc. €{hoveredPreno.acconto}</span>}
+            </div>
+          )}
+          <div style={{ marginTop: 5 }}>
+            <span style={{
+              fontSize: 9, padding: '2px 7px', borderRadius: 10, fontWeight: 600,
+              background: (STATO_COLOR[hoveredPreno.stato] || '#888') + '22',
+              color: STATO_COLOR[hoveredPreno.stato] || '#888',
+            }}>{hoveredPreno.stato}</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+
+// ═══════════════════════════════════════════════════════════════════
+// PWA — inietta manifest + meta tags nel <head> per installazione
+// ═══════════════════════════════════════════════════════════════════
+function usePWA() {
+  useEffect(() => {
+    const manifest = {
+      name: 'Pratica · Edonoleggio',
+      short_name: 'Pratica',
+      description: 'Gestionale noleggio veicoli Lampedusa',
+      start_url: '/',
+      display: 'standalone',
+      background_color: '#f5f0e8',
+      theme_color: '#2e6e3e',
+      lang: 'it',
+      icons: [{
+        src: "data:image/svg+xml," + encodeURIComponent(
+          "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'>" +
+          "<rect width='512' height='512' rx='80' fill='%232e6e3e'/>" +
+          "<text x='256' y='358' text-anchor='middle' font-family='Georgia,serif' " +
+          "font-size='300' font-weight='bold' fill='white'>P</text></svg>"
+        ),
+        sizes: 'any', type: 'image/svg+xml', purpose: 'any maskable',
+      }],
+    };
+    const blob = new Blob([JSON.stringify(manifest)], { type: 'application/manifest+json' });
+    const url  = URL.createObjectURL(blob);
+    let link = document.querySelector('link[rel="manifest"]');
+    if (!link) { link = document.createElement('link'); link.rel = 'manifest'; document.head.appendChild(link); }
+    link.href = url;
+
+    const setMeta = (name, content) => {
+      let el = document.querySelector(`meta[name="${name}"]`);
+      if (!el) { el = document.createElement('meta'); el.name = name; document.head.appendChild(el); }
+      el.content = content;
+    };
+    setMeta('theme-color', '#2e6e3e');
+    setMeta('apple-mobile-web-app-capable', 'yes');
+    setMeta('apple-mobile-web-app-status-bar-style', 'black-translucent');
+    setMeta('apple-mobile-web-app-title', 'Pratica');
+    setMeta('mobile-web-app-capable', 'yes');
+
+    return () => URL.revokeObjectURL(url);
+  }, []);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// SALDO MODAL — registra pagamento saldo da prenotazione in_corso
+// ═══════════════════════════════════════════════════════════════════
+function SaldoModal({ preno, operator, onSave, onClose }) {
+  const saldoDovuto = (preno.prezzo != null && preno.prezzo > 0)
+    ? Math.max(0, preno.prezzo - (preno.acconto || 0))
+    : null;
+
+  const [importo, setImporto]               = useState(saldoDovuto != null ? String(saldoDovuto) : '');
+  const [metodo, setMetodo]                 = useState(preno.metodoPagamento || 'contanti');
+  const [segnaCompletata, setSegnaCompletata] = useState(true);
+  const [err, setErr]                       = useState('');
+
+  const inp = {
+    width: '100%', padding: '8px 10px', border: '1px solid var(--border)',
+    borderRadius: 5, fontSize: 14, background: 'var(--bg)', color: 'var(--ink)',
+    fontFamily: 'var(--font-sans)', boxSizing: 'border-box',
+  };
+  const lbl = {
+    display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase',
+    letterSpacing: '.05em', color: 'var(--ink-2)', marginBottom: 4,
+  };
+
+  function handleSave() {
+    const imp = parseFloat(importo);
+    if (!importo || isNaN(imp) || imp <= 0) {
+      setErr('Inserisci un importo valido'); return;
+    }
+    const record = {
+      id: 'cassa_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+      createdAt: new Date().toISOString(),
+      data: todayISO(),
+      clienteNome: [preno.clienteCognome, preno.clienteNome].filter(Boolean).join(' ') || '',
+      prenotazioneId: preno.id,
+      vehicleLabel: preno.vehicleLabel || '',
+      importo: imp,
+      metodo,
+      tipo: 'saldo',
+      nota: `Saldo pren. ${formatDate(preno.dal)}→${formatDate(preno.al)}`,
+      operatorId: operator?.id || '',
+      operatorName: operator?.nome || '',
+    };
+    onSave({ record, completata: segnaCompletata });
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 9100,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+      <div style={{ background: 'var(--bg)', borderRadius: 10, width: '100%', maxWidth: 420,
+        boxShadow: '0 20px 60px rgba(0,0,0,.25)', padding: '28px 28px 24px' }}>
+
+        {/* Header */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
+          <h2 style={{ margin: 0, fontSize: 18, fontFamily: 'var(--font-serif)', fontWeight: 600 }}>
+            💰 Registra saldo
+          </h2>
+          <button type="button" onClick={onClose}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', fontSize: 20, padding: '0 4px' }}>✕</button>
+        </div>
+
+        {/* Riepilogo prenotazione */}
+        <div style={{ background: 'var(--surface-2)', borderRadius: 6, padding: '10px 12px', marginBottom: 20, fontSize: 12 }}>
+          <div style={{ fontWeight: 600, color: 'var(--ink)', marginBottom: 3 }}>
+            {[preno.clienteCognome, preno.clienteNome].filter(Boolean).join(' ') || 'Cliente'}
+            <span style={{ fontWeight: 400, color: 'var(--muted)', marginLeft: 8 }}>
+              {preno.vehicleLabel || '—'}
+            </span>
+          </div>
+          <div style={{ color: 'var(--muted)' }}>
+            {formatDate(preno.dal)} → {formatDate(preno.al)}
+          </div>
+          {preno.prezzo != null && (
+            <div style={{ marginTop: 5, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+              <span>Totale <strong style={{ color: 'var(--ink)' }}>€{preno.prezzo}</strong></span>
+              {preno.acconto > 0 && (
+                <>
+                  <span style={{ color: 'var(--muted)' }}>Acconto €{preno.acconto}</span>
+                  <span style={{ color: '#1f5d83', fontWeight: 600 }}>
+                    Saldo dovuto €{saldoDovuto}
+                  </span>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Importo */}
+        <div style={{ marginBottom: 14 }}>
+          <label style={lbl}>Importo saldo *</label>
+          <input type="number" min="0" step="0.01" value={importo}
+            onChange={e => { setImporto(e.target.value); setErr(''); }}
+            style={{ ...inp, borderColor: err ? '#c0392b' : 'var(--border)', fontSize: 18, fontWeight: 600 }}
+            placeholder="0.00" autoFocus />
+          {err && <div style={{ color: '#c85050', fontSize: 11, marginTop: 4 }}>{err}</div>}
+        </div>
+
+        {/* Metodo */}
+        <div style={{ marginBottom: 18 }}>
+          <label style={lbl}>Metodo pagamento</label>
+          <select value={metodo} onChange={e => setMetodo(e.target.value)} style={inp}>
+            <option value="contanti">💵 Contanti</option>
+            <option value="carta">💳 Carta</option>
+            <option value="bonifico">🏦 Bonifico</option>
+            <option value="paypal">🅿 PayPal</option>
+            <option value="altro">• Altro</option>
+          </select>
+        </div>
+
+        {/* Checkbox completata */}
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13,
+          color: 'var(--ink-2)', marginBottom: 22, cursor: 'pointer' }}>
+          <input type="checkbox" checked={segnaCompletata}
+            onChange={e => setSegnaCompletata(e.target.checked)}
+            style={{ width: 16, height: 16, accentColor: 'var(--accent)', cursor: 'pointer' }} />
+          Segna prenotazione come <strong style={{ color: 'var(--ink)' }}>completata</strong>
+        </label>
+
+        {/* Azioni */}
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button type="button" onClick={onClose}
+            style={{ padding: '9px 18px', borderRadius: 5, border: '1px solid var(--border)',
+              background: 'transparent', cursor: 'pointer', fontSize: 13, color: 'var(--ink-2)' }}>
+            Annulla
+          </button>
+          <button type="button" onClick={handleSave}
+            style={{ padding: '9px 20px', borderRadius: 5, border: 'none',
+              background: '#1f5d83', color: 'white', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
+            Registra saldo
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+
+// ═══════════════════════════════════════════════════════════════════
+// DEPOSITO MODAL — raccolta e rimborso cauzione
+// ═══════════════════════════════════════════════════════════════════
+function DepositoModal({ preno, operator, mode, onSave, onClose }) {
+  // mode: 'prendi' | 'rimborsa'
+  const isRimborso = mode === 'rimborsa';
+  const [importo, setImporto] = useState(
+    isRimborso && preno.depositoImporto ? String(preno.depositoImporto) : ''
+  );
+  const [metodo, setMetodo]   = useState(preno.metodoPagamento || 'contanti');
+  const [err, setErr]         = useState('');
+
+  const inp = {
+    width: '100%', padding: '8px 10px', border: '1px solid var(--border)',
+    borderRadius: 5, fontSize: 14, background: 'var(--bg)', color: 'var(--ink)',
+    fontFamily: 'var(--font-sans)', boxSizing: 'border-box',
+  };
+  const lbl = {
+    display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase',
+    letterSpacing: '.05em', color: 'var(--ink-2)', marginBottom: 4,
+  };
+
+  function handleSave() {
+    const imp = parseFloat(importo);
+    if (!importo || isNaN(imp) || imp <= 0) { setErr('Inserisci un importo valido'); return; }
+    const record = {
+      id: 'cassa_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+      createdAt: new Date().toISOString(),
+      data: todayISO(),
+      clienteNome: [preno.clienteCognome, preno.clienteNome].filter(Boolean).join(' ') || '',
+      prenotazioneId: preno.id,
+      vehicleLabel: preno.vehicleLabel || '',
+      importo: imp,
+      metodo,
+      tipo: isRimborso ? 'rimborso' : 'deposito',
+      nota: isRimborso
+        ? `Rimborso deposito pren. ${formatDate(preno.dal)}→${formatDate(preno.al)}`
+        : `Deposito cauzione pren. ${formatDate(preno.dal)}→${formatDate(preno.al)}`,
+      operatorId: operator?.id || '',
+      operatorName: operator?.nome || '',
+    };
+    onSave({ record, importo: imp });
+  }
+
+  const accentColor = isRimborso ? '#7d3c98' : '#b87333';
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 9100,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+      <div style={{ background: 'var(--bg)', borderRadius: 10, width: '100%', maxWidth: 400,
+        boxShadow: '0 20px 60px rgba(0,0,0,.25)', padding: '28px 28px 24px' }}>
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
+          <h2 style={{ margin: 0, fontSize: 18, fontFamily: 'var(--font-serif)', fontWeight: 600, color: accentColor }}>
+            {isRimborso ? '↩ Rimborsa deposito' : '📦 Deposito cauzione'}
+          </h2>
+          <button type="button" onClick={onClose}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', fontSize: 20, padding: '0 4px' }}>✕</button>
+        </div>
+
+        {/* Riepilogo */}
+        <div style={{ background: 'var(--surface-2)', borderRadius: 6, padding: '10px 12px', marginBottom: 20, fontSize: 12 }}>
+          <div style={{ fontWeight: 600, marginBottom: 2 }}>
+            {[preno.clienteCognome, preno.clienteNome].filter(Boolean).join(' ') || 'Cliente'}
+            <span style={{ fontWeight: 400, color: 'var(--muted)', marginLeft: 8 }}>{preno.vehicleLabel || '—'}</span>
+          </div>
+          <div style={{ color: 'var(--muted)' }}>{formatDate(preno.dal)} → {formatDate(preno.al)}</div>
+          {isRimborso && preno.depositoImporto && (
+            <div style={{ marginTop: 4, color: accentColor, fontWeight: 600 }}>
+              Deposito raccolto: €{preno.depositoImporto}
+            </div>
+          )}
+        </div>
+
+        <div style={{ marginBottom: 14 }}>
+          <label style={lbl}>{isRimborso ? 'Importo da rimborsare' : 'Importo cauzione'} *</label>
+          <input type="number" min="0" step="0.01" value={importo}
+            onChange={e => { setImporto(e.target.value); setErr(''); }}
+            style={{ ...inp, fontSize: 18, fontWeight: 600, borderColor: err ? '#c0392b' : 'var(--border)' }}
+            placeholder="0.00" autoFocus />
+          {err && <div style={{ color: '#c85050', fontSize: 11, marginTop: 4 }}>{err}</div>}
+        </div>
+
+        <div style={{ marginBottom: 22 }}>
+          <label style={lbl}>Metodo pagamento</label>
+          <select value={metodo} onChange={e => setMetodo(e.target.value)} style={inp}>
+            <option value="contanti">💵 Contanti</option>
+            <option value="carta">💳 Carta</option>
+            <option value="bonifico">🏦 Bonifico</option>
+            <option value="paypal">🅿 PayPal</option>
+            <option value="altro">• Altro</option>
+          </select>
+        </div>
+
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button type="button" onClick={onClose}
+            style={{ padding: '9px 18px', borderRadius: 5, border: '1px solid var(--border)',
+              background: 'transparent', cursor: 'pointer', fontSize: 13, color: 'var(--ink-2)' }}>
+            Annulla
+          </button>
+          <button type="button" onClick={handleSave}
+            style={{ padding: '9px 20px', borderRadius: 5, border: 'none',
+              background: accentColor, color: 'white', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
+            {isRimborso ? 'Rimborsa' : 'Registra deposito'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+
 export default function App() {
   const [page, setPage] = useState('dashboard');
   const [wizardOpen, setWizardOpen] = useState(false);
@@ -4106,12 +7191,29 @@ export default function App() {
   // Registro cassa: tutti i movimenti economici dell'agenzia.
   // skipRemote: false → sincronizzato su tutti i dispositivi (critico per contabilità).
   const [cassa, setCassa, cassaSync] = usePersistentState('edo:v1:cassa', [], sharedOpts);
+  // Scadenze flotta: revisione, assicurazione, tagliando, bollo per ogni veicolo.
+  const [scadenze, setScadenze, scadenzeSync] = usePersistentState('edo:v1:scadenze', {}, sharedOpts);
+
+  // Push notifications: avvisa per scadenze urgenti / scadute
+  useScadenzeNotifications(scadenze, fleet);
+
+  // Ricerca globale: Cmd+K / Ctrl+K apre il modal
+  useEffect(() => {
+    function onKey(e) {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setShowGlobalSearch(v => !v);
+      }
+    }
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
 
   // Helper: aggrega tutti gli stati sync per il pannello Impostazioni
   const allSyncStatus = useMemo(() => ({
     fleet: fleetSync, customers: customersSync, partners: partnersSync, prenotazioni: prenoSync,
-    operators: operatorsSync, cargos: cargosSync, agency: agencySync, cassa: cassaSync,
-  }), [fleetSync, customersSync, partnersSync, operatorsSync, cargosSync, agencySync]);
+    operators: operatorsSync, cargos: cargosSync, agency: agencySync, cassa: cassaSync, scadenze: scadenzeSync,
+  }), [fleetSync, customersSync, partnersSync, prenoSync, operatorsSync, cargosSync, agencySync, cassaSync, scadenzeSync]);
 
   // Sync globale: forza il push di tutti gli slot. Utile per il pulsante "Sincronizza ora".
   const syncAll = useCallback(async () => {
@@ -4126,11 +7228,66 @@ export default function App() {
     };
   }, [fleetSync, customersSync, partnersSync, operatorsSync, cargosSync, agencySync]);
 
+  // Export backup JSON — scarica tutti i dati in un file timestampato
+  const exportBackup = useCallback(() => {
+    const backup = {
+      version: APP_VERSION.number,
+      exportedAt: new Date().toISOString(),
+      prenotazioni, fleet, customers, cassa, scadenze,
+      operators, partners, agency, listino, stagioni,
+    };
+    const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `edonoleggio-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    pushToast && pushToast({ tone: 'success', title: 'Backup esportato', message: `${prenotazioni.length} pren · ${fleet.length} veicoli · ${customers.length} clienti` });
+  }, [prenotazioni, fleet, customers, cassa, scadenze, operators, partners, agency, listino, stagioni, pushToast]);
+
+  // Import backup JSON — ripristina tutti i dati da un file JSON esportato
+  const importBackup = useCallback((file) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const data = JSON.parse(ev.target.result);
+        const counts = [
+          data.prenotazioni?.length && `${data.prenotazioni.length} prenotazioni`,
+          data.fleet?.length        && `${data.fleet.length} veicoli`,
+          data.customers?.length    && `${data.customers.length} clienti`,
+          data.cassa?.length        && `${data.cassa.length} movimenti cassa`,
+        ].filter(Boolean).join(' · ');
+        if (!window.confirm(
+          `Ripristinare backup v${data.version || '?'} del ${(data.exportedAt || '').slice(0,10) || '?'}?\n\n${counts}\n\nI dati attuali saranno sovrascritti.`
+        )) return;
+        if (data.prenotazioni) setPrenotazioni(data.prenotazioni);
+        if (data.fleet)        setFleet(data.fleet);
+        if (data.customers)    setCustomers(data.customers);
+        if (data.cassa)        setCassa(data.cassa);
+        if (data.scadenze)     setScadenze(data.scadenze);
+        if (data.operators)    setOperators(data.operators);
+        if (data.partners)     setPartners(data.partners);
+        if (data.agency)       setAgency(data.agency);
+        if (data.listino)      setListino(data.listino);
+        if (data.stagioni)     setStagioni(data.stagioni);
+        pushToast?.({ tone: 'success', title: 'Backup ripristinato', message: counts });
+      } catch {
+        pushToast?.({ tone: 'error', title: 'File non valido', message: 'Il file selezionato non è un backup Pratica' });
+      }
+    };
+    reader.readAsText(file);
+  }, [setPrenotazioni, setFleet, setCustomers, setCassa, setScadenze, setOperators, setPartners, setAgency, setListino, setStagioni, pushToast]);
+
   // Stato di sessione (non persistente — si resetta a ogni apertura)
   const [admin, setAdmin]                 = useState(false);
   const [manualOffline, setManualOffline] = useState(false);  // toggle manuale per testing
   const [operatorIdx, setOperatorIdx]     = useState(0);
   const [modal, setModal]                 = useState(null);
+  const [showGlobalSearch, setShowGlobalSearch] = useState(false);
   const [prefillCustomer, setPrefillCustomer] = useState(null);
   // Bridge condiviso: usato da Preventivi, BancoRapido e PrenotazioniPage
   const [prenotazioniPrefill, setPrenotazioniPrefill] = useState(null);
@@ -4542,19 +7699,22 @@ export default function App() {
             onScanPlate={() => setModal('plate')}
             onShiftChange={() => setModal('shift')}
             agency={agency}
+            onOpenSearch={() => setShowGlobalSearch(true)}
           />
           <div className="px-8 py-6 max-w-[1280px] mx-auto">
             {/* ErrorBoundary con key={page}: se una pagina crasha, cambiando pagina
                 il boundary si resetta automaticamente (la key cambia → nuovo mount). */}
             <ErrorBoundary key={page}>
-              {page === 'dashboard'  && <Dashboard onNew={() => openWizard()} setPage={setPage} operator={operator} fleet={fleet} contracts={localContracts} partners={partners} onMarkReturned={markContractReturned} />}
+              {page === 'calendario' && <CalendarioFlottaPage prenotazioni={prenotazioni} fleet={fleet} setPage={setPage} />}
+              {page === 'oggi'       && <OggiPage prenotazioni={prenotazioni} fleet={fleet} scadenze={scadenze} customers={customers} setPage={setPage} />}
+              {page === 'dashboard'  && <Dashboard onNew={() => openWizard()} setPage={setPage} operator={operator} fleet={fleet} contracts={localContracts} partners={partners} onMarkReturned={markContractReturned} scadenze={scadenze} prenotazioni={prenotazioni} agency={agency} />}
               {page === 'cassa'      && <RegistroCassaPage cassa={cassa} setCassa={setCassa} prenotazioni={prenotazioni} customers={customers} operator={operator} pushToast={pushToast} />}
               {page === 'banco'      && <BancoRapidoPage rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} fleet={fleet} setPage={setPage} setPrenotazioniPrefill={setPrenotazioniPrefill} listino={listino} pushToast={pushToast} rentmeSyncStatus={rentmeSync.status} onRentmeSync={rentmeSync.sync} rentmeLastSync={rentmeSync.lastSync} />}
-              {page === 'report'        && <ReportPage prenotazioni={prenotazioni} contracts={localContracts} />}
+              {page === 'report'        && <ReportPage prenotazioni={prenotazioni} contracts={localContracts} cassa={cassa} customers={customers} fleet={fleet} operators={operators} pushToast={pushToast} />}
               {page === 'preventivi'    && <PreventiviPage setPage={setPage} setPrenotazioniPrefill={setPrenotazioniPrefill} listino={listino} />}
-              {page === 'prenotazioni' && <PrenotazioniPage prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} fleet={fleet} customers={customers} operator={operator} onOpenWizard={openWizard} pushToast={pushToast} prefill={prenotazioniPrefill} onClearPrefill={() => setPrenotazioniPrefill(null)} />}
+              {page === 'prenotazioni' && <PrenotazioniPage prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} setCassa={setCassa} fleet={fleet} customers={customers} operator={operator} onOpenWizard={openWizard} pushToast={pushToast} prefill={prenotazioniPrefill} onClearPrefill={() => setPrenotazioniPrefill(null)} />}
               {page === 'contracts'  && <ContractsList contracts={localContracts} operators={operators} onRetry={retryContract} onMarkReturned={markContractReturned} online={online} />}
-              {page === 'fleet'      && <FleetPage fleet={fleet} admin={admin} onAddVehicle={() => setModal('newVehicle')} onEditVehicle={(v) => setModal({ type: 'editVehicle', vehicle: v })} onDeleteVehicle={requestDeleteVehicle} onImportCSV={() => setShowCsvImport(true)} />}
+              {page === 'fleet'      && <FleetPage fleet={fleet} prenotazioni={prenotazioni} admin={admin} onAddVehicle={() => setModal('newVehicle')} onEditVehicle={(v) => setModal({ type: 'editVehicle', vehicle: v })} onDeleteVehicle={requestDeleteVehicle} onImportCSV={() => setShowCsvImport(true)} scadenze={scadenze} setScadenze={setScadenze} />}
               {page === 'customers'  && <CustomersPage customers={customers} admin={admin} onShowQR={(c) => setModal({ type: 'qr', customer: c })} onNewWithCustomer={openWizard} onAddCustomer={() => setModal('newCustomer')} onEditCustomer={(c) => setModal({ type: 'editCustomer', customer: c })} onShowStorico={(c) => setStorioClienteId(c.id)} />}
               {page === 'partners'   && <PartnersPage partners={partners} admin={admin} onAddPartner={() => setModal('newPartner')} onEditPartner={(p) => setModal({ type: 'editPartner', partner: p })} onDeletePartner={requestDeletePartner} />}
               {page === 'listino'    && <div style={{padding:'28px 32px',maxWidth:900,margin:'0 auto'}}>
@@ -4566,7 +7726,14 @@ export default function App() {
                   <StagioniEditor stagioni={stagioni} onSave={(s)=>{setStagioni(s); pushToast && pushToast({tone:'success',title:'Stagioni aggiornate',message:'Configurazione stagionale salvata'});}} />
                 </div>
               </div>}
-              {page === 'settings'   && <SettingsPage operator={operator} operators={operators} admin={admin} cargosConfig={cargosConfig} backendStatus={backendStatus} lastCheck={lastCheck} apiBaseUrl={apiBaseUrl} syncStatus={allSyncStatus} agency={agency} customers={customers} contracts={localContracts} onSyncAll={syncAll} pushToast={pushToast} onAddOperator={() => setModal('newOperator')} onEditOperator={(o) => setModal({ type: 'editOperator', operator: o })} onDeleteOperator={requestDeleteOperator} onEditCargos={() => setModal('cargosConfig')} onEditApiBase={() => setModal('apiBase')} onEditAgency={() => setModal('agency')} onResetCustomers={requestResetCustomers} onResetContracts={requestResetContracts} onResetEverything={requestResetEverything} rentmeConfig={rentmeConfig} setRentmeConfig={setRentmeConfig} rentmeSync={rentmeSync} rentmeVehicles={rentmeVehicles} />}
+              {page === 'settings'   && <SettingsPage operator={operator} operators={operators} admin={admin} cargosConfig={cargosConfig} backendStatus={backendStatus} lastCheck={lastCheck} apiBaseUrl={apiBaseUrl} syncStatus={allSyncStatus} agency={agency} customers={customers} contracts={localContracts} onSyncAll={syncAll} onExportBackup={exportBackup} onImportBackup={importBackup} pushToast={pushToast} onAddOperator={() => setModal('newOperator')} onEditOperator={(o) => setModal({ type: 'editOperator', operator: o })} onDeleteOperator={requestDeleteOperator} onEditCargos={() => setModal('cargosConfig')} onEditApiBase={() => setModal('apiBase')} onEditAgency={() => setModal('agency')} onResetCustomers={requestResetCustomers} onResetContracts={requestResetContracts} onResetEverything={requestResetEverything} rentmeConfig={rentmeConfig} setRentmeConfig={setRentmeConfig} rentmeSync={rentmeSync} rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} onImportStorico={({ prenotazioni: newP, clienti: newC }) => {
+                setPrenotazioni(prev => {
+                  const existKeys = new Set(prev.map(p => p.id));
+                  return [...prev, ...newP.filter(p => !existKeys.has(p.id))];
+                });
+                setCustomers(prev => [...prev, ...newC]);
+                pushToast({ tone: 'success', title: 'Storico importato', message: `${newP.length} prenotazioni · ${newC.length} clienti` });
+              }} />}
             </ErrorBoundary>
           </div>
         </main>
@@ -4625,6 +7792,16 @@ export default function App() {
             pushToast({ tone: 'success', title: 'Flotta importata', message: `${newFleet.length} mezzi in flotta` });
           }}
           onClose={() => setShowCsvImport(false)}
+        />
+      )}
+      {showGlobalSearch && (
+        <GlobalSearchModal
+          prenotazioni={prenotazioni}
+          customers={customers}
+          contracts={localContracts}
+          fleet={fleet}
+          setPage={setPage}
+          onClose={() => setShowGlobalSearch(false)}
         />
       )}
     </>
@@ -4744,6 +7921,8 @@ function Styles() {
 function Sidebar({ page, setPage, onNew, online, agency, rentmeSyncStatus, rentmeAlertCount }) {
   const items = [
     { id: 'dashboard',    label: 'Dashboard',    icon: LayoutDashboard },
+    { id: 'oggi',         label: 'Oggi',         icon: Compass },
+    { id: 'calendario',   label: 'Calendario',   icon: CalendarDays },
     { id: 'banco',        label: 'Banco rapido', icon: Zap, badge: rentmeAlertCount > 0 ? rentmeAlertCount : null },
     { id: 'cassa',        label: 'Cassa',        icon: Wallet },
     { id: 'preventivi',   label: 'Preventivi',   icon: Receipt },
@@ -4841,7 +8020,7 @@ function Sidebar({ page, setPage, onNew, online, agency, rentmeSyncStatus, rentm
 // ═══════════════════════════════════════════════════════════════════
 // TOPBAR
 // ═══════════════════════════════════════════════════════════════════
-function Topbar({ online, setOnline, pendingQueue, operator, admin, setAdmin, onScanPlate, onShiftChange, agency }) {
+function Topbar({ online, setOnline, pendingQueue, operator, admin, setAdmin, onScanPlate, onShiftChange, agency, onOpenSearch }) {
   return (
     <header className="border-b px-8 py-3 flex items-center gap-3" style={{ borderColor: 'var(--border)', background: 'var(--bg)' }}>
       <div className="flex items-center gap-2 text-sm" style={{ color: 'var(--ink-2)' }}>
@@ -4851,6 +8030,18 @@ function Topbar({ online, setOnline, pendingQueue, operator, admin, setAdmin, on
       </div>
 
       <div className="flex-1" />
+
+      <button
+        type="button"
+        onClick={onOpenSearch}
+        className="flex items-center gap-2 px-3 py-1.5 rounded text-xs border transition-all"
+        style={{ borderColor: 'var(--border)', background: 'transparent', color: 'var(--ink-2)' }}
+        title="Ricerca globale (Cmd+K)"
+      >
+        <Search className="w-3.5 h-3.5" aria-hidden="true" />
+        <span>Cerca</span>
+        <kbd style={{ fontSize: 9, padding: '1px 4px', border: '1px solid var(--border)', borderRadius: 3, color: 'var(--muted)' }}>⌘K</kbd>
+      </button>
 
       <button
         type="button"
@@ -4926,7 +8117,7 @@ function Topbar({ online, setOnline, pendingQueue, operator, admin, setAdmin, on
 // ═══════════════════════════════════════════════════════════════════
 // DASHBOARD — basata su dati reali (props), niente mock
 // ═══════════════════════════════════════════════════════════════════
-function Dashboard({ onNew, setPage, operator, fleet, contracts, partners, onMarkReturned }) {
+function Dashboard({ onNew, setPage, operator, fleet, contracts, partners, onMarkReturned, scadenze, prenotazioni, agency }) {
   // Data di oggi formattata in italiano
   const today = useMemo(() => {
     const d = new Date();
@@ -5049,6 +8240,8 @@ function Dashboard({ onNew, setPage, operator, fleet, contracts, partners, onMar
         ))}
       </div>
 
+      <ScadenzeWidget fleet={fleet} scadenze={scadenze} onGoFlotta={() => setPage('fleet')} />
+      <RitiriWidget prenotazioni={prenotazioni} agency={agency} setPage={setPage} />
       <ReturnsPanel contracts={contracts} partners={partners} onMarkReturned={onMarkReturned} />
 
       <div className="card-paper">
@@ -5485,11 +8678,25 @@ function ContractsList({ contracts, operators, onRetry, onMarkReturned, online }
 // ═══════════════════════════════════════════════════════════════════
 // FLEET
 // ═══════════════════════════════════════════════════════════════════
-function FleetPage({ fleet, admin, onAddVehicle, onEditVehicle, onDeleteVehicle, onImportCSV }) {
+function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, onDeleteVehicle, onImportCSV, scadenze, setScadenze }) {
   const [typeFilter, setTypeFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [query, setQuery] = useState('');
+  const [scadenzeModalVeh, setScadenzeModalVeh] = useState(null);
   const counts = useFleetCounts(fleet);
+
+  // Veicoli attualmente in noleggio (oggi)
+  const inNoleggio = useMemo(() => {
+    const oggi = new Date().toISOString().slice(0, 10);
+    const m = {};
+    (prenotazioni || []).forEach(p => {
+      if (!p.vehicleId) return;
+      if ((p.stato === 'in_corso' || p.stato === 'confermata') && p.dal <= oggi && p.al >= oggi) {
+        m[p.vehicleId] = p;
+      }
+    });
+    return m;
+  }, [prenotazioni]);
 
   const statusCounts = useMemo(() => {
     const c = { all: fleet.length, available: 0, fermo: 0, incidentato: 0, venduto: 0 };
@@ -5639,7 +8846,29 @@ function FleetPage({ fleet, admin, onAddVehicle, onEditVehicle, onDeleteVehicle,
                   {v.gps === 1    && <span className="pill pill-neutral">GPS</span>}
                   {v.blocco === 1 && <span className="pill pill-neutral">Blocco motore</span>}
                   {!t.cargosRequired && <span className="pill pill-sea" title="Non soggetto a CARGOS">no CARGOS</span>}
+                  <ScadenzaBadge stato={worstScadenza(scadenze?.[v.id])} />
                 </div>
+                {v.stato !== 'venduto' && (
+                  <button type="button" onClick={() => setScadenzeModalVeh(v)}
+                    style={{ marginTop: 10, fontSize: 11, color: 'var(--ink-2)', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 5, padding: '4px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}>
+                    🔧 Scadenze
+                  </button>
+                )}
+                {inNoleggio[v.id] && (
+                  <div style={{ marginTop: 8, padding: '5px 8px', borderRadius: 5,
+                    background: '#e8f0fa', border: '1px solid #b8d0ee',
+                    fontSize: 11, color: '#1f5d83', fontWeight: 600 }}>
+                    🔄 In noleggio · {[inNoleggio[v.id].clienteCognome, inNoleggio[v.id].clienteNome].filter(Boolean).join(' ') || 'Cliente'}
+                    <span style={{ fontWeight: 400, marginLeft: 6, color: '#4a7fa8' }}>
+                      → {formatDate(inNoleggio[v.id].al)}
+                    </span>
+                  </div>
+                )}
+                {v.note && (
+                  <div style={{ marginTop: 8, fontSize: 11, color: 'var(--muted)', fontStyle: 'italic', borderTop: '1px solid var(--border)', paddingTop: 7, lineHeight: 1.4 }}>
+                    📝 {v.note}
+                  </div>
+                )}
                 {admin && (
                   <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
                     <button type="button" onClick={() => onEditVehicle(v)} className="btn-ghost p-1.5 rounded border bg-white" style={{ borderColor: 'var(--border)' }} aria-label={`Modifica ${v.marca} ${v.modello}`}>
@@ -5660,6 +8889,15 @@ function FleetPage({ fleet, admin, onAddVehicle, onEditVehicle, onDeleteVehicle,
             );
           })}
         </div>
+      )}
+      {/* Modal scadenze veicolo */}
+      {scadenzeModalVeh && (
+        <ScadenzeModal
+          vehicle={scadenzeModalVeh}
+          scadenze={scadenze}
+          onSave={(updated) => setScadenze(updated)}
+          onClose={() => setScadenzeModalVeh(null)}
+        />
       )}
     </div>
   );
@@ -5906,7 +9144,8 @@ function PartnersPage({ partners, admin, onAddPartner, onEditPartner, onDeletePa
 // ═══════════════════════════════════════════════════════════════════
 // SETTINGS
 // ═══════════════════════════════════════════════════════════════════
-function SettingsPage({ operator, operators, cargosConfig, admin, backendStatus, lastCheck, apiBaseUrl, syncStatus, agency, onSyncAll, pushToast, onAddOperator, onEditOperator, onDeleteOperator, onEditCargos, onEditApiBase, onEditAgency, onResetCustomers, onResetContracts, onResetEverything, customers, contracts, rentmeConfig, setRentmeConfig, rentmeSync, rentmeVehicles }) {
+function SettingsPage({ operator, operators, cargosConfig, admin, backendStatus, lastCheck, apiBaseUrl, syncStatus, agency, onSyncAll, onExportBackup, onImportBackup, pushToast, onAddOperator, onEditOperator, onDeleteOperator, onEditCargos, onEditApiBase, onEditAgency, onResetCustomers, onResetContracts, onResetEverything, customers, contracts, rentmeConfig, setRentmeConfig, rentmeSync, rentmeVehicles, prenotazioni, onImportStorico }) {
+  const importInputRef = useRef();
   const [showCargosSecrets, setShowCargosSecrets] = useState(false);
   const [syncing, setSyncing] = useState(false);
 
@@ -5930,7 +9169,9 @@ function SettingsPage({ operator, operators, cargosConfig, admin, backendStatus,
   // Questo non dovrebbe mai succedere ma protegge dai casi-limite (CRUD operatori
   // che svuota la lista, persistente con dati corrotti, ecc.).
   if (!operators || operators.length === 0) {
-    return (
+    const [showImportStorico, setShowImportStorico] = useState(false);
+
+  return (
       <div className="card-paper p-8 text-center">
         <AlertTriangle className="w-8 h-8 mx-auto mb-3" style={{ color: 'var(--warning)' }} />
         <div className="serif text-xl font-medium mb-2">Nessun operatore configurato</div>
@@ -6248,6 +9489,35 @@ function SettingsPage({ operator, operators, cargosConfig, admin, backendStatus,
         </section>
       )}
 
+      {/* Backup dati */}
+      <section className="card-paper p-6 mt-4" aria-labelledby="backup-heading">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <Download className="w-4 h-4" style={{ color: 'var(--ink-2)' }} aria-hidden="true" />
+            <span className="font-semibold text-sm" id="backup-heading">Backup dati</span>
+          </div>
+        </div>
+        <p className="text-xs mb-4" style={{ color: 'var(--ink-2)' }}>
+          Esporta tutti i dati dell'agenzia in un file JSON — prenotazioni, flotta, clienti, cassa, scadenze. Utile come backup manuale o per migrare su un altro dispositivo.
+        </p>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button type="button" onClick={onExportBackup}
+            className="flex items-center gap-2 px-4 py-2 rounded text-sm border font-medium"
+            style={{ border: '1px solid var(--border)', background: 'transparent', color: 'var(--ink-2)', cursor: 'pointer' }}>
+            <Download className="w-4 h-4" />
+            Esporta backup JSON
+          </button>
+          <input ref={importInputRef} type="file" accept=".json" style={{ display: 'none' }}
+            onChange={e => { onImportBackup?.(e.target.files?.[0]); e.target.value = ''; }} />
+          <button type="button" onClick={() => importInputRef.current?.click()}
+            className="flex items-center gap-2 px-4 py-2 rounded text-sm border font-medium"
+            style={{ border: '1px solid var(--border)', background: 'transparent', color: 'var(--ink-2)', cursor: 'pointer' }}>
+            <Upload className="w-4 h-4" />
+            Importa backup JSON
+          </button>
+        </div>
+      </section>
+
       {admin && (
         <section className="card-paper p-6 mt-4" aria-labelledby="storage-heading">
           <div className="flex items-center gap-2 mb-3">
@@ -6405,8 +9675,31 @@ function SettingsPage({ operator, operators, cargosConfig, admin, backendStatus,
               ✓ Pratica sta girando in autonomia. RentMe non viene contattato.
             </div>
           )}
+          {/* Import storico — visibile solo se RentMe è abilitato */}
+          {rentmeConfig?.enabled !== false && (
+            <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
+              <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4 }}>Import storico prenotazioni</div>
+              <p style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 10 }}>
+                Scarica tutte le prenotazioni passate da RentMe e aggiungile a Pratica. Utile per avere lo storico completo prima di staccarsi da RentMe.
+              </p>
+              <button type="button" onClick={() => setShowImportStorico(true)}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 16px', background: '#1f5d83', color: '#fff', border: 'none', borderRadius: 5, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                <Download className="w-4 h-4" /> Importa storico da RentMe
+              </button>
+            </div>
+          )}
         </div>
       </section>
+
+      {showImportStorico && (
+        <ImportStoricoModal
+          existingPreno={prenotazioni}
+          existingCustomers={customers}
+          onImport={onImportStorico}
+          onClose={() => setShowImportStorico(false)}
+          pushToast={pushToast}
+        />
+      )}
 
       {admin && (onResetCustomers || onResetContracts || onResetEverything) && (
         <section className="card-paper p-6 mt-4" aria-labelledby="reset-heading" style={{ borderLeft: '3px solid var(--accent)' }}>
