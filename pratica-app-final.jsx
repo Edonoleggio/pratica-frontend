@@ -1378,7 +1378,7 @@ function PrenoStatPill({ stato }) {
 }
 
 // ── PrenoCard ────────────────────────────────────────────────────────
-function PrenoCard({ p, onEdit, onConvert, onDelete, onFoto, onContratto, onFirma, onSaldo, onDeposito }) {
+function PrenoCard({ p, onEdit, onConvert, onDelete, onFoto, onContratto, onFirma, onSaldo, onDeposito, onRientro, onProroga }) {
   const giorni = daysDiff(p.dal, p.al);
   return (
     <div style={{
@@ -1476,6 +1476,20 @@ function PrenoCard({ p, onEdit, onConvert, onDelete, onFoto, onContratto, onFirm
             💰 Saldo
           </button>
         )}
+        {p.stato === 'in_corso' && (
+          <button type="button" onClick={() => onRientro && onRientro(p)}
+            style={{ fontSize: 11, padding: '4px 10px', borderRadius: 4, border: 'none',
+              background: '#2e6e3e', color: 'white', fontWeight: 700, cursor: 'pointer' }}>
+            ✓ Rientrato
+          </button>
+        )}
+        {(p.stato === 'in_corso' || p.stato === 'confermata') && (
+          <button type="button" onClick={() => onProroga && onProroga(p)}
+            style={{ fontSize: 11, padding: '4px 10px', borderRadius: 4, border: '1px solid #c88a2e',
+              background: 'transparent', color: '#c88a2e', cursor: 'pointer' }}>
+            ⏱ Proroga
+          </button>
+        )}
         {p.stato !== 'annullata' && !p.depositoRegistrato && (
           <button type="button" onClick={() => onDeposito && onDeposito(p, 'prendi')}
             style={{ fontSize: 11, padding: '4px 10px', borderRadius: 4, border: '1px solid #e8c88a',
@@ -1549,17 +1563,19 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
   // Lista mezzi: preferisce rentmeVehicles (fonte EDOX) se disponibili, altrimenti usa fleet locale
   const allVehicles = useMemo(() => {
     if (rentmeVehicles && rentmeVehicles.length > 0) {
-      const fromRentMe = rentmeVehicles.map(v => ({
-        id:      v.slug,
-        tipo:    v.tipo || 'auto',
-        marca:   '',
-        modello: v.nome || v.slug || '',
-        targa:   v.targa || '',
-        stato:   'available',
-        _source: 'rentme',
-      }));
-      const rmIds = new Set(fromRentMe.map(v => v.id));
-      const extraFleet = (fleet || []).filter(v => v.stato === 'available' && !rmIds.has(v.id));
+      const fromRentMe = rentmeVehicles
+        .filter(v => v.targa)
+        .map(v => ({
+          id:      (v.targa || '').trim().toUpperCase(), // targa = vehicleId univoco
+          tipo:    v.tipo || 'auto',
+          marca:   '',
+          modello: v.nome || '',
+          targa:   (v.targa || '').trim().toUpperCase(),
+          stato:   'available',
+          _source: 'rentme',
+        }));
+      const rmTargas = new Set(fromRentMe.map(v => v.id));
+      const extraFleet = (fleet || []).filter(v => v.stato === 'available' && !rmTargas.has((v.targa||'').toUpperCase()));
       return [...fromRentMe, ...extraFleet];
     }
     return (fleet || []).filter(v => v.stato === 'available');
@@ -1582,11 +1598,11 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
 
   function handleVehicleChange(e) {
     const id = e.target.value;
-    // Cerca prima in rentmeVehicles (per slug), poi in fleet locale
-    const rm = (rentmeVehicles || []).find(v => v.slug === id);
+    // Cerca prima in rentmeVehicles (per targa), poi in fleet locale
+    const rm = (rentmeVehicles || []).find(v => (v.targa || '').trim().toUpperCase() === id);
     if (rm) {
       set('vehicleId', id);
-      set('vehicleLabel', rm.nome || rm.slug || '');
+      set('vehicleLabel', rm.nome || id);
       set('vehicleType', rm.tipo || 'auto');
     } else {
       const v = (fleet || []).find(x => x.id === id);
@@ -1819,6 +1835,7 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rent
   const [saldoPreno, setSaldoPreno]     = useState(null);
   const [depositoPreno, setDepositoPreno] = useState(null); // { preno, mode }
   const [fotoPreno, setFotoPreno] = useState(null); // prenotazione di cui vedere/aggiornare le foto
+  const [prorogaPreno, setProrogaPreno] = useState(null); // {preno, giorni}
 
   // CRUD
   function createPreno(data) {
@@ -1849,6 +1866,28 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rent
     if (!confirm('Eliminare questa prenotazione?')) return;
     setPrenotazioni(ps => ps.filter(p => p.id !== id));
     pushToast && pushToast({ tone: 'warning', title: 'Prenotazione eliminata' });
+  }
+
+  function handleRientro(p) {
+    setPrenotazioni(ps => ps.map(x => x.id === p.id
+      ? { ...x, stato: 'completata', rientroEffettivo: todayISO(), updatedAt: new Date().toISOString() }
+      : x
+    ));
+    pushToast && pushToast({ tone: 'success', title: '✓ Rientro confermato',
+      message: `${[p.clienteCognome, p.clienteNome].filter(Boolean).join(' ')} — ${p.vehicleLabel || 'mezzo'}` });
+  }
+
+  function applyProroga(p, giorni) {
+    const nuovaFine = new Date(p.al + 'T12:00:00');
+    nuovaFine.setDate(nuovaFine.getDate() + giorni);
+    const nuovaFineISO = nuovaFine.toISOString().slice(0, 10);
+    setPrenotazioni(ps => ps.map(x => x.id === p.id
+      ? { ...x, al: nuovaFineISO, updatedAt: new Date().toISOString() }
+      : x
+    ));
+    pushToast && pushToast({ tone: 'success', title: `Proroga +${giorni}gg`,
+      message: `Nuovo rientro: ${formatDate(nuovaFineISO)}` });
+    setProrogaPreno(null);
   }
 
   function convertToPratica(p) {
@@ -1963,11 +2002,11 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rent
 
       {/* Barra filtri */}
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' }}>
-        <div style={{ position: 'relative', flex: '0 0 200px' }}>
-          <Search style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', width: 14, height: 14, color: 'var(--muted)' }} />
+        <div style={{ position: 'relative', flex: '1 1 260px', maxWidth: 360 }}>
+          <Search style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', width: 15, height: 15, color: 'var(--muted)' }} />
           <input
-            style={{ paddingLeft: 30, padding: '7px 10px 7px 30px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 12, width: '100%', background: 'var(--bg)', color: 'var(--ink)', boxSizing: 'border-box' }}
-            placeholder="Cerca cliente, mezzo…"
+            style={{ paddingLeft: 34, padding: '8px 12px 8px 34px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 13, width: '100%', background: 'var(--bg)', color: 'var(--ink)', boxSizing: 'border-box' }}
+            placeholder="Cerca cliente, mezzo, targa…"
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
@@ -2050,6 +2089,8 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rent
               onContratto={(rec) => setContrattoPreno(rec)}
               onSaldo={(rec) => setSaldoPreno(rec)}
               onDeposito={(rec, mode) => setDepositoPreno({ preno: rec, mode })}
+              onRientro={handleRientro}
+              onProroga={(rec) => setProrogaPreno(rec)}
             />
           ))}
         </div>
@@ -2125,6 +2166,78 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rent
           onClose={() => setFotoPreno(null)}
         />
       )}
+
+      {/* Modal proroga noleggio */}
+      {prorogaPreno && (
+        <ProrogaModal
+          preno={prorogaPreno}
+          onConfirm={(giorni) => applyProroga(prorogaPreno, giorni)}
+          onClose={() => setProrogaPreno(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── ProrogaModal ──────────────────────────────────────────────────────
+function ProrogaModal({ preno, onConfirm, onClose }) {
+  const [giorni, setGiorni] = useState(1);
+  const nuovaFine = new Date(preno.al + 'T12:00:00');
+  nuovaFine.setDate(nuovaFine.getDate() + giorni);
+  const nuovaFineISO = nuovaFine.toISOString().slice(0, 10);
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 600,
+      display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ background: 'var(--bg)', borderRadius: 10, padding: '28px 32px',
+        width: 380, boxShadow: '0 20px 60px rgba(0,0,0,.25)' }}>
+        <h2 style={{ margin: '0 0 4px', fontSize: 18, fontFamily: 'var(--font-serif)', fontWeight: 600 }}>
+          Proroga noleggio
+        </h2>
+        <p style={{ margin: '0 0 20px', fontSize: 13, color: 'var(--muted)' }}>
+          {[preno.clienteCognome, preno.clienteNome].filter(Boolean).join(' ')} · {preno.vehicleLabel || '—'}
+        </p>
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '.06em' }}>
+            Rientro attuale
+          </div>
+          <div style={{ fontWeight: 600, fontSize: 15 }}>{formatDate(preno.al)}</div>
+        </div>
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '.06em' }}>
+            Giorni di proroga
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            {[1, 2, 3, 5, 7, 14].map(g => (
+              <button key={g} type="button"
+                onClick={() => setGiorni(g)}
+                style={{ padding: '6px 14px', borderRadius: 20, fontSize: 13, cursor: 'pointer', fontWeight: giorni === g ? 700 : 400,
+                  border: giorni === g ? 'none' : '1px solid var(--border)',
+                  background: giorni === g ? 'var(--accent)' : 'transparent',
+                  color: giorni === g ? 'white' : 'var(--ink-2)' }}>
+                +{g}g
+              </button>
+            ))}
+            <input type="number" min={1} max={90} value={giorni} onChange={e => setGiorni(Math.max(1, parseInt(e.target.value)||1))}
+              style={{ width: 60, padding: '6px 8px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 13,
+                background: 'var(--bg)', color: 'var(--ink)', textAlign: 'center' }} />
+          </div>
+          <div style={{ marginTop: 12, fontSize: 13, color: 'var(--ink-2)' }}>
+            Nuovo rientro: <strong style={{ color: 'var(--ink)' }}>{formatDate(nuovaFineISO)}</strong>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button type="button" onClick={onClose}
+            style={{ flex: 1, padding: '9px', borderRadius: 6, border: '1px solid var(--border)',
+              background: 'transparent', color: 'var(--ink-2)', cursor: 'pointer', fontSize: 13 }}>
+            Annulla
+          </button>
+          <button type="button" onClick={() => onConfirm(giorni)}
+            style={{ flex: 2, padding: '9px', borderRadius: 6, border: 'none',
+              background: 'var(--accent)', color: 'white', fontWeight: 700, cursor: 'pointer', fontSize: 13 }}>
+            ⏱ Conferma proroga +{giorni}g
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -3467,23 +3580,25 @@ function useRentMeSync({ rentmeVehicles, setRentmeVehicles, setPrenotazioni, pus
       setRentmeVehicles(mapped);
 
       // Costruisce prenotazioni RentMe da mergare
+      // vehicleId = targa (univoco per veicolo, non slug che colliede tra stessi modelli)
       const rentmeRows = [];
       veicoli.forEach(v => {
-        const slug = [v.tipo, v.marca, v.modello, v.cilindrata].join('-').toLowerCase().replace(/\s+/g,'').replace(/[^a-z0-9-]/g,'');
+        const targaId = (v.targa || '').trim().toUpperCase();
+        const label   = [v.tipo, v.marca, v.modello, v.cilindrata].filter(Boolean).join(' ');
         (v.dateImpegno || []).forEach(di => {
           const p = di.split('|');
           if (p.length >= 2 && p[0] && p[1]) {
             const clienteFull = (p[2]||'').trim();
             const parti = clienteFull.split(' ');
             rentmeRows.push({
-              id:            `rm_${v.targa}_${p[0].replace(/-/g,'')}`,
+              id:            `rm_${targaId}_${p[0].replace(/-/g,'')}`,
               createdAt:     new Date().toISOString(),
               updatedAt:     new Date().toISOString(),
               clienteNome:   parti[0] || '',
               clienteCognome:parti.slice(1).join(' ') || clienteFull,
               clienteTel:    '',
-              vehicleId:     slug,
-              vehicleLabel:  [v.tipo, v.marca, v.modello, v.cilindrata].filter(Boolean).join(' '),
+              vehicleId:     targaId,          // targa = ID univoco per veicolo
+              vehicleLabel:  label,
               vehicleType:   v.tipo || '',
               dal:           p[0],
               al:            p[1],
@@ -3492,7 +3607,7 @@ function useRentMeSync({ rentmeVehicles, setRentmeVehicles, setPrenotazioni, pus
               prezzo:        parseFloat(p[4])||0,
               acconto:       parseFloat(p[3])||0,
               note:          (p[5]||'').trim(),
-              rentmeTarga:   v.targa,
+              rentmeTarga:   targaId,
             });
           }
         });
@@ -3976,37 +4091,77 @@ function StagioniEditor({ stagioni, onSave }) {
 
 // ═══════════════════════════════════════════════════════════════════
 // FLEET CSV IMPORT — carica flotta da file CSV
-// Formato atteso (header obbligatorio):
-//   targa, categoria, alias, anno, stato
-//   AG001AA, scooter_50, Piaggio Liberty, 2021, attivo
-// Il separatore può essere virgola o punto-e-virgola.
+// Formati supportati:
+//   1. Formato EDOX/RentMe:  ID RENTME;Modello;Targa;Colore;;CC;
+//   2. Formato generico:     targa, categoria, alias, anno, stato
+// Il separatore viene rilevato automaticamente (virgola o punto-e-virgola).
 // ═══════════════════════════════════════════════════════════════════
 function FleetCSVImport({ fleet, onImport, onClose }) {
   const [step, setStep]     = useState('upload'); // upload | preview | done
   const [preview, setPreview] = useState([]);
   const [error, setError]   = useState(null);
   const [added, setAdded]   = useState(0);
+  const [formato, setFormato] = useState('');
   const fileRef = useRef();
 
   const parseCSV = (text) => {
-    const lines = text.trim().split(/\r?\n/);
+    const lines = text.trim().split(/\r?\n/).filter(l => l.trim());
     if (lines.length < 2) throw new Error('Il file deve avere almeno un\'intestazione e una riga dati');
     const sep   = lines[0].includes(';') ? ';' : ',';
     const heads = lines[0].split(sep).map(h => h.trim().toLowerCase().replace(/"/g,''));
-    const rows  = lines.slice(1).map(l => {
+
+    // ── Rileva formato EDOX: prima colonna contiene "id rentme" o "id" ──
+    const isEdox = heads[0].includes('id rentme') || heads[0] === 'id' ||
+                   (heads.includes('modello') && heads.includes('targa') && heads.includes('colore'));
+
+    if (isEdox) {
+      // Formato: ID RENTME;Modello;Targa;Colore;;CC;
+      const rows = lines.slice(1).map(l => {
+        const cells = l.split(sep).map(c => c.trim().replace(/"/g,''));
+        return {
+          idRentme: (cells[0] || '').trim(),
+          modello:  (cells[1] || '').trim(),
+          targa:    (cells[2] || '').trim().toUpperCase(),
+          colore:   (cells[3] || '').trim(),
+          cc:       (cells[5] || '').trim(),
+        };
+      }).filter(r => r.targa && r.targa !== 'TARGA');
+
+      if (!rows.length) throw new Error('Nessuna riga valida trovata (colonna "Targa" obbligatoria)');
+
+      setFormato('EDOX');
+      return rows.map(r => ({
+        id:        r.targa,                        // targa = vehicleId univoco
+        targa:     r.targa,
+        idRentme:  r.idRentme,                     // es. "mehari 130"
+        tipo:      r.idRentme.split(' ')[0] || '',  // tipo = prima parola dell'id
+        modello:   r.modello,
+        colore:    r.colore,
+        marca:     '',
+        cc:        r.cc,
+        stato:     'available',
+        anno:      null,
+      }));
+    }
+
+    // ── Formato generico ──────────────────────────────────────────────
+    const rows = lines.slice(1).map(l => {
       const cells = l.split(sep).map(c => c.trim().replace(/"/g,''));
       const obj = {};
       heads.forEach((h,i) => { obj[h] = cells[i] || ''; });
       return obj;
     }).filter(r => r.targa || r['targa/id']);
     if (!rows.length) throw new Error('Nessuna riga valida trovata (colonna "targa" obbligatoria)');
+    setFormato('Generico');
     return rows.map(r => ({
-      id:        r.targa || r['targa/id'] || r.id || ('VEH_' + Math.random().toString(36).slice(2,7).toUpperCase()),
+      id:        (r.targa || r['targa/id'] || '').toUpperCase() || ('VEH_' + Math.random().toString(36).slice(2,7).toUpperCase()),
       targa:     (r.targa || r['targa/id'] || '').toUpperCase(),
-      categoria: r.categoria || r.category || r.tipo || '',
-      alias:     r.alias || r.modello || r.nome || '',
+      tipo:      r.categoria || r.category || r.tipo || '',
+      modello:   r.alias || r.modello || r.nome || '',
+      marca:     '',
+      colore:    r.colore || '',
+      stato:     r.stato || r.status || 'available',
       anno:      parseInt(r.anno || r.year || '0') || null,
-      stato:     r.stato || r.status || 'attivo',
     }));
   };
 
@@ -4028,9 +4183,9 @@ function FleetCSVImport({ fleet, onImport, onClose }) {
   };
 
   const handleImport = () => {
-    // Filtra duplicati (per targa)
-    const existing = new Set((fleet || []).map(v => v.id));
-    const toAdd = preview.filter(r => !existing.has(r.id));
+    // Filtra duplicati per targa (univoca)
+    const existing = new Set((fleet || []).map(v => (v.targa || '').toUpperCase()));
+    const toAdd = preview.filter(r => !existing.has((r.targa || '').toUpperCase()));
     onImport([...(fleet || []), ...toAdd]);
     setAdded(toAdd.length);
     setStep('done');
@@ -4066,11 +4221,16 @@ function FleetCSVImport({ fleet, onImport, onClose }) {
               <input ref={fileRef} type="file" accept=".csv,.txt" onChange={handleFile} style={{ display: 'none' }} />
             </div>
             <div style={{ marginTop: 14, fontSize: 12, color: 'var(--muted)' }}>
-              <strong>Esempio CSV:</strong><br/>
+              <strong>Formati supportati:</strong><br/>
               <code style={{ display: 'block', background: 'var(--surface-2)', padding: '8px 10px', borderRadius: 4, marginTop: 6, fontFamily: 'monospace', fontSize: 11 }}>
-                targa,categoria,alias,anno,stato<br/>
-                AG001AA,scooter_50,Piaggio Liberty,2021,attivo<br/>
-                AG002BB,scooter_125,Honda PCX,2022,attivo
+                <span style={{ color: 'var(--accent)', fontWeight: 700 }}>Formato EDOX (automatico):</span><br/>
+                ID RENTME;Modello;Targa;Colore<br/>
+                mehari 130;MEHARI;SV256194;ARANCIONE<br/>
+                panda 81;PANDA;CY937XX;GRIGIA MET<br/>
+                <br/>
+                <span style={{ color: 'var(--ink-2)', fontWeight: 700 }}>Formato generico:</span><br/>
+                targa,tipo,modello,colore,stato<br/>
+                AG001AA,scooter,Piaggio Liberty,rosso,available
               </code>
             </div>
           </div>
@@ -4079,27 +4239,41 @@ function FleetCSVImport({ fleet, onImport, onClose }) {
         {step === 'preview' && (
           <div>
             <div style={{ marginBottom: 14, fontSize: 13, color: 'var(--ink-2)' }}>
-              <strong>{preview.length}</strong> mezzi trovati nel file. Controlla e conferma l'importazione.
+              <strong>{preview.length}</strong> mezzi trovati
+              {formato && <span style={{ marginLeft: 8, fontSize: 11, background: formato === 'EDOX' ? '#e8f4e8' : 'var(--surface-2)', color: formato === 'EDOX' ? '#2e6e3e' : 'var(--muted)', padding: '2px 8px', borderRadius: 10, fontWeight: 600 }}>Formato {formato}</span>}
+              . Controlla e conferma l'importazione.
             </div>
             <div style={{ maxHeight: 280, overflow: 'auto', border: '1px solid var(--border)', borderRadius: 6 }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                 <thead>
                   <tr style={{ background: 'var(--surface-2)' }}>
-                    {['Targa','Categoria','Alias','Anno','Stato'].map(h => (
-                      <th key={h} style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 600, fontSize: 10, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--ink-2)', borderBottom: '1px solid var(--border)' }}>{h}</th>
-                    ))}
+                    {formato === 'EDOX'
+                      ? ['ID RENTME','Modello','Targa','Colore'].map(h => (
+                          <th key={h} style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 600, fontSize: 10, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--ink-2)', borderBottom: '1px solid var(--border)' }}>{h}</th>
+                        ))
+                      : ['Targa','Tipo','Modello','Colore','Stato'].map(h => (
+                          <th key={h} style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 600, fontSize: 10, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--ink-2)', borderBottom: '1px solid var(--border)' }}>{h}</th>
+                        ))
+                    }
                   </tr>
                 </thead>
                 <tbody>
                   {preview.map((r, i) => (
                     <tr key={i} style={{ background: i % 2 === 0 ? 'var(--bg)' : 'var(--surface-2)' }}>
-                      <td style={{ padding: '5px 10px', fontWeight: 600, borderBottom: '1px solid var(--border)' }}>{r.targa}</td>
-                      <td style={{ padding: '5px 10px', borderBottom: '1px solid var(--border)' }}>{r.categoria}</td>
-                      <td style={{ padding: '5px 10px', color: 'var(--muted)', borderBottom: '1px solid var(--border)' }}>{r.alias}</td>
-                      <td style={{ padding: '5px 10px', borderBottom: '1px solid var(--border)' }}>{r.anno}</td>
-                      <td style={{ padding: '5px 10px', borderBottom: '1px solid var(--border)' }}>
-                        <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', color: r.stato === 'attivo' ? '#27ae60' : '#c0392b' }}>{r.stato}</span>
-                      </td>
+                      {formato === 'EDOX' ? <>
+                        <td style={{ padding: '5px 10px', color: 'var(--muted)', borderBottom: '1px solid var(--border)', fontSize: 11 }}>{r.idRentme}</td>
+                        <td style={{ padding: '5px 10px', borderBottom: '1px solid var(--border)' }}>{r.modello}</td>
+                        <td style={{ padding: '5px 10px', fontWeight: 600, borderBottom: '1px solid var(--border)' }}>{r.targa}</td>
+                        <td style={{ padding: '5px 10px', color: 'var(--muted)', borderBottom: '1px solid var(--border)' }}>{r.colore}</td>
+                      </> : <>
+                        <td style={{ padding: '5px 10px', fontWeight: 600, borderBottom: '1px solid var(--border)' }}>{r.targa}</td>
+                        <td style={{ padding: '5px 10px', borderBottom: '1px solid var(--border)' }}>{r.tipo}</td>
+                        <td style={{ padding: '5px 10px', borderBottom: '1px solid var(--border)' }}>{r.modello}</td>
+                        <td style={{ padding: '5px 10px', color: 'var(--muted)', borderBottom: '1px solid var(--border)' }}>{r.colore}</td>
+                        <td style={{ padding: '5px 10px', borderBottom: '1px solid var(--border)' }}>
+                          <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', color: '#27ae60' }}>{r.stato}</span>
+                        </td>
+                      </>}
                     </tr>
                   ))}
                 </tbody>
@@ -4848,7 +5022,7 @@ function RitiriWidget({ prenotazioni, agency, setPage }) {
   const Row = ({ p, tipo }) => {
     const waUrl   = buildWAReminder(p, agency, tipo);
     const hasTel  = !!(p.clienteTel || '').trim();
-    const tipoLabel = tipo === 'ritiro_oggi' ? 'Ritiro oggi' : tipo === 'ritiro_domani' ? 'Ritiro domani' : 'Rientro oggi';
+    const tipoLabel = tipo === 'ritiro_oggi' ? 'Consegna oggi' : tipo === 'ritiro_domani' ? 'Consegna domani' : 'Rientro oggi';
     const tipoColor = tipo === 'rientro' ? '#7d3c98' : tipo === 'ritiro_oggi' ? '#27ae60' : '#1f5d83';
     return (
       <div style={{ padding: '10px 20px', display: 'flex', alignItems: 'center', gap: 12, borderBottom: '1px solid var(--border)' }}>
@@ -5975,7 +6149,7 @@ function OggiPage({ prenotazioni, fleet, scadenze, customers, setPage }) {
   function exportMovimenti() {
     const rows = [
       ['Tipo','Cliente','Telefono','Mezzo','Targa','Dal','Al','Stato','Prezzo'],
-      ...partenze.map(p => ['Partenza',
+      ...partenze.map(p => ['Consegna',
         `${p.clienteCognome||''} ${p.clienteNome||''}`.trim(), p.clienteTel||'',
         p.vehicleLabel||'', p.vehicleTarga||'', p.dal, p.al, p.stato,
         p.prezzo != null ? `€${p.prezzo}` : '']),
@@ -6128,7 +6302,7 @@ function OggiPage({ prenotazioni, fleet, scadenze, customers, setPage }) {
       {/* KPI strip */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 4 }}>
         {[
-          { label: 'Partenze oggi',  value: partenze.length,  color: '#2e6e3e', emoji: '📤' },
+          { label: 'Consegne oggi',  value: partenze.length,  color: '#2e6e3e', emoji: '📤' },
           { label: 'Rientri oggi',   value: rientri.length,   color: '#6a3d8f', emoji: '📥' },
           { label: 'In corso',       value: inCorso.length,   color: '#1f5d83', emoji: '🔄' },
           { label: 'Domani',         value: domani.length,    color: '#b87333', emoji: '📅' },
@@ -6147,7 +6321,7 @@ function OggiPage({ prenotazioni, fleet, scadenze, customers, setPage }) {
       </div>
 
       {/* ── PARTENZE ────────────────────────────────────────────────── */}
-      <SectionTitle icon="📤" label="Partenze oggi" count={partenze.length} color="#2e6e3e" />
+      <SectionTitle icon="📤" label="Consegne oggi" count={partenze.length} color="#2e6e3e" />
       {partenze.length === 0
         ? <div style={{ fontSize: 13, color: 'var(--muted)', padding: '10px 0' }}>Nessuna partenza oggi</div>
         : <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -6216,7 +6390,7 @@ function OggiPage({ prenotazioni, fleet, scadenze, customers, setPage }) {
       {/* ── DOMANI IN ANTICIPO ───────────────────────────────────────── */}
       {domani.length > 0 && (
         <>
-          <SectionTitle icon="📅" label="Partenze domani" count={domani.length} color="#b87333" />
+          <SectionTitle icon="📅" label="Consegne domani" count={domani.length} color="#b87333" />
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {domani.map(p => <PrenoRow key={p.id} p={p} accentColor="#b87333" />)}
           </div>
@@ -6431,6 +6605,8 @@ function GlobalSearchModal({ prenotazioni, customers, contracts, fleet, onClose,
 // ═══════════════════════════════════════════════════════════════════
 function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage }) {
   const [weekOffset, setWeekOffset] = useState(0);
+  const [tipoFilter, setTipoFilter] = useState('');         // filtro tipo mezzo
+  const [selectedCell, setSelectedCell] = useState(null);  // {preno, vehicleId, day}
   const COLS = 28; // 4 settimane
   const today = todayISO();
 
@@ -6452,15 +6628,16 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage }) 
   const fleetList = useMemo(() => {
     if (rentmeVehicles && rentmeVehicles.length > 0) {
       return rentmeVehicles
+        .filter(v => v.targa)                          // salta veicoli senza targa
         .map(v => ({
-          id:      v.slug,
+          id:      (v.targa || '').trim().toUpperCase(), // targa = vehicleId univoco
           tipo:    v.tipo || '',
           marca:   '',
-          modello: v.nome || v.slug || '',
-          targa:   v.targa || '',
+          modello: v.nome || '',
+          targa:   (v.targa || '').trim().toUpperCase(),
           status:  'available',
         }))
-        .sort((a, b) => (a.tipo || '').localeCompare(b.tipo || '') || (a.modello || '').localeCompare(b.modello || ''));
+        .sort((a, b) => (a.tipo || '').localeCompare(b.tipo || '') || (a.targa || '').localeCompare(b.targa || ''));
     }
     return (fleet || [])
       .filter(v => v.status !== 'fuori_uso')
@@ -6470,6 +6647,17 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage }) 
   const prenoList = useMemo(() =>
     (prenotazioni || []).filter(p => p.stato !== 'annullata' && p.stato !== 'completata'),
     [prenotazioni]
+  );
+
+  // Tipi unici per filtro
+  const tipiDisponibili = useMemo(() =>
+    [...new Set(fleetList.map(v => v.tipo).filter(Boolean))].sort(),
+    [fleetList]
+  );
+
+  const fleetFiltered = useMemo(() =>
+    tipoFilter ? fleetList.filter(v => v.tipo === tipoFilter) : fleetList,
+    [fleetList, tipoFilter]
   );
 
   // Mappa (vehicleId|day) → prenotazione
@@ -6484,12 +6672,9 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage }) 
     return m;
   }, [prenoList, days]);
 
-  const [hovered, setHovered] = useState(null);
-  const hoveredPreno = hovered ? prenoList.find(p => p.id === hovered) : null;
-
-  const COL_W = 34;
-  const ROW_H = 42;
-  const LABEL_W = 152;
+  const COL_W = 36;
+  const ROW_H = 44;
+  const LABEL_W = 170;
 
   // Mesi — etichetta quando cambia
   const monthChanges = useMemo(() => {
@@ -6509,26 +6694,43 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage }) 
     }}>{label}</button>
   );
 
+  const sel = selectedCell?.preno || null;
+
   return (
-    <div style={{ padding: '28px 32px', maxWidth: '100%' }}>
+    <div style={{ padding: '20px 24px', maxWidth: '100%' }} onClick={() => setSelectedCell(null)}>
 
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
         <div>
-          <h1 style={{ margin: 0, fontSize: 22, fontFamily: 'var(--font-serif)', fontWeight: 600 }}>Calendario flotta</h1>
-          <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--muted)' }}>
-            {fleetList.length} mezzi attivi · {prenoList.length} prenotazioni attive
+          <h1 style={{ margin: 0, fontSize: 20, fontFamily: 'var(--font-serif)', fontWeight: 600 }}>Calendario flotta</h1>
+          <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--muted)' }}>
+            {fleetFiltered.length} mezzi · {prenoList.length} prenotazioni attive
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+          {/* Filtri tipo */}
+          {tipiDisponibili.map(t => (
+            <button key={t} type="button" onClick={e => { e.stopPropagation(); setTipoFilter(tipoFilter === t ? '' : t); }}
+              style={{ padding: '4px 12px', borderRadius: 20, fontSize: 11, cursor: 'pointer', textTransform: 'capitalize',
+                border: tipoFilter === t ? 'none' : '1px solid var(--border)',
+                background: tipoFilter === t ? 'var(--ink)' : 'transparent',
+                color: tipoFilter === t ? 'var(--bg)' : 'var(--ink-2)', fontWeight: tipoFilter === t ? 700 : 400 }}>
+              {t}
+            </button>
+          ))}
+          <div style={{ width: 1, height: 20, background: 'var(--border)', margin: '0 2px' }} />
           {weekOffset !== 0 && (
-            <button type="button" onClick={() => setWeekOffset(0)} style={{
-              padding: '6px 12px', borderRadius: 6, fontSize: 12, cursor: 'pointer',
+            <button type="button" onClick={e => { e.stopPropagation(); setWeekOffset(0); }} style={{
+              padding: '5px 12px', borderRadius: 6, fontSize: 12, cursor: 'pointer',
               border: 'none', background: 'var(--ink)', color: 'var(--bg)', fontWeight: 600,
             }}>Oggi</button>
           )}
-          {btnNav('← Prec.', () => setWeekOffset(w => w - 1))}
-          {btnNav('Succ. →', () => setWeekOffset(w => w + 1))}
+          <button type="button" onClick={e => { e.stopPropagation(); setWeekOffset(w => w - 1); }} style={{
+            padding: '5px 14px', borderRadius: 6, fontSize: 13, cursor: 'pointer',
+            border: '1px solid var(--border)', background: 'transparent', color: 'var(--ink-2)' }}>←</button>
+          <button type="button" onClick={e => { e.stopPropagation(); setWeekOffset(w => w + 1); }} style={{
+            padding: '5px 14px', borderRadius: 6, fontSize: 13, cursor: 'pointer',
+            border: '1px solid var(--border)', background: 'transparent', color: 'var(--ink-2)' }}>→</button>
         </div>
       </div>
 
@@ -6538,7 +6740,8 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage }) 
 
           {/* Header mesi */}
           <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', background: 'var(--surface-2)' }}>
-            <div style={{ width: LABEL_W, flexShrink: 0, borderRight: '1px solid var(--border)' }} />
+            <div style={{ width: LABEL_W, flexShrink: 0, borderRight: '1px solid var(--border)',
+              position: 'sticky', left: 0, background: 'var(--surface-2)', zIndex: 3 }} />
             {days.map((d, i) => (
               <div key={d} style={{ width: COL_W, flexShrink: 0, borderLeft: '1px solid var(--border)',
                 fontSize: 9, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase',
@@ -6549,10 +6752,11 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage }) 
           </div>
 
           {/* Header giorni */}
-          <div style={{ display: 'flex', borderBottom: '2px solid var(--border)', background: 'var(--surface-2)', position: 'sticky', top: 0, zIndex: 2 }}>
+          <div style={{ display: 'flex', borderBottom: '2px solid var(--border)', background: 'var(--surface-2)', position: 'sticky', top: 0, zIndex: 4 }}>
             <div style={{ width: LABEL_W, flexShrink: 0, padding: '6px 12px',
               fontSize: 10, fontWeight: 700, letterSpacing: '.06em', color: 'var(--muted)',
-              textTransform: 'uppercase', borderRight: '1px solid var(--border)' }}>
+              textTransform: 'uppercase', borderRight: '1px solid var(--border)',
+              position: 'sticky', left: 0, background: 'var(--surface-2)', zIndex: 3 }}>
               MEZZO
             </div>
             {days.map(d => {
@@ -6566,7 +6770,7 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage }) 
                   color: isToday ? 'white' : isWeekend ? 'var(--muted)' : 'var(--ink-2)',
                   borderLeft: isToday ? '2px solid var(--accent)' : '1px solid var(--border)',
                 }}>
-                  <div style={{ fontSize: 12, fontWeight: isToday ? 700 : isWeekend ? 400 : 500, lineHeight: 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: isToday ? 700 : isWeekend ? 400 : 500, lineHeight: 1 }}>
                     {dt.getDate()}
                   </div>
                   <div style={{ fontSize: 9, marginTop: 1, opacity: .7 }}>
@@ -6578,25 +6782,28 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage }) 
           </div>
 
           {/* Righe veicoli */}
-          {fleetList.length === 0 ? (
+          {fleetFiltered.length === 0 ? (
             <div style={{ padding: '48px', textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>
-              Nessun mezzo attivo in flotta
+              Nessun mezzo attivo{tipoFilter ? ` di tipo "${tipoFilter}"` : ' in flotta'}
             </div>
-          ) : fleetList.map((v, vi) => (
-            <div key={v.id} style={{ display: 'flex', alignItems: 'center',
+          ) : fleetFiltered.map((v, vi) => (
+            <div key={v.id} style={{ display: 'flex', alignItems: 'stretch',
               borderTop: vi === 0 ? 'none' : '1px solid var(--border)',
               background: vi % 2 === 1 ? 'var(--surface-2)' : 'var(--bg)' }}>
 
-              {/* Label mezzo */}
+              {/* Label mezzo — sticky */}
               <div style={{ width: LABEL_W, flexShrink: 0, padding: '8px 12px',
-                borderRight: '1px solid var(--border)' }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink)',
+                borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column',
+                justifyContent: 'center', position: 'sticky', left: 0, zIndex: 1,
+                background: vi % 2 === 1 ? 'var(--surface-2)' : 'var(--bg)' }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--ink)',
                   whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {v.marca} {v.modello}
+                  {v.modello || v.marca || v.tipo || '—'}
                 </div>
-                <div style={{ fontSize: 10, color: 'var(--muted)', fontFamily: 'monospace', marginTop: 1 }}>
+                <div style={{ fontSize: 10, color: 'var(--muted)', fontFamily: 'monospace', marginTop: 1, letterSpacing: '.05em' }}>
                   {v.targa || '—'}
                 </div>
+                {v.colore && <div style={{ fontSize: 9, color: 'var(--muted)', marginTop: 1, textTransform: 'capitalize' }}>{v.colore.toLowerCase()}</div>}
               </div>
 
               {/* Celle giorni */}
@@ -6606,36 +6813,36 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage }) 
                 const isStart = preno && preno.dal === d;
                 const isEnd   = preno && preno.al   === d;
                 const color   = preno ? (STATO_COLOR[preno.stato] || '#888') : null;
-                const isHov   = preno && preno.id === hovered;
+                const isSel   = preno && selectedCell?.preno?.id === preno.id;
                 const dt      = new Date(d + 'T12:00:00');
                 const isWeekend = [0, 6].includes(dt.getDay());
 
                 return (
                   <div key={d}
-                    onMouseEnter={() => preno && setHovered(preno.id)}
-                    onMouseLeave={() => setHovered(null)}
+                    onClick={e => { e.stopPropagation(); if (preno) setSelectedCell({ preno, vehicleId: v.id, day: d }); }}
                     style={{
                       width: COL_W, height: ROW_H, flexShrink: 0, position: 'relative',
                       borderLeft: isToday ? '2px solid var(--accent)' : '1px solid var(--border)',
-                      background: preno ? 'transparent' : isToday ? 'rgba(46,110,62,.06)' : isWeekend ? 'rgba(0,0,0,.015)' : 'transparent',
+                      background: preno ? 'transparent' : isToday ? 'rgba(46,110,62,.06)' : isWeekend ? 'rgba(0,0,0,.02)' : 'transparent',
                       cursor: preno ? 'pointer' : 'default',
                     }}>
                     {preno && (
                       <div style={{
                         position: 'absolute',
-                        top: 5, bottom: 5,
-                        left: isStart ? 3 : 0,
-                        right: isEnd   ? 3 : -1,
-                        background: color + (isHov ? 'bb' : '55'),
-                        borderRadius: `${isStart ? 4 : 0}px ${isEnd ? 4 : 0}px ${isEnd ? 4 : 0}px ${isStart ? 4 : 0}px`,
-                        borderLeft: isStart ? `2px solid ${color}` : 'none',
+                        top: 4, bottom: 4,
+                        left: isStart ? 2 : 0,
+                        right: isEnd ? 2 : -1,
+                        background: color + (isSel ? 'cc' : '50'),
+                        borderRadius: `${isStart ? 5 : 0}px ${isEnd ? 5 : 0}px ${isEnd ? 5 : 0}px ${isStart ? 5 : 0}px`,
+                        borderLeft: isStart ? `3px solid ${color}` : 'none',
                         display: 'flex', alignItems: 'center', overflow: 'hidden',
-                        transition: 'background .1s',
+                        transition: 'background .12s',
+                        boxShadow: isSel ? `0 0 0 1.5px ${color}` : 'none',
                       }}>
                         {isStart && (
                           <span style={{
                             fontSize: 9, fontWeight: 700, color: color,
-                            paddingLeft: 4, whiteSpace: 'nowrap', overflow: 'hidden',
+                            paddingLeft: 5, whiteSpace: 'nowrap', overflow: 'hidden',
                             textOverflow: 'ellipsis', maxWidth: '100%',
                           }}>
                             {preno.clienteCognome || preno.clienteNome || '?'}
@@ -6657,47 +6864,72 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage }) 
         {Object.entries({ confermata: 'Confermata', in_corso: 'In corso', attesa: 'In attesa' }).map(([k, l]) => (
           <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--muted)' }}>
             <div style={{ width: 16, height: 10, borderRadius: 2, background: STATO_COLOR[k] + '88',
-              borderLeft: `2px solid ${STATO_COLOR[k]}` }} />
+              borderLeft: `3px solid ${STATO_COLOR[k]}` }} />
             {l}
           </div>
         ))}
         <div style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--muted)' }}>
-          Passa il mouse su una cella per i dettagli
+          Clicca su una cella per le azioni rapide
         </div>
       </div>
 
-      {/* Pannello hover — angolo in basso a destra */}
-      {hoveredPreno && (
-        <div style={{
-          position: 'fixed', bottom: 24, right: 24, zIndex: 200,
-          background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8,
-          padding: '12px 16px', boxShadow: '0 8px 28px rgba(0,0,0,.18)',
-          minWidth: 220, pointerEvents: 'none',
-        }}>
-          <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 3 }}>
-            {[hoveredPreno.clienteCognome, hoveredPreno.clienteNome].filter(Boolean).join(' ') || 'Cliente'}
+      {/* Pannello azione — click su cella */}
+      {sel && (
+        <div
+          onClick={e => e.stopPropagation()}
+          style={{
+            position: 'fixed', bottom: 24, right: 24, zIndex: 300,
+            background: 'var(--bg)', border: `2px solid ${STATO_COLOR[sel.stato] || 'var(--border)'}`,
+            borderRadius: 10, padding: '16px 20px', boxShadow: '0 12px 36px rgba(0,0,0,.22)',
+            minWidth: 260, maxWidth: 320,
+          }}>
+          {/* Close */}
+          <button type="button" onClick={() => setSelectedCell(null)}
+            style={{ position: 'absolute', top: 8, right: 10, background: 'none', border: 'none',
+              cursor: 'pointer', color: 'var(--muted)', fontSize: 18, lineHeight: 1 }}>×</button>
+
+          <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 2 }}>
+            {[sel.clienteCognome, sel.clienteNome].filter(Boolean).join(' ') || 'Cliente'}
           </div>
-          {hoveredPreno.clienteTel && (
-            <div style={{ fontSize: 11, color: 'var(--muted)' }}>📞 {hoveredPreno.clienteTel}</div>
+          {sel.clienteTel && (
+            <a href={`tel:${sel.clienteTel}`} style={{ fontSize: 11, color: 'var(--accent)', display: 'block', marginBottom: 2 }}>
+              📞 {sel.clienteTel}
+            </a>
           )}
-          <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
-            {hoveredPreno.vehicleLabel || '—'}
+          <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 2 }}>{sel.vehicleLabel || '—'}</div>
+          <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 8 }}>
+            {formatDate(sel.dal)} → <strong style={{ color: 'var(--ink)' }}>{formatDate(sel.al)}</strong>
+            {sel.prezzo != null && <span style={{ marginLeft: 8, fontWeight: 600, color: 'var(--ink)' }}>€{sel.prezzo}</span>}
           </div>
-          <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
-            {formatDate(hoveredPreno.dal)} → {formatDate(hoveredPreno.al)}
-          </div>
-          {hoveredPreno.prezzo != null && (
-            <div style={{ fontWeight: 600, fontSize: 12, marginTop: 4, color: 'var(--ink)' }}>
-              €{hoveredPreno.prezzo}
-              {hoveredPreno.acconto > 0 && <span style={{ fontWeight: 400, color: 'var(--muted)', marginLeft: 6 }}>acc. €{hoveredPreno.acconto}</span>}
-            </div>
-          )}
-          <div style={{ marginTop: 5 }}>
-            <span style={{
-              fontSize: 9, padding: '2px 7px', borderRadius: 10, fontWeight: 600,
-              background: (STATO_COLOR[hoveredPreno.stato] || '#888') + '22',
-              color: STATO_COLOR[hoveredPreno.stato] || '#888',
-            }}>{hoveredPreno.stato}</span>
+          <span style={{ fontSize: 9, padding: '2px 8px', borderRadius: 10, fontWeight: 700,
+            background: (STATO_COLOR[sel.stato] || '#888') + '22',
+            color: STATO_COLOR[sel.stato] || '#888',
+            textTransform: 'uppercase', letterSpacing: '.06em' }}>
+            {sel.stato}
+          </span>
+
+          {/* Azioni */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 14 }}>
+            {sel.stato === 'in_corso' && (
+              <button type="button"
+                onClick={() => {
+                  // segna rientro direttamente dal calendario
+                  // tramite setPage non abbiamo accesso diretto a setPrenotazioni
+                  // usiamo un evento custom per comunicare con PrenotazioniPage
+                  setSelectedCell(null);
+                  setPage && setPage('prenotazioni');
+                }}
+                style={{ padding: '8px 12px', borderRadius: 6, border: 'none',
+                  background: '#2e6e3e', color: 'white', fontWeight: 700, cursor: 'pointer', fontSize: 12, textAlign: 'left' }}>
+                ✓ Vai a Prenotazioni per confermare rientro
+              </button>
+            )}
+            <button type="button"
+              onClick={() => { setSelectedCell(null); setPage && setPage('prenotazioni'); }}
+              style={{ padding: '7px 12px', borderRadius: 6, border: '1px solid var(--border)',
+                background: 'transparent', color: 'var(--ink-2)', cursor: 'pointer', fontSize: 12, textAlign: 'left' }}>
+              ✏️ Apri prenotazione
+            </button>
           </div>
         </div>
       )}
@@ -7470,7 +7702,7 @@ export default function App() {
       return;
     }
     const converted = rentmeVehicles.map((v, i) => ({
-      id:          v.slug || v.targa || `rm-${i}`,   // slug = vehicleId usato nelle prenotazioni RentMe
+      id:          (v.targa || '').trim().toUpperCase() || `rm-${i}`, // targa = vehicleId univoco
       tipo:        v.tipo || 'auto',
       marca:       '',
       modello:     v.nome || v.slug || '',
@@ -7924,13 +8156,17 @@ function Topbar({ online, setOnline, pendingQueue, operator, admin, setAdmin, on
       <button
         type="button"
         onClick={onOpenSearch}
-        className="flex items-center gap-2 px-3 py-1.5 rounded text-xs border transition-all"
-        style={{ borderColor: 'var(--border)', background: 'transparent', color: 'var(--ink-2)' }}
+        className="flex items-center gap-2 rounded border transition-all"
+        style={{ borderColor: 'var(--border)', background: 'var(--surface-2)', color: 'var(--ink-2)',
+          padding: '7px 16px', minWidth: 240, justifyContent: 'space-between' }}
         title="Ricerca globale (Cmd+K)"
       >
-        <Search className="w-3.5 h-3.5" aria-hidden="true" />
-        <span>Cerca</span>
-        <kbd style={{ fontSize: 9, padding: '1px 4px', border: '1px solid var(--border)', borderRadius: 3, color: 'var(--muted)' }}>⌘K</kbd>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Search className="w-4 h-4" aria-hidden="true" style={{ color: 'var(--muted)' }} />
+          <span style={{ fontSize: 13, color: 'var(--muted)' }}>Cerca pratica, cliente, mezzo…</span>
+        </span>
+        <kbd style={{ fontSize: 9, padding: '2px 6px', border: '1px solid var(--border)', borderRadius: 4,
+          color: 'var(--muted)', background: 'var(--bg)' }}>⌘K</kbd>
       </button>
 
       <button
@@ -7978,11 +8214,7 @@ function Topbar({ online, setOnline, pendingQueue, operator, admin, setAdmin, on
         <ScanSearch className="w-3.5 h-3.5" aria-hidden="true" /> Targa
       </button>
 
-      <div className="relative">
-        <label htmlFor="topbar-search" className="sr-only">Cerca pratica</label>
-        <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--muted)' }} aria-hidden="true" />
-        <input id="topbar-search" className="input pl-9" style={{ width: 200 }} placeholder="Cerca pratica…" type="search" />
-      </div>
+      {/* campo cerca rimosso — usa il pulsante ⌘K sopra */}
 
       <button
         type="button"
