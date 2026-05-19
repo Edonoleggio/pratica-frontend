@@ -6723,7 +6723,6 @@ function CalendarioFlottaPage({ prenotazioni, fleet, setPage }) {
                   width: COL_W, flexShrink: 0, textAlign: 'center', padding: '5px 0',
                   background: isToday ? 'var(--accent)' : 'transparent',
                   color: isToday ? 'white' : isWeekend ? 'var(--muted)' : 'var(--ink-2)',
-                  borderLeft: '1px solid var(--border)',
                   borderLeft: isToday ? '2px solid var(--accent)' : '1px solid var(--border)',
                 }}>
                   <div style={{ fontSize: 12, fontWeight: isToday ? 700 : isWeekend ? 400 : 500, lineHeight: 1 }}>
@@ -7228,6 +7227,9 @@ export default function App() {
     };
   }, [fleetSync, customersSync, partnersSync, operatorsSync, cargosSync, agencySync]);
 
+  // Toast system per feedback non-bloccanti (deve stare prima degli useCallback che usano pushToast)
+  const { toasts, push: pushToast, dismiss: dismissToast } = useToasts();
+
   // Export backup JSON — scarica tutti i dati in un file timestampato
   const exportBackup = useCallback(() => {
     const backup = {
@@ -7303,9 +7305,6 @@ export default function App() {
     pushToast,
     enabled: rentmeConfig.enabled !== false,
   });
-
-  // Toast system per feedback non-bloccanti
-  const { toasts, push: pushToast, dismiss: dismissToast } = useToasts();
 
   // API client — memoizzato sul baseUrl così le chiamate sono consistenti
   const api = useMemo(() => makeApi(apiBaseUrl), [apiBaseUrl]);
