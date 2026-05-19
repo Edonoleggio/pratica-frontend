@@ -1504,7 +1504,7 @@ function PrenoCard({ p, onEdit, onConvert, onDelete, onFoto, onContratto, onFirm
 }
 
 // ── PrenoForm — add/edit ─────────────────────────────────────────────
-function PrenoForm({ initial, fleet, prenotazioni, customers, onSave, onClose }) {
+function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, onSave, onClose }) {
   const empty = {
     clienteNome: '', clienteCognome: '', clienteTel: '',
     vehicleId: '', vehicleLabel: '', vehicleType: 'auto',
@@ -1546,8 +1546,28 @@ function PrenoForm({ initial, fleet, prenotazioni, customers, onSave, onClose })
     );
   }, [prenotazioni, f.dal, f.al, initial?.id]);
 
-  const availableVehicles = (fleet || []).filter(v =>
-    v.stato === 'available' && !bookedIds.has(v.id)
+  // Lista mezzi: preferisce rentmeVehicles (fonte EDOX) se disponibili, altrimenti usa fleet locale
+  const allVehicles = useMemo(() => {
+    if (rentmeVehicles && rentmeVehicles.length > 0) {
+      const fromRentMe = rentmeVehicles.map(v => ({
+        id:      v.slug,
+        tipo:    v.tipo || 'auto',
+        marca:   '',
+        modello: v.nome || v.slug || '',
+        targa:   v.targa || '',
+        stato:   'available',
+        _source: 'rentme',
+      }));
+      const rmIds = new Set(fromRentMe.map(v => v.id));
+      const extraFleet = (fleet || []).filter(v => v.stato === 'available' && !rmIds.has(v.id));
+      return [...fromRentMe, ...extraFleet];
+    }
+    return (fleet || []).filter(v => v.stato === 'available');
+  }, [fleet, rentmeVehicles]);
+
+  const availableVehicles = useMemo(() =>
+    allVehicles.filter(v => !bookedIds.has(v.id)),
+    [allVehicles, bookedIds]
   );
 
   // Conflitto diretto: il veicolo scelto è già prenotato in quel periodo
@@ -1562,10 +1582,18 @@ function PrenoForm({ initial, fleet, prenotazioni, customers, onSave, onClose })
 
   function handleVehicleChange(e) {
     const id = e.target.value;
-    const v = fleet.find(x => x.id === id);
-    set('vehicleId', id);
-    set('vehicleLabel', v ? `${v.marca} ${v.modello} · ${v.targa}`.trim() : '');
-    set('vehicleType', v ? v.tipo : 'auto');
+    // Cerca prima in rentmeVehicles (per slug), poi in fleet locale
+    const rm = (rentmeVehicles || []).find(v => v.slug === id);
+    if (rm) {
+      set('vehicleId', id);
+      set('vehicleLabel', rm.nome || rm.slug || '');
+      set('vehicleType', rm.tipo || 'auto');
+    } else {
+      const v = (fleet || []).find(x => x.id === id);
+      set('vehicleId', id);
+      set('vehicleLabel', v ? `${v.marca} ${v.modello} · ${v.targa}`.trim() : '');
+      set('vehicleType', v ? v.tipo : 'auto');
+    }
   }
 
   function handleSubmit(e) {
@@ -1655,7 +1683,9 @@ function PrenoForm({ initial, fleet, prenotazioni, customers, onSave, onClose })
             <select style={inp} value={f.vehicleId} onChange={handleVehicleChange}>
               <option value="">— Categoria generica —</option>
               {availableVehicles.map(v => (
-                <option key={v.id} value={v.id}>{v.marca} {v.modello} · {v.targa} ({v.tipo})</option>
+                <option key={v.id} value={v.id}>
+                  {v.marca ? `${v.marca} ${v.modello} · ${v.targa} (${v.tipo})` : `${v.modello}${v.targa ? ' · ' + v.targa : ''} (${v.tipo})`}
+                </option>
               ))}
             </select>
             {!f.vehicleId && (
@@ -1763,7 +1793,7 @@ function PrenoForm({ initial, fleet, prenotazioni, customers, onSave, onClose })
 }
 
 // ── PrenotazioniPage ─────────────────────────────────────────────────
-function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, customers, operator, onOpenWizard, pushToast, prefill, onClearPrefill }) {
+function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rentmeVehicles, customers, operator, onOpenWizard, pushToast, prefill, onClearPrefill }) {
   const [form, setForm] = useState(null); // null | 'new' | {record}
   const [showDisp, setShowDisp] = useState(false);
 
@@ -2064,6 +2094,7 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, cust
         <PrenoForm
           initial={form === 'new' ? null : form}
           fleet={fleet}
+          rentmeVehicles={rentmeVehicles}
           customers={customers}
           onSave={form === 'new' ? createPreno : updatePreno}
           onClose={() => setForm(null)}
@@ -6398,7 +6429,7 @@ function GlobalSearchModal({ prenotazioni, customers, contracts, fleet, onClose,
 // ═══════════════════════════════════════════════════════════════════
 // CALENDARIO FLOTTA — griglia Gantt mezzo × giorno (4 settimane)
 // ═══════════════════════════════════════════════════════════════════
-function CalendarioFlottaPage({ prenotazioni, fleet, setPage }) {
+function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage }) {
   const [weekOffset, setWeekOffset] = useState(0);
   const COLS = 28; // 4 settimane
   const today = todayISO();
@@ -6417,12 +6448,24 @@ function CalendarioFlottaPage({ prenotazioni, fleet, setPage }) {
     attesa:     '#c88a2e',
   };
 
-  const fleetList = useMemo(() =>
-    (fleet || [])
+  // Preferisce rentmeVehicles (fonte EDOX viva) se disponibili; fallback su fleet locale
+  const fleetList = useMemo(() => {
+    if (rentmeVehicles && rentmeVehicles.length > 0) {
+      return rentmeVehicles
+        .map(v => ({
+          id:      v.slug,
+          tipo:    v.tipo || '',
+          marca:   '',
+          modello: v.nome || v.slug || '',
+          targa:   v.targa || '',
+          status:  'available',
+        }))
+        .sort((a, b) => (a.tipo || '').localeCompare(b.tipo || '') || (a.modello || '').localeCompare(b.modello || ''));
+    }
+    return (fleet || [])
       .filter(v => v.status !== 'fuori_uso')
-      .sort((a, b) => (a.tipo || '').localeCompare(b.tipo || '') || (a.targa || '').localeCompare(b.targa || '')),
-    [fleet]
-  );
+      .sort((a, b) => (a.tipo || '').localeCompare(b.tipo || '') || (a.targa || '').localeCompare(b.targa || ''));
+  }, [fleet, rentmeVehicles]);
 
   const prenoList = useMemo(() =>
     (prenotazioni || []).filter(p => p.stato !== 'annullata' && p.stato !== 'completata'),
@@ -7427,7 +7470,7 @@ export default function App() {
       return;
     }
     const converted = rentmeVehicles.map((v, i) => ({
-      id:          v.targa || `rm-${i}`,
+      id:          v.slug || v.targa || `rm-${i}`,   // slug = vehicleId usato nelle prenotazioni RentMe
       tipo:        v.tipo || 'auto',
       marca:       '',
       modello:     v.nome || v.slug || '',
@@ -7553,14 +7596,14 @@ export default function App() {
             {/* ErrorBoundary con key={page}: se una pagina crasha, cambiando pagina
                 il boundary si resetta automaticamente (la key cambia → nuovo mount). */}
             <ErrorBoundary key={page}>
-              {page === 'calendario' && <CalendarioFlottaPage prenotazioni={prenotazioni} fleet={fleet} setPage={setPage} />}
+              {page === 'calendario' && <CalendarioFlottaPage prenotazioni={prenotazioni} fleet={fleet} rentmeVehicles={rentmeVehicles} setPage={setPage} />}
               {page === 'oggi'       && <OggiPage prenotazioni={prenotazioni} fleet={fleet} scadenze={scadenze} customers={customers} setPage={setPage} />}
               {page === 'dashboard'  && <Dashboard onNew={() => openWizard()} setPage={setPage} operator={operator} fleet={fleet} contracts={localContracts} partners={partners} onMarkReturned={markContractReturned} scadenze={scadenze} prenotazioni={prenotazioni} agency={agency} />}
               {page === 'cassa'      && <RegistroCassaPage cassa={cassa} setCassa={setCassa} prenotazioni={prenotazioni} customers={customers} operator={operator} pushToast={pushToast} />}
               {page === 'banco'      && <BancoRapidoPage rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} fleet={fleet} setPage={setPage} setPrenotazioniPrefill={setPrenotazioniPrefill} listino={listino} pushToast={pushToast} rentmeSyncStatus={rentmeSync.status} onRentmeSync={rentmeSync.sync} rentmeLastSync={rentmeSync.lastSync} />}
               {page === 'report'        && <ReportPage prenotazioni={prenotazioni} contracts={localContracts} cassa={cassa} customers={customers} fleet={fleet} operators={operators} pushToast={pushToast} />}
               {page === 'preventivi'    && <PreventiviPage setPage={setPage} setPrenotazioniPrefill={setPrenotazioniPrefill} listino={listino} />}
-              {page === 'prenotazioni' && <PrenotazioniPage prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} setCassa={setCassa} fleet={fleet} customers={customers} operator={operator} onOpenWizard={openWizard} pushToast={pushToast} prefill={prenotazioniPrefill} onClearPrefill={() => setPrenotazioniPrefill(null)} />}
+              {page === 'prenotazioni' && <PrenotazioniPage prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} setCassa={setCassa} fleet={fleet} rentmeVehicles={rentmeVehicles} customers={customers} operator={operator} onOpenWizard={openWizard} pushToast={pushToast} prefill={prenotazioniPrefill} onClearPrefill={() => setPrenotazioniPrefill(null)} />}
               {page === 'contracts'  && <ContractsList contracts={localContracts} operators={operators} onRetry={retryContract} onMarkReturned={markContractReturned} online={online} />}
               {page === 'fleet'      && <FleetPage fleet={fleet} prenotazioni={prenotazioni} admin={admin} onAddVehicle={() => setModal('newVehicle')} onEditVehicle={(v) => setModal({ type: 'editVehicle', vehicle: v })} onDeleteVehicle={requestDeleteVehicle} onImportCSV={() => setShowCsvImport(true)} scadenze={scadenze} setScadenze={setScadenze} />}
               {page === 'customers'  && <CustomersPage customers={customers} admin={admin} onShowQR={(c) => setModal({ type: 'qr', customer: c })} onNewWithCustomer={openWizard} onAddCustomer={() => setModal('newCustomer')} onEditCustomer={(c) => setModal({ type: 'editCustomer', customer: c })} onDeleteCustomer={deleteCustomer} onShowStorico={(c) => setStorioClienteId(c.id)} />}
