@@ -269,212 +269,7 @@ const VehicleIcon = memo(function VehicleIcon({ type, className = 'w-5 h-5' }) {
 // ─── Database mezzi Edonoleggio (estratto da DATABASE_MEZZI_EDONOLEGGIO_2026.numbers) ─
 // Stati operativi del file originale: OK, FERMO/FERMA, INCIDENTATO, VENDUTO ?, TONY
 // Mappati internamente come 'available', 'fermo', 'incidentato', 'venduto'
-const INITIAL_FLEET = [
-  // ═══ AUTO CHIUSE — Fiat Panda flotta storica ═══
-  { id: 'v1',  tipo: 'auto', marca: 'Fiat', modello: 'Panda',     targa: 'GA413YP', colore: '', stato: 'available', cilindrata: '900cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v2',  tipo: 'auto', marca: 'Fiat', modello: 'Panda',     targa: 'CR042MZ', colore: '', stato: 'available', cilindrata: '900cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v3',  tipo: 'auto', marca: 'Fiat', modello: 'Panda',     targa: 'DP428KM', colore: '', stato: 'available', cilindrata: '900cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v4',  tipo: 'auto', marca: 'Fiat', modello: 'Panda',     targa: 'CX124KZ', colore: '', stato: 'available', cilindrata: '900cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v5',  tipo: 'auto', marca: 'Fiat', modello: 'Panda',     targa: 'EM416AA', colore: '', stato: 'available', cilindrata: '900cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v6',  tipo: 'auto', marca: 'Fiat', modello: 'Panda',     targa: 'FV485FB', colore: '', stato: 'available', cilindrata: '900cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v7',  tipo: 'auto', marca: 'Fiat', modello: 'Panda',     targa: 'DG894VJ', colore: '', stato: 'available', cilindrata: '900cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v8',  tipo: 'auto', marca: 'Fiat', modello: 'Panda',     targa: 'CX312NY', colore: '', stato: 'available', cilindrata: '900cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v9',  tipo: 'auto', marca: 'Fiat', modello: 'Panda',     targa: 'DP331AA', colore: '', stato: 'available', cilindrata: '900cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v10', tipo: 'auto', marca: 'Fiat', modello: 'Panda',     targa: 'DB391VR', colore: '', stato: 'available', cilindrata: '900cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v11', tipo: 'auto', marca: 'Fiat', modello: 'Panda',     targa: 'ED949RX', colore: '', stato: 'available', cilindrata: '900cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v12', tipo: 'auto', marca: 'Fiat', modello: 'Panda',     targa: 'DS248VG', colore: '', stato: 'available', cilindrata: '900cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v13', tipo: 'auto', marca: 'Fiat', modello: 'Panda',     targa: 'CV464EH', colore: '', stato: 'available', cilindrata: '900cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v14', tipo: 'auto', marca: 'Fiat', modello: 'Panda',     targa: 'DE371MM', colore: '', stato: 'available', cilindrata: '900cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v15', tipo: 'auto', marca: 'Fiat', modello: 'Panda',     targa: 'CY937XX', colore: '', stato: 'available', cilindrata: '900cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v16', tipo: 'auto', marca: 'Fiat', modello: 'Panda',     targa: 'DS995DN', colore: '', stato: 'available', cilindrata: '900cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v17', tipo: 'auto', marca: 'Fiat', modello: 'Panda',     targa: 'CL890CZ', colore: '', stato: 'available', cilindrata: '900cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v18', tipo: 'auto', marca: 'Fiat', modello: 'Panda',     targa: 'DA014MD', colore: '', stato: 'available', cilindrata: '900cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v19', tipo: 'auto', marca: 'Fiat', modello: 'Panda',     targa: 'CN308TV', colore: '', stato: 'available', cilindrata: '900cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v20', tipo: 'auto', marca: 'Fiat', modello: 'Panda',     targa: 'CR452BP', colore: '', stato: 'available', cilindrata: '900cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v21', tipo: 'auto', marca: 'Fiat', modello: 'Panda',     targa: 'DY669GW', colore: '', stato: 'available', cilindrata: '900cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v22', tipo: 'auto', marca: 'Fiat', modello: 'Panda',     targa: 'CP969XS', colore: '', stato: 'available', cilindrata: '900cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v23', tipo: 'auto', marca: 'Fiat', modello: 'Panda',     targa: 'CF847GS', colore: '', stato: 'available', cilindrata: '900cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v24', tipo: 'auto', marca: 'Fiat', modello: 'Panda',     targa: 'DV274MC', colore: '', stato: 'available', cilindrata: '900cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v25', tipo: 'auto', marca: 'Fiat', modello: 'Panda',     targa: 'GH869KA', colore: '', stato: 'available', cilindrata: '900cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v26', tipo: 'auto', marca: 'Fiat', modello: 'Panda',     targa: 'DB506ZV', colore: '', stato: 'available', cilindrata: '900cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v27', tipo: 'auto', marca: 'Fiat', modello: 'Panda',     targa: 'CX824KS', colore: '', stato: 'available', cilindrata: '900cc', anno: '', gps: 0, blocco: 0 },
-  // New Panda
-  { id: 'v28', tipo: 'auto', marca: 'Fiat', modello: 'New Panda', targa: 'FB599WD', colore: '', stato: 'available', cilindrata: '1200cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v29', tipo: 'auto', marca: 'Fiat', modello: 'New Panda', targa: 'FG705MC', colore: '', stato: 'available', cilindrata: '1200cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v30', tipo: 'auto', marca: 'Fiat', modello: 'New Panda', targa: 'CW417RM', colore: '', stato: 'available', cilindrata: '1200cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v31', tipo: 'auto', marca: 'Fiat', modello: 'New Panda', targa: 'DP417KM', colore: '', stato: 'available', cilindrata: '1200cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v32', tipo: 'auto', marca: 'Fiat', modello: 'New Panda', targa: 'DE474WL', colore: '', stato: 'available', cilindrata: '1200cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v33', tipo: 'auto', marca: 'Fiat', modello: 'New Panda', targa: 'CV403WW', colore: '', stato: 'available', cilindrata: '1200cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v34', tipo: 'auto', marca: 'Fiat', modello: 'New Panda', targa: 'DH407YR', colore: '', stato: 'available', cilindrata: '1200cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v35', tipo: 'auto', marca: 'Fiat', modello: 'Panda Automatica', targa: 'DZ500KR', colore: '', stato: 'available', cilindrata: '1200cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v36', tipo: 'auto', marca: 'Fiat', modello: 'New Panda', targa: 'EP804YM', colore: '', stato: 'available', cilindrata: '1200cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v37', tipo: 'auto', marca: 'Fiat', modello: 'New Panda', targa: 'EV888PB', colore: '', stato: 'available', cilindrata: '1200cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v38', tipo: 'auto', marca: 'Fiat', modello: 'New Panda', targa: 'FS944BA', colore: '', stato: 'available', cilindrata: '1200cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v39', tipo: 'auto', marca: 'Fiat', modello: 'New Panda', targa: 'FM873GS', colore: '', stato: 'available', cilindrata: '1200cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v40', tipo: 'auto', marca: 'Fiat', modello: 'New Panda', targa: 'EM461AA', colore: '', stato: 'available', cilindrata: '1200cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v41', tipo: 'auto', marca: 'Fiat', modello: 'New Panda', targa: 'FY821LW', colore: '', stato: 'available', cilindrata: '1200cc', anno: '', gps: 0, blocco: 0 },
-  // Altri modelli (Auto chiuse)
-  { id: 'v42', tipo: 'auto', marca: 'Fiat',     modello: 'Doblò',         targa: 'DL923YK', colore: '', stato: 'available', cilindrata: '1600cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v43', tipo: 'auto', marca: 'Toyota',   modello: 'RAV 4',         targa: 'CP875NR', colore: '', stato: 'available', cilindrata: '2000cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v44', tipo: 'auto', marca: 'Citroën',  modello: 'C3',            targa: 'DZ063EP', colore: '', stato: 'available', cilindrata: '1200cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v45', tipo: 'auto', marca: 'Nissan',   modello: 'Micra',         targa: 'DR856NT', colore: '', stato: 'available', cilindrata: '1200cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v46', tipo: 'auto', marca: 'Dacia',    modello: 'Sandero',       targa: 'EM056GE', colore: '', stato: 'available', cilindrata: '1200cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v47', tipo: 'auto', marca: 'Fiat',     modello: 'Grande Punto',  targa: 'DT796CM', colore: '', stato: 'available', cilindrata: '1200cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v48', tipo: 'auto', marca: 'Fiat',     modello: 'Grande Punto',  targa: 'DF197JW', colore: '', stato: 'available', cilindrata: '1200cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v49', tipo: 'auto', marca: 'Lancia',   modello: 'Y',             targa: 'EJ001VV', colore: '', stato: 'available', cilindrata: '1200cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v50', tipo: 'auto', marca: 'Land Rover', modello: '',            targa: 'ZA040EJ', colore: '', stato: 'available', cilindrata: '', anno: '', gps: 0, blocco: 0 },
-  { id: 'v51', tipo: 'auto', marca: 'Volkswagen', modello: 'Golf',        targa: 'EH739XT', colore: '', stato: 'available', cilindrata: '1400cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v52', tipo: 'auto', marca: 'Fiat',     modello: '500',           targa: 'DY441HX', colore: '', stato: 'available', cilindrata: '1200cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v53', tipo: 'auto', marca: 'Opel',     modello: 'Corsa',         targa: 'DJ507XH', colore: '', stato: 'available', cilindrata: '1200cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v54', tipo: 'auto', marca: 'Opel',     modello: 'Corsa',         targa: 'DE530WF', colore: '', stato: 'available', cilindrata: '1200cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v55', tipo: 'auto', marca: 'Ford',     modello: 'Fiesta',        targa: 'DW184YC', colore: '', stato: 'available', cilindrata: '1200cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v56', tipo: 'auto', marca: 'Fiat',     modello: 'Multipla',      targa: 'BG345SV', colore: '', stato: 'available', cilindrata: '1600cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v57', tipo: 'auto', marca: 'Fiat',     modello: 'Ulisse',        targa: 'CZ241RA', colore: '', stato: 'available', cilindrata: '2000cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v58', tipo: 'auto', marca: 'Nissan',   modello: 'Cube',          targa: 'FK08099', colore: '', stato: 'available', cilindrata: '1500cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v59', tipo: 'auto', marca: '',         modello: '',              targa: 'CX891TB', colore: '', stato: 'available', cilindrata: '', anno: '', gps: 0, blocco: 0, note: 'Da catalogare' },
-  { id: 'v60', tipo: 'auto', marca: '',         modello: '',              targa: 'EX856DA', colore: 'Grigia', stato: 'available', cilindrata: '', anno: '', gps: 0, blocco: 0, note: 'Da catalogare' },
-
-  // ═══ AUTO APERTE — Mehari, cabrio, scoperte ═══
-  { id: 'v61', tipo: 'auto', marca: 'Citroën', modello: 'Mehari', targa: 'SV256194',  colore: '', stato: 'available',   cilindrata: '602cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v62', tipo: 'auto', marca: 'Citroën', modello: 'Mehari', targa: 'PR292027',  colore: '', stato: 'available',   cilindrata: '602cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v63', tipo: 'auto', marca: 'Citroën', modello: 'Mehari', targa: 'VI3397198', colore: '', stato: 'available',   cilindrata: '602cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v64', tipo: 'auto', marca: 'Citroën', modello: 'Mehari', targa: 'PC210411',  colore: '', stato: 'available',   cilindrata: '602cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v65', tipo: 'auto', marca: 'Citroën', modello: 'Mehari', targa: 'TS1922630', colore: '', stato: 'available',   cilindrata: '602cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v66', tipo: 'auto', marca: 'Citroën', modello: 'Mehari', targa: 'AG253022',  colore: '', stato: 'available',   cilindrata: '602cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v67', tipo: 'auto', marca: 'Citroën', modello: 'Mehari', targa: 'AG253021',  colore: '', stato: 'available',   cilindrata: '602cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v68', tipo: 'auto', marca: 'Citroën', modello: 'Mehari', targa: 'TOM28765',  colore: '', stato: 'available',   cilindrata: '602cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v69', tipo: 'auto', marca: 'Citroën', modello: 'Mehari', targa: 'FH854KY',   colore: '', stato: 'available',   cilindrata: '602cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v70', tipo: 'auto', marca: 'Citroën', modello: 'Mehari', targa: 'MI35777G',  colore: '', stato: 'available',   cilindrata: '602cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v71', tipo: 'auto', marca: 'Citroën', modello: 'Mehari', targa: 'UD514492',  colore: '', stato: 'fermo',       cilindrata: '602cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v72', tipo: 'auto', marca: 'Citroën', modello: 'Mehari', targa: 'TP342201',  colore: '', stato: 'fermo',       cilindrata: '602cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v73', tipo: 'auto', marca: 'Citroën', modello: 'Mehari', targa: 'AG279352',  colore: '', stato: 'available',   cilindrata: '602cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v74', tipo: 'auto', marca: 'Citroën', modello: 'Diane',  targa: 'PV407892',  colore: '', stato: 'available',   cilindrata: '602cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v75', tipo: 'auto', marca: 'Citroën', modello: 'Mehari', targa: 'ROMA10123H',colore: '', stato: 'available',   cilindrata: '602cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v76', tipo: 'auto', marca: 'Citroën', modello: 'Mehari', targa: 'MO484122',  colore: '', stato: 'available',   cilindrata: '602cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v77', tipo: 'auto', marca: 'Citroën', modello: 'Mehari', targa: 'BL113579',  colore: '', stato: 'available',   cilindrata: '602cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v78', tipo: 'auto', marca: 'Citroën', modello: 'Mehari', targa: 'AX391EK',   colore: '', stato: 'available',   cilindrata: '602cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v79', tipo: 'auto', marca: 'Citroën', modello: 'Mehari', targa: 'LT421661',  colore: '', stato: 'available',   cilindrata: '602cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v80', tipo: 'auto', marca: 'Citroën', modello: 'Mehari', targa: 'NAP41156',  colore: '', stato: 'available',   cilindrata: '602cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v81', tipo: 'auto', marca: 'Citroën', modello: 'Mehari', targa: 'TOM97379',  colore: '', stato: 'available',   cilindrata: '602cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v82', tipo: 'auto', marca: 'Citroën', modello: 'Mehari', targa: 'VC567189',  colore: '', stato: 'available',   cilindrata: '602cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v83', tipo: 'auto', marca: 'Citroën', modello: 'Mehari', targa: 'MI00033R',  colore: '', stato: 'available',   cilindrata: '602cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v84', tipo: 'auto', marca: 'Citroën', modello: 'Mehari', targa: 'AG214750',  colore: '', stato: 'available',   cilindrata: '602cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v85', tipo: 'auto', marca: 'Citroën', modello: 'Mehari', targa: 'CM506JG',   colore: '', stato: 'available',   cilindrata: '602cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v86', tipo: 'auto', marca: 'Citroën', modello: 'Mehari', targa: 'AL719452',  colore: '', stato: 'available',   cilindrata: '602cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v87', tipo: 'auto', marca: 'Suzuki',  modello: 'Jimny',  targa: 'BZ085ZB',   colore: '', stato: 'available',   cilindrata: '1300cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v88', tipo: 'auto', marca: 'Volkswagen', modello: 'New Beetle', targa: 'CK710JG', colore: '', stato: 'available', cilindrata: '1600cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v89', tipo: 'auto', marca: 'Fiat',    modello: 'Punto Cabrio', targa: 'BC503HM', colore: '', stato: 'available', cilindrata: '1200cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v90', tipo: 'auto', marca: 'Fiat',    modello: 'Punto Cabrio', targa: 'AJ844WG', colore: '', stato: 'fermo',     cilindrata: '1200cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v91', tipo: 'auto', marca: 'Fiat',    modello: 'Punto Cabrio', targa: 'AY107RH', colore: '', stato: 'fermo',     cilindrata: '1200cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v92', tipo: 'auto', marca: 'Fiat',    modello: 'Punto Cabrio', targa: 'AD712WR', colore: '', stato: 'fermo',     cilindrata: '1200cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v93', tipo: 'auto', marca: 'Fiat',    modello: 'Punto Cabrio', targa: 'AR466YG', colore: '', stato: 'fermo',     cilindrata: '1200cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v94', tipo: 'auto', marca: 'Fiat',    modello: 'Punto Cabrio', targa: 'CY066XS', colore: '', stato: 'fermo',     cilindrata: '1200cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v95', tipo: 'auto', marca: 'Fiat',    modello: 'Punto Cabrio', targa: 'BK344VW', colore: '', stato: 'fermo',     cilindrata: '1200cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v96', tipo: 'auto', marca: 'Fiat',    modello: 'Punto Cabrio', targa: 'AE724GZ', colore: '', stato: 'fermo',     cilindrata: '1200cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v97', tipo: 'auto', marca: 'Fiat',    modello: '500',          targa: 'AG085215',colore: '', stato: 'available', cilindrata: '500cc',  anno: '', gps: 0, blocco: 0 },
-  { id: 'v98', tipo: 'auto', marca: 'Fiat',    modello: '500',          targa: 'SP98304', colore: '', stato: 'available', cilindrata: '500cc',  anno: '', gps: 0, blocco: 0 },
-  { id: 'v99', tipo: 'auto', marca: 'Ford',    modello: 'Ka',           targa: 'CJ607GK', colore: '', stato: 'available', cilindrata: '1200cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v100',tipo: 'auto', marca: 'Fiat',    modello: '500 Cabrio',   targa: 'GH649LD', colore: '', stato: 'available', cilindrata: '900cc',  anno: '', gps: 0, blocco: 0 },
-  { id: 'v101',tipo: 'auto', marca: 'Smart',   modello: 'Fortwo',       targa: 'FL409XV', colore: '', stato: 'available', cilindrata: '1000cc', anno: '', gps: 0, blocco: 0 },
-
-  // ═══ SCOOTER 125CC ═══
-  { id: 'v102',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'ET46342', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v103',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'ET46340', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v104',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'ET46341', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v105',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'CG25160', colore: '', stato: 'venduto',   cilindrata: '125cc', anno: '', gps: 0, blocco: 0, note: 'Da verificare' },
-  { id: 'v106',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'CG25175', colore: '', stato: 'venduto',   cilindrata: '125cc', anno: '', gps: 0, blocco: 0, note: 'Da verificare' },
-  { id: 'v107',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'CP85154', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v108',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'CV78763', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v109',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'DE81460', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v110',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'CW77242', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v111',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'DJ16006', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v112',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'ER52914', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v113',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'BV68609', colore: '', stato: 'fermo',     cilindrata: '125cc', anno: '', gps: 0, blocco: 0, note: 'Tony' },
-  { id: 'v114',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'DV40167', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v115',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'BW58323', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v116',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'CV61957', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v117',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'DM06845', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v118',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'DV46333', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v119',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'DV46926', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v120',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'DV40304', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v121',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'DN16471', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v122',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'BY77132', colore: '', stato: 'fermo',     cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v123',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'DV92194', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v124',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'DV46995', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v125',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'DT07281', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v126',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'DT07280', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v127',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'DT07282', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v128',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'DT07199', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v129',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'DM59120', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v130',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'EV53905', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v131',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'EV53904', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v132',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'FP74555', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v133',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'FP74556', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v134',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'FP74554', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v135',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'EW92292', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v136',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'EW92293', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v137',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'EW92294', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v138',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'EW92295', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v139',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'EW92296', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v140',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'EW92297', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v141',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'EW92298', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v142',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'EW92299', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v143',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'EW92300', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v144',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'EW92301', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v145',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'FF16659', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v146',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'FK08061', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v147',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'FK08098', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v148',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'FB88295', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v149',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'FB88299', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v150',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'FB88260', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v151',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'FB88330', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v152',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'FB88344', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v153',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'FB88345', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v154',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'FB88346', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v155',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'FB88347', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v156',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'FB88348', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v157',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'FB88349', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v158',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'FF16747', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v159',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'FF16748', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v160',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'FK08089', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v161',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'FK08090', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v162',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'FK08091', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v163',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'FK08092', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v164',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'FK08093', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v165',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'FD33808', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v166',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'FA13043', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v167',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'FA13042', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v168',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'FA13040', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v169',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'FA13038', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v170',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'FA13039', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v171',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'FA13036', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v172',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'FA13035', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v173',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'FA13037', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v174',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'FA13041', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v175',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'EX61503', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v176',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'EX61501', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v177',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'EX61500', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v178',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'EX61499', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v179',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'EX61505', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v180',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'EX61498', colore: '', stato: 'incidentato',cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v181',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'EX48432', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v182',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'EX61504', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v183',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'EX61502', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v184',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'EX61497', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v185',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'DV40164', colore: '', stato: 'fermo',     cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v186',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'CG25178', colore: '', stato: 'available', cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v187',tipo: 'scooter', marca: 'Scooter 125CC', modello: '', targa: 'DC07551', colore: '', stato: 'fermo',     cilindrata: '125cc', anno: '', gps: 0, blocco: 0 },
-
-  // ═══ QUAD ═══
-  { id: 'v188',tipo: 'quad', marca: 'Quad', modello: '150cc', targa: 'EF82687', colore: '', stato: 'available', cilindrata: '150cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v189',tipo: 'quad', marca: 'Quad', modello: '300cc', targa: 'FS23036', colore: '', stato: 'available', cilindrata: '300cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v190',tipo: 'quad', marca: 'Quad', modello: '150cc', targa: 'DC06822', colore: '', stato: 'fermo',     cilindrata: '150cc', anno: '', gps: 0, blocco: 0 },
-  { id: 'v191',tipo: 'quad', marca: 'Quad', modello: '150cc', targa: 'DW08528', colore: '', stato: 'available', cilindrata: '150cc', anno: '', gps: 0, blocco: 0 },
-
-  // ═══ E-BIKE — non presenti nel database, mantenute come esempio ═══
-  { id: 'v192',tipo: 'ebike', marca: 'Atala', modello: 'B-Tour SLS',   targa: '—', colore: 'Antracite', stato: 'available', cilindrata: '250W', anno: 2024, gps: 0, blocco: 0 },
-  { id: 'v193',tipo: 'ebike', marca: 'Giant', modello: 'Explore E+ 2', targa: '—', colore: 'Bianco',    stato: 'available', cilindrata: '250W', anno: 2024, gps: 0, blocco: 0 },
-];
+const INITIAL_FLEET = []; // flotta vuota — veicoli caricati da EDOX/RentMe
 
 // Stati operativi del veicolo
 const VEHICLE_STATUS = {
@@ -1993,6 +1788,7 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, cust
   const [firmaPreno, setFirmaPreno] = useState(null);
   const [saldoPreno, setSaldoPreno]     = useState(null);
   const [depositoPreno, setDepositoPreno] = useState(null); // { preno, mode }
+  const [fotoPreno, setFotoPreno] = useState(null); // prenotazione di cui vedere/aggiornare le foto
 
   // CRUD
   function createPreno(data) {
@@ -7624,6 +7420,52 @@ export default function App() {
     pushToast({ tone: 'warning', title: 'Reset completo eseguito', message: 'Tutto ripristinato ai valori reali iniziali · sync in corso', duration: 5000 });
   }, [setCustomers, setLocalContracts, setFleet, setPartners, setOperators, pushToast]);
 
+  // Importa flotta da EDOX/RentMe — svuota INITIAL_FLEET e carica solo i veicoli RentMe reali
+  const importFleetFromRentMe = useCallback(() => {
+    if (!rentmeVehicles || rentmeVehicles.length === 0) {
+      pushToast({ tone: 'warning', title: 'EDOX non sincronizzato', message: 'Vai su Impostazioni → sincronizza EDOX prima di importare la flotta' });
+      return;
+    }
+    const converted = rentmeVehicles.map((v, i) => ({
+      id:          v.targa || `rm-${i}`,
+      tipo:        v.tipo || 'auto',
+      marca:       '',
+      modello:     v.nome || v.slug || '',
+      targa:       v.targa || '',
+      colore:      '',
+      stato:       'available',
+      cilindrata:  '',
+      anno:        '',
+      gps:         0,
+      blocco:      0,
+    }));
+    setFleet(converted);
+    pushToast({ tone: 'success', title: 'Flotta importata da EDOX', message: `${converted.length} veicoli caricati · flotta precedente sostituita` });
+  }, [rentmeVehicles, setFleet, pushToast]);
+
+  const requestImportFleetFromRentMe = useCallback(() => {
+    setModal({
+      type: 'confirm',
+      title: 'Importa flotta da EDOX?',
+      message: <>Sostituisce <strong>tutta</strong> la flotta attuale con i {rentmeVehicles?.length || 0} veicoli presenti su EDOX/RentMe. I veicoli di Pratica (INITIAL_FLEET) verranno rimossi. <strong>Azione irreversibile.</strong></>,
+      confirmLabel: 'Importa da EDOX',
+      onConfirm: importFleetFromRentMe,
+    });
+  }, [rentmeVehicles?.length, importFleetFromRentMe]);
+
+  const deleteCustomer = useCallback((c) => {
+    setModal({
+      type: 'confirm',
+      title: `Eliminare ${c.cognome} ${c.nome}?`,
+      message: <>Il cliente verrà rimosso dalla rubrica. Le prenotazioni esistenti restano invariate. <strong>Azione irreversibile.</strong></>,
+      confirmLabel: 'Elimina cliente',
+      onConfirm: () => {
+        setCustomers(prev => prev.filter(x => x.id !== c.id));
+        pushToast({ tone: 'warning', title: 'Cliente eliminato', message: `${c.cognome} ${c.nome} rimosso dalla rubrica` });
+      },
+    });
+  }, [setCustomers, setModal, pushToast]);
+
   const requestResetCustomers = useCallback(() => {
     setModal({
       type: 'confirm',
@@ -7721,7 +7563,7 @@ export default function App() {
               {page === 'prenotazioni' && <PrenotazioniPage prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} setCassa={setCassa} fleet={fleet} customers={customers} operator={operator} onOpenWizard={openWizard} pushToast={pushToast} prefill={prenotazioniPrefill} onClearPrefill={() => setPrenotazioniPrefill(null)} />}
               {page === 'contracts'  && <ContractsList contracts={localContracts} operators={operators} onRetry={retryContract} onMarkReturned={markContractReturned} online={online} />}
               {page === 'fleet'      && <FleetPage fleet={fleet} prenotazioni={prenotazioni} admin={admin} onAddVehicle={() => setModal('newVehicle')} onEditVehicle={(v) => setModal({ type: 'editVehicle', vehicle: v })} onDeleteVehicle={requestDeleteVehicle} onImportCSV={() => setShowCsvImport(true)} scadenze={scadenze} setScadenze={setScadenze} />}
-              {page === 'customers'  && <CustomersPage customers={customers} admin={admin} onShowQR={(c) => setModal({ type: 'qr', customer: c })} onNewWithCustomer={openWizard} onAddCustomer={() => setModal('newCustomer')} onEditCustomer={(c) => setModal({ type: 'editCustomer', customer: c })} onShowStorico={(c) => setStorioClienteId(c.id)} />}
+              {page === 'customers'  && <CustomersPage customers={customers} admin={admin} onShowQR={(c) => setModal({ type: 'qr', customer: c })} onNewWithCustomer={openWizard} onAddCustomer={() => setModal('newCustomer')} onEditCustomer={(c) => setModal({ type: 'editCustomer', customer: c })} onDeleteCustomer={deleteCustomer} onShowStorico={(c) => setStorioClienteId(c.id)} />}
               {page === 'partners'   && <PartnersPage partners={partners} admin={admin} onAddPartner={() => setModal('newPartner')} onEditPartner={(p) => setModal({ type: 'editPartner', partner: p })} onDeletePartner={requestDeletePartner} />}
               {page === 'listino'    && <div style={{padding:'28px 32px',maxWidth:900,margin:'0 auto'}}>
                 <h1 style={{margin:'0 0 6px',fontSize:22,fontFamily:'var(--font-serif)',fontWeight:600}}>Gestione prezzi</h1>
@@ -7732,7 +7574,7 @@ export default function App() {
                   <StagioniEditor stagioni={stagioni} onSave={(s)=>{setStagioni(s); pushToast && pushToast({tone:'success',title:'Stagioni aggiornate',message:'Configurazione stagionale salvata'});}} />
                 </div>
               </div>}
-              {page === 'settings'   && <SettingsPage operator={operator} operators={operators} admin={admin} cargosConfig={cargosConfig} backendStatus={backendStatus} lastCheck={lastCheck} apiBaseUrl={apiBaseUrl} syncStatus={allSyncStatus} agency={agency} customers={customers} contracts={localContracts} onSyncAll={syncAll} onExportBackup={exportBackup} onImportBackup={importBackup} pushToast={pushToast} onAddOperator={() => setModal('newOperator')} onEditOperator={(o) => setModal({ type: 'editOperator', operator: o })} onDeleteOperator={requestDeleteOperator} onEditCargos={() => setModal('cargosConfig')} onEditApiBase={() => setModal('apiBase')} onEditAgency={() => setModal('agency')} onResetCustomers={requestResetCustomers} onResetContracts={requestResetContracts} onResetEverything={requestResetEverything} rentmeConfig={rentmeConfig} setRentmeConfig={setRentmeConfig} rentmeSync={rentmeSync} rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} onImportStorico={({ prenotazioni: newP, clienti: newC }) => {
+              {page === 'settings'   && <SettingsPage operator={operator} operators={operators} admin={admin} cargosConfig={cargosConfig} backendStatus={backendStatus} lastCheck={lastCheck} apiBaseUrl={apiBaseUrl} syncStatus={allSyncStatus} agency={agency} customers={customers} contracts={localContracts} onSyncAll={syncAll} onExportBackup={exportBackup} onImportBackup={importBackup} pushToast={pushToast} onAddOperator={() => setModal('newOperator')} onEditOperator={(o) => setModal({ type: 'editOperator', operator: o })} onDeleteOperator={requestDeleteOperator} onEditCargos={() => setModal('cargosConfig')} onEditApiBase={() => setModal('apiBase')} onEditAgency={() => setModal('agency')} onResetCustomers={requestResetCustomers} onResetContracts={requestResetContracts} onResetEverything={requestResetEverything} onImportFleetFromRentMe={requestImportFleetFromRentMe} rentmeConfig={rentmeConfig} setRentmeConfig={setRentmeConfig} rentmeSync={rentmeSync} rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} onImportStorico={({ prenotazioni: newP, clienti: newC }) => {
                 setPrenotazioni(prev => {
                   const existKeys = new Set(prev.map(p => p.id));
                   return [...prev, ...newP.filter(p => !existKeys.has(p.id))];
@@ -8032,7 +7874,6 @@ function Topbar({ online, setOnline, pendingQueue, operator, admin, setAdmin, on
       <div className="flex items-center gap-2 text-sm" style={{ color: 'var(--ink-2)' }}>
         <Building2 className="w-4 h-4" aria-hidden="true" />
         <span className="font-medium">{agency.nome}</span>
-        <span style={{ color: 'var(--muted)' }}>· {agency.indirizzoLegale}, {agency.citta}</span>
       </div>
 
       <div className="flex-1" />
@@ -8912,7 +8753,7 @@ function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, on
 // ═══════════════════════════════════════════════════════════════════
 // CUSTOMERS
 // ═══════════════════════════════════════════════════════════════════
-function CustomersPage({ customers, admin, onShowQR, onNewWithCustomer, onAddCustomer, onEditCustomer, onShowStorico }) {
+function CustomersPage({ customers, admin, onShowQR, onNewWithCustomer, onAddCustomer, onEditCustomer, onDeleteCustomer, onShowStorico }) {
   return (
     <div>
       <div className="flex items-end justify-between mb-6">
@@ -8976,6 +8817,11 @@ function CustomersPage({ customers, admin, onShowQR, onNewWithCustomer, onAddCus
             {admin && (
               <button type="button" onClick={() => onEditCustomer(c)} className="btn-ghost p-2 rounded border" style={{ borderColor: 'var(--border)' }} aria-label={`Modifica ${c.nome} ${c.cognome}`}>
                 <Pencil className="w-4 h-4" aria-hidden="true" />
+              </button>
+            )}
+            {admin && onDeleteCustomer && (
+              <button type="button" onClick={() => onDeleteCustomer(c)} className="btn-ghost p-2 rounded border" style={{ borderColor: 'var(--border)', color: 'var(--accent)' }} aria-label={`Elimina ${c.nome} ${c.cognome}`}>
+                <Trash2 className="w-4 h-4" aria-hidden="true" />
               </button>
             )}
             <button type="button" onClick={() => onNewWithCustomer(c)} className="btn-primary px-3 py-1.5 rounded text-xs font-semibold flex items-center gap-1.5" aria-label={`Nuova pratica per ${c.nome} ${c.cognome}`}>
@@ -9150,7 +8996,7 @@ function PartnersPage({ partners, admin, onAddPartner, onEditPartner, onDeletePa
 // ═══════════════════════════════════════════════════════════════════
 // SETTINGS
 // ═══════════════════════════════════════════════════════════════════
-function SettingsPage({ operator, operators, cargosConfig, admin, backendStatus, lastCheck, apiBaseUrl, syncStatus, agency, onSyncAll, onExportBackup, onImportBackup, pushToast, onAddOperator, onEditOperator, onDeleteOperator, onEditCargos, onEditApiBase, onEditAgency, onResetCustomers, onResetContracts, onResetEverything, customers, contracts, rentmeConfig, setRentmeConfig, rentmeSync, rentmeVehicles, prenotazioni, onImportStorico }) {
+function SettingsPage({ operator, operators, cargosConfig, admin, backendStatus, lastCheck, apiBaseUrl, syncStatus, agency, onSyncAll, onExportBackup, onImportBackup, pushToast, onAddOperator, onEditOperator, onDeleteOperator, onEditCargos, onEditApiBase, onEditAgency, onResetCustomers, onResetContracts, onResetEverything, onImportFleetFromRentMe, customers, contracts, rentmeConfig, setRentmeConfig, rentmeSync, rentmeVehicles, prenotazioni, onImportStorico }) {
   const importInputRef = useRef();
   const [showCargosSecrets, setShowCargosSecrets] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -9755,6 +9601,24 @@ function SettingsPage({ operator, operators, cargosConfig, admin, backendStatus,
                   style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }}
                 >
                   <Trash2 className="w-3 h-3" /> Svuota
+                </button>
+              </div>
+            )}
+            {onImportFleetFromRentMe && (
+              <div className="flex items-center justify-between p-3 rounded border" style={{ borderColor: 'var(--sea)', background: '#f0f6fb' }}>
+                <div className="flex-1">
+                  <div className="font-medium text-sm" style={{ color: 'var(--sea)' }}>Importa flotta da EDOX</div>
+                  <div className="text-xs" style={{ color: 'var(--ink-2)' }}>
+                    Sostituisce tutta la flotta con i {rentmeVehicles?.length || 0} veicoli presenti su EDOX/RentMe. Rimuove i veicoli di default.
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={onImportFleetFromRentMe}
+                  className="px-3 py-1.5 rounded text-xs font-semibold inline-flex items-center gap-1.5"
+                  style={{ background: 'var(--sea)', color: '#fff' }}
+                >
+                  <RefreshCw className="w-3 h-3" /> Importa da EDOX
                 </button>
               </div>
             )}
