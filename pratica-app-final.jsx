@@ -9015,7 +9015,7 @@ export default function App() {
 
   // ── AUTENTICAZIONE ────────────────────────────────────────────────
   // Lista utenti con accesso all'app (skipRemote: mai inviata al backend).
-  const [appUsers, setAppUsers] = usePersistentState('edo:v1:appUsers', APP_DEFAULT_USERS, { skipRemote: true });
+  const [appUsers, setAppUsers] = usePersistentState('edo:v1:appUsers', APP_DEFAULT_USERS, sharedOpts);
   // Sessione corrente: letta da sessionStorage → null se browser chiuso/riaperto.
   const [sessionUser, setSessionUser] = useState(() => {
     try {
@@ -10859,6 +10859,14 @@ function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, on
             const status = VEHICLE_STATUS[v.stato] || VEHICLE_STATUS.available;
             const StatusIcon = status.icon;
             const dimmed = v.stato === 'venduto';
+            // Cross-reference con FLEET_DATA: se targa è un numero puro (codice RentMe),
+            // cerca la targa reale nel database statico tramite rentmeId
+            const isNumericTarga = /^\d+$/.test(v.targa || '');
+            const fleetRef = isNumericTarga
+              ? FLEET_DATA.find(fd => fd.rentmeId && fd.rentmeId.split(' ').pop() === v.targa)
+              : null;
+            const realTarga  = fleetRef ? fleetRef.targa : (isNumericTarga ? null : v.targa);
+            const rmCode     = v.rentmeId || (fleetRef ? fleetRef.rentmeId : (isNumericTarga ? v.targa : null));
             return (
               <div key={v.id} className="card-paper p-5 group relative" style={{ opacity: dimmed ? 0.55 : 1 }}>
                 <div className="flex items-start justify-between mb-3">
@@ -10869,13 +10877,18 @@ function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, on
                   <VehicleIcon type={v.tipo} className="w-5 h-5" />
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                  <div className="mono text-sm font-semibold tracking-wider px-2 py-1 inline-block rounded" style={{ background: 'var(--surface-2)', color: 'var(--ink)' }}>
-                    {v.targa || '—'}
+                  {/* Targa reale — badge principale */}
+                  <div className="mono text-sm font-semibold tracking-wider px-2 py-1 inline-block rounded"
+                    style={{ background: realTarga ? 'var(--surface-2)' : '#fff4e5', color: realTarga ? 'var(--ink)' : '#b25000', border: realTarga ? 'none' : '1px solid #f0c080' }}
+                    title="Targa reale">
+                    {realTarga || '⚠ targa mancante'}
                   </div>
-                  {v.rentmeId && (
-                    <div className="mono text-xs px-2 py-1 inline-block rounded" style={{ background: '#e8f0fa', color: '#1f5d83', border: '1px solid #b8d0ee' }}
+                  {/* Codice RentMe — badge secondario */}
+                  {rmCode && (
+                    <div className="mono text-xs px-2 py-1 inline-block rounded"
+                      style={{ background: '#e8f0fa', color: '#1f5d83', border: '1px solid #b8d0ee' }}
                       title="Codice RentMe">
-                      RM · {v.rentmeId}
+                      RM · {rmCode}
                     </div>
                   )}
                 </div>
