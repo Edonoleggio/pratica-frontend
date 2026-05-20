@@ -207,6 +207,7 @@ const INITIAL_CARGOS_CONFIG = {
 const VEHICLE_TYPES = {
   auto:    { label: 'Auto',    short: 'Auto',    cargosCode: 'A',  cargosRequired: true,  hasPlate: true,  needsLicense: 'B',    description: 'Autoveicolo ≥ 4 ruote · CARGOS obbligatorio' },
   scooter: { label: 'Scooter', short: 'Scooter', cargosCode: 'M',  cargosRequired: false, hasPlate: true,  needsLicense: 'AM/A', description: 'Motoveicolo 2 ruote · escluso da CARGOS' },
+  moto:    { label: 'Scooter', short: 'Scooter', cargosCode: 'M',  cargosRequired: false, hasPlate: true,  needsLicense: 'AM/A', description: 'Motoveicolo 2 ruote · escluso da CARGOS' },
   quad:    { label: 'Quad',    short: 'Quad',    cargosCode: 'M',  cargosRequired: false, hasPlate: true,  needsLicense: 'B1/B', description: 'Quadriciclo L7e · equiparato a motoveicolo' },
   ebike:   { label: 'E-bike',  short: 'E-bike',  cargosCode: null, cargosRequired: false, hasPlate: false, needsLicense: null,   description: 'Pedalata assistita ≤ 25 km/h · non veicolo a motore' },
 };
@@ -242,7 +243,7 @@ function makeId(prefix) {
 // ═══════════════════════════════════════════════════════════════════
 const VehicleIcon = memo(function VehicleIcon({ type, className = 'w-5 h-5' }) {
   if (type === 'auto') return <Car className={className} />;
-  if (type === 'scooter') return (
+  if (type === 'scooter' || type === 'moto') return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
       <circle cx="6" cy="17" r="3" /><circle cx="18" cy="17" r="3" />
       <path d="M6 17L8 9L13 9L17 14" /><path d="M13 9L15 5L18 5" /><path d="M18 17L19 13" />
@@ -845,10 +846,14 @@ function useCameraStream(active, facingMode = 'environment') {
 }
 
 // Conta i veicoli per tipo — memoized in place dove serve
+// 'moto' è alias di 'scooter' (veicoli importati da RentMe)
 function useFleetCounts(fleet) {
   return useMemo(() => {
     const counts = { auto: 0, scooter: 0, quad: 0, ebike: 0 };
-    for (const v of fleet) counts[v.tipo]++;
+    for (const v of fleet) {
+      const t = v.tipo === 'moto' ? 'scooter' : v.tipo;
+      if (t in counts) counts[t]++;
+    }
     return counts;
   }, [fleet]);
 }
@@ -1847,8 +1852,9 @@ function findBestVehicleCombination(tipo, dal, al, vehicles, prenotazioni, exclu
 // ── PrenoForm — add/edit ─────────────────────────────────────────────
 // prefillValues: valori pre-compilati dal BancoRapido / walk-in / calendario
 // (vehicleId, vehicleLabel, vehicleType, dal, al, fonte) — usato solo quando initial è null
-function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, onSave, onClose, prefillValues, fermiFlotta }) {
+function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, onSave, onClose, prefillValues, fermiFlotta, rentmeConnected }) {
   const pv = prefillValues || {};  // shorthand
+  const isNew = !initial;
   const empty = {
     clienteNome: '', clienteCognome: '', clienteTel: '',
     vehicleId: pv.vehicleId || '', vehicleLabel: pv.vehicleLabel || '',
@@ -1858,6 +1864,9 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
     prezzo: '', acconto: '', metodoPagamento: 'contanti',
     noteCliente: '', noteInterne: '',
   };
+  // Toggle: invia prenotazione anche a RentMe al salvataggio
+  // Attivo di default se RentMe è connesso e stiamo creando (non modificando)
+  const [sendToRentme, setSendToRentme] = useState(isNew && !!rentmeConnected);
   const [f, setF] = useState(initial ? {
     ...empty,
     clienteNome: initial.clienteNome || '',
@@ -1986,6 +1995,7 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
       acconto: f.acconto !== '' ? parseFloat(f.acconto) : null,
       metodoPagamento: f.metodoPagamento || 'contanti',
       vehicleSchedule: vehicleSchedule || null,
+      sendToRentme: isNew ? sendToRentme : false,
     });
   }
 
@@ -2234,6 +2244,26 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
             <textarea style={{ ...inp, resize: 'vertical', minHeight: 50, borderColor: 'var(--border)' }} value={f.noteInterne} onChange={e => set('noteInterne', e.target.value)} placeholder="Osservazioni interne, avvisi staff…" />
           </div>
 
+          {/* Toggle RentMe — visibile solo su nuove prenotazioni quando RentMe è connesso */}
+          {isNew && rentmeConnected && (
+            <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', userSelect: 'none' }}>
+                <input
+                  type="checkbox"
+                  checked={sendToRentme}
+                  onChange={e => setSendToRentme(e.target.checked)}
+                  style={{ width: 16, height: 16, accentColor: 'var(--accent)', cursor: 'pointer' }}
+                />
+                <span style={{ fontSize: 13 }}>
+                  <strong>📡 Invia anche a RentMe</strong>
+                  <span style={{ color: 'var(--ink-2)', marginLeft: 6, fontSize: 12 }}>
+                    {sendToRentme ? '— la prenotazione sarà creata nel gestionale RentMe' : '— solo locale, RentMe non verrà aggiornato'}
+                  </span>
+                </span>
+              </label>
+            </div>
+          )}
+
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', paddingTop: 4 }}>
             <button type="button" onClick={onClose}
               style={{ padding: '9px 18px', borderRadius: 5, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', fontSize: 13 }}>
@@ -2241,7 +2271,7 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
             </button>
             <button type="submit"
               style={{ padding: '9px 18px', borderRadius: 5, border: 'none', background: 'var(--accent)', color: 'white', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
-              {initial ? 'Salva modifiche' : 'Crea prenotazione'}
+              {initial ? 'Salva modifiche' : (sendToRentme && isNew && rentmeConnected ? 'Crea prenotazione + RentMe' : 'Crea prenotazione')}
             </button>
           </div>
         </form>
@@ -2251,7 +2281,7 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
 }
 
 // ── PrenotazioniPage ─────────────────────────────────────────────────
-function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rentmeVehicles, customers, operator, onOpenWizard, pushToast, prefill, onClearPrefill, fermiFlotta }) {
+function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rentmeVehicles, customers, operator, onOpenWizard, pushToast, prefill, onClearPrefill, fermiFlotta, rentmePush, rentmeConnected }) {
   const [form, setForm] = useState(null); // null | 'new' | {record}
   const [showDisp, setShowDisp] = useState(false);
 
@@ -2312,6 +2342,7 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rent
 
   // CRUD
   function createPreno(data) {
+    const { sendToRentme, ...cleanData } = data; // non salvare il flag nel record
     const rec = {
       id: prenoId(),
       createdAt: new Date().toISOString(),
@@ -2319,11 +2350,23 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rent
       operatorId: operator?.id || '',
       clienteId: null,
       contractId: null,
-      ...data,
+      ...cleanData,
     };
     setPrenotazioni(ps => [...ps, rec]);
     setForm(null);
     pushToast && pushToast({ tone: 'success', title: 'Prenotazione creata', message: `${rec.clienteCognome || ''} ${rec.clienteNome || ''} · ${formatDate(rec.dal)}` });
+
+    // Push opzionale a RentMe
+    if (sendToRentme && rentmePush) {
+      // Trova il slug del veicolo RentMe corrispondente alla targa selezionata
+      const rmVeh = (rentmeVehicles || []).find(v =>
+        v.targa === rec.vehicleId || v.rentmeCode === rec.vehicleId
+      );
+      const slug = rmVeh?.slug || rec.vehicleType || 'auto';
+      rentmePush(rec, slug)
+        .then(() => pushToast && pushToast({ tone: 'success', title: '📡 Inviato a RentMe', message: `${[rec.clienteCognome, rec.clienteNome].filter(Boolean).join(' ')}` }))
+        .catch(err => pushToast && pushToast({ tone: 'warning', title: 'RentMe: invio fallito', message: err.message, duration: 6000 }));
+    }
   }
 
   function updatePreno(data) {
@@ -2713,6 +2756,7 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rent
           customers={customers}
           prefillValues={form?.id === '__new__' ? form : null}
           fermiFlotta={fermiFlotta}
+          rentmeConnected={rentmeConnected}
           onSave={form === 'new' || form?.id === '__new__' ? createPreno : updatePreno}
           onClose={() => setForm(null)}
         />
@@ -4284,7 +4328,10 @@ function useReportData({ prenotazioni, contracts, cassa, customers, fleet, opera
     // Per ogni mese calcola quanti giorni totali disponibili vs occupati per tipo
     const tipiVehicle = ['auto','scooter','quad','ebike'];
     const fleetByTipo = {};
-    tipiVehicle.forEach(t => { fleetByTipo[t] = allFleet.filter(v => v.tipo === t).length; });
+    // 'moto' è alias di 'scooter' (veicoli importati da RentMe)
+    tipiVehicle.forEach(t => {
+      fleetByTipo[t] = allFleet.filter(v => v.tipo === t || (t === 'scooter' && v.tipo === 'moto')).length;
+    });
 
     const occupazione = mesi.map(m => {
       const daysInMonth = new Date(parseInt(year), m.i+1, 0).getDate();
@@ -7701,7 +7748,9 @@ function FirmaModal({ preno, onSave, onClose }) {
 // OGGI PAGE — partenze, rientri, in corso, mezzi liberi, scadenze
 // ═══════════════════════════════════════════════════════════════════
 
-function OggiPage({ prenotazioni, fleet, scadenze, customers, setPage, rentmeVehicles, setPrenotazioniPrefill, pushToast }) {
+function OggiPage({ prenotazioni, fleet, scadenze, customers, setPage, rentmeVehicles, setPrenotazioniPrefill, pushToast,
+  // Walk-in inline: se passati, il form si apre direttamente nella pagina
+  setPrenotazioni, operator, fermiFlotta, rentmePush, rentmeConnected }) {
   const [now, setNow] = useState(() => new Date());
 
   // Orologio live — aggiorna ogni minuto
@@ -7712,6 +7761,11 @@ function OggiPage({ prenotazioni, fleet, scadenze, customers, setPage, rentmeVeh
 
   const today = now.toISOString().slice(0, 10);
   const tomorrow = new Date(now.getTime() + 86400000).toISOString().slice(0, 10);
+
+  // Walk-in inline: date e form
+  const [walkInDal, setWalkInDal] = useState(today);
+  const [walkInAl,  setWalkInAl]  = useState(today);
+  const [walkInForm, setWalkInForm] = useState(null); // null | prefillData
 
   const STATO_COLOR = {
     confermata: '#2e6e3e', in_corso: '#1f5d83', attesa: '#b87333',
@@ -8010,11 +8064,9 @@ function OggiPage({ prenotazioni, fleet, scadenze, customers, setPage, rentmeVeh
       )}
 
 
-      {/* ── WALK-IN RAPIDO ──────────────────────────────────────────── */}
+      {/* ── WALK-IN ─────────────────────────────────────────────────── */}
       {(() => {
-        const wToday = today;
-        const walkAvail = calcAvailability(wToday, wToday, rentmeVehicles, prenoList, fleet);
-        if (walkAvail.length === 0) return null;
+        const walkAvail = calcAvailability(walkInDal, walkInAl, rentmeVehicles, prenoList, fleet);
         const catColor = (cat) => {
           if (cat.free <= 0) return { bg: '#fdecea', border: '#c0392b', text: '#c0392b', label: 'Esaurito' };
           if (cat.alert)     return { bg: '#fff8e6', border: '#e67e22', text: '#d35400', label: 'Quasi esaurito' };
@@ -8022,53 +8074,128 @@ function OggiPage({ prenotazioni, fleet, scadenze, customers, setPage, rentmeVeh
         };
         const handleWalkIn = (cat) => {
           if (cat.free <= 0) {
-            pushToast && pushToast({ tone: 'warning', title: 'Categoria esaurita', message: `Nessun ${cat.nome} libero oggi` });
+            pushToast && pushToast({ tone: 'warning', title: 'Categoria esaurita', message: `Nessun ${cat.nome} libero` });
             return;
           }
-          setPrenotazioniPrefill && setPrenotazioniPrefill({ vehicleId: cat.id, vehicleLabel: cat.nome, vehicleType: cat.tipo, dal: wToday, al: wToday, fonte: 'walk_in' });
-          setPage('prenotazioni');
-          pushToast && pushToast({ tone: 'success', title: '🚶 Walk-in', message: `${cat.nome} · oggi` });
+          const prefill = { vehicleType: cat.tipo, vehicleLabel: cat.nome, dal: walkInDal, al: walkInAl, fonte: 'walk_in' };
+          // Se abbiamo i props per form inline, lo apriamo qui senza navigare
+          if (setPrenotazioni) {
+            setWalkInForm(prefill);
+          } else {
+            setPrenotazioniPrefill && setPrenotazioniPrefill({ ...prefill, id: '__new__' });
+            setPage('prenotazioni');
+          }
         };
+
+        const nGiorni = walkInDal && walkInAl
+          ? Math.max(1, Math.round((new Date(walkInAl) - new Date(walkInDal)) / 86400000) + 1)
+          : 1;
+
         return (
           <>
-            <SectionTitle icon="🚶" label="Walk-in rapido" count={walkAvail.filter(c => c.free > 0).length} color="#7c4dff" />
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 10, marginBottom: 8 }}>
-              {walkAvail.map(cat => {
-                const c = catColor(cat);
-                const pct = cat.total > 0 ? Math.round((cat.free / cat.total) * 100) : 0;
-                return (
-                  <button key={cat.id} type="button"
-                    onClick={() => handleWalkIn(cat)}
-                    disabled={cat.free <= 0}
-                    style={{
-                      background: c.bg, border: `1.5px solid ${c.border}`, borderRadius: 10,
-                      padding: '12px 14px', textAlign: 'left',
-                      cursor: cat.free > 0 ? 'pointer' : 'not-allowed',
-                      opacity: cat.free <= 0 ? 0.72 : 1,
-                      transition: 'transform 0.1s, box-shadow 0.1s',
-                    }}
-                    onMouseEnter={e => { if (cat.free > 0) { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 4px 14px rgba(0,0,0,.1)'; }}}
-                    onMouseLeave={e => { e.currentTarget.style.transform = ''; e.currentTarget.style.boxShadow = ''; }}
-                  >
-                    <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: c.text, marginBottom: 4 }}>{c.label}</div>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)', marginBottom: 6, lineHeight: 1.3 }}>{cat.nome}</div>
-                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, marginBottom: 8 }}>
-                      <span style={{ fontSize: 28, fontWeight: 700, fontFamily: 'var(--font-serif)', color: c.text, lineHeight: 1 }}>{cat.free}</span>
-                      <span style={{ fontSize: 12, color: 'var(--muted)' }}>/ {cat.total}</span>
-                    </div>
-                    <div style={{ height: 3, background: 'rgba(0,0,0,.08)', borderRadius: 2, overflow: 'hidden' }}>
-                      <div style={{ height: '100%', width: `${pct}%`, background: c.border, borderRadius: 2 }} />
-                    </div>
-                    {cat.free > 0 && (
-                      <div style={{ marginTop: 6, fontSize: 11, color: c.text, fontWeight: 600 }}>Prenota →</div>
-                    )}
-                  </button>
-                );
-              })}
+            <SectionTitle icon="🚶" label="Walk-in" count={walkAvail.filter(c => c.free > 0).length} color="#7c4dff" />
+
+            {/* Date picker */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--ink-2)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Dal</label>
+                <input type="date" value={walkInDal}
+                  onChange={e => { setWalkInDal(e.target.value); if (e.target.value > walkInAl) setWalkInAl(e.target.value); }}
+                  style={{ fontSize: 13, border: '1px solid var(--border)', borderRadius: 6, padding: '5px 8px', background: 'var(--bg)', color: 'var(--ink)' }} />
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--ink-2)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Al</label>
+                <input type="date" value={walkInAl} min={walkInDal}
+                  onChange={e => setWalkInAl(e.target.value)}
+                  style={{ fontSize: 13, border: '1px solid var(--border)', borderRadius: 6, padding: '5px 8px', background: 'var(--bg)', color: 'var(--ink)' }} />
+              </div>
+              <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+                {nGiorni === 1 ? '1 giorno' : `${nGiorni} giorni`}
+              </span>
+              {walkInDal !== today && (
+                <button type="button" onClick={() => { setWalkInDal(today); setWalkInAl(today); }}
+                  style={{ fontSize: 11, padding: '4px 10px', borderRadius: 12, border: '1px solid var(--border)', background: 'transparent', color: 'var(--muted)', cursor: 'pointer' }}>
+                  Oggi
+                </button>
+              )}
             </div>
+
+            {/* Categorie */}
+            {walkAvail.length === 0
+              ? <div style={{ fontSize: 13, color: 'var(--muted)', padding: '8px 0' }}>Nessuna categoria configurata</div>
+              : <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 10, marginBottom: 8 }}>
+                  {walkAvail.map(cat => {
+                    const c = catColor(cat);
+                    const pct = cat.total > 0 ? Math.round((cat.free / cat.total) * 100) : 0;
+                    return (
+                      <button key={cat.id} type="button"
+                        onClick={() => handleWalkIn(cat)}
+                        disabled={cat.free <= 0}
+                        style={{
+                          background: c.bg, border: `1.5px solid ${c.border}`, borderRadius: 10,
+                          padding: '12px 14px', textAlign: 'left',
+                          cursor: cat.free > 0 ? 'pointer' : 'not-allowed',
+                          opacity: cat.free <= 0 ? 0.72 : 1,
+                          transition: 'transform 0.1s, box-shadow 0.1s',
+                        }}
+                        onMouseEnter={e => { if (cat.free > 0) { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 4px 14px rgba(0,0,0,.1)'; }}}
+                        onMouseLeave={e => { e.currentTarget.style.transform = ''; e.currentTarget.style.boxShadow = ''; }}
+                      >
+                        <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: c.text, marginBottom: 4 }}>{c.label}</div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)', marginBottom: 6, lineHeight: 1.3 }}>{cat.nome}</div>
+                        <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, marginBottom: 8 }}>
+                          <span style={{ fontSize: 28, fontWeight: 700, fontFamily: 'var(--font-serif)', color: c.text, lineHeight: 1 }}>{cat.free}</span>
+                          <span style={{ fontSize: 12, color: 'var(--muted)' }}>/ {cat.total}</span>
+                        </div>
+                        <div style={{ height: 3, background: 'rgba(0,0,0,.08)', borderRadius: 2, overflow: 'hidden' }}>
+                          <div style={{ height: '100%', width: `${pct}%`, background: c.border, borderRadius: 2 }} />
+                        </div>
+                        {cat.free > 0 && (
+                          <div style={{ marginTop: 6, fontSize: 11, color: c.text, fontWeight: 600 }}>Prenota →</div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+            }
           </>
         );
       })()}
+
+      {/* Form walk-in inline */}
+      {walkInForm && setPrenotazioni && (
+        <PrenoForm
+          initial={null}
+          prefillValues={walkInForm}
+          fleet={fleet}
+          rentmeVehicles={rentmeVehicles}
+          prenotazioni={prenoList}
+          customers={customers}
+          fermiFlotta={fermiFlotta}
+          rentmeConnected={rentmeConnected}
+          onSave={(data) => {
+            const { sendToRentme, ...cleanData } = data;
+            const rec = {
+              id: `p${Date.now().toString(36)}`,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+              operatorId: operator?.id || '',
+              clienteId: null, contractId: null,
+              ...cleanData,
+            };
+            setPrenotazioni(ps => [...ps, rec]);
+            setWalkInForm(null);
+            pushToast && pushToast({ tone: 'success', title: '🚶 Walk-in creato', message: `${rec.clienteCognome || ''} ${rec.clienteNome || ''} · ${formatDate(rec.dal)}` });
+            if (sendToRentme && rentmePush) {
+              const rmVeh = (rentmeVehicles || []).find(v => v.targa === rec.vehicleId);
+              rentmePush(rec, rmVeh?.slug || rec.vehicleType || 'auto')
+                .then(() => pushToast && pushToast({ tone: 'success', title: '📡 Inviato a RentMe' }))
+                .catch(err => pushToast && pushToast({ tone: 'warning', title: 'RentMe: invio fallito', message: err.message }));
+            }
+          }}
+          onClose={() => setWalkInForm(null)}
+        />
+      )}
 
       {/* Footer con link rapidi */}
       <div style={{ marginTop: 32, paddingTop: 20, borderTop: '1px solid var(--border)', display: 'flex', gap: 10, flexWrap: 'wrap' }}>
@@ -8095,7 +8222,7 @@ function OggiPage({ prenotazioni, fleet, scadenze, customers, setPage, rentmeVeh
 // ═══════════════════════════════════════════════════════════════════
 // RICERCA GLOBALE — modal Cmd+K su prenotazioni + clienti + pratiche
 // ═══════════════════════════════════════════════════════════════════
-function GlobalSearchModal({ prenotazioni, customers, contracts, fleet, onClose, setPage }) {
+function GlobalSearchModal({ prenotazioni, customers, contracts, fleet, onClose, setPage, setPrenotazioniPrefill }) {
   const [q, setQ] = useState('');
   const inputRef = useRef();
 
@@ -8113,10 +8240,12 @@ function GlobalSearchModal({ prenotazioni, customers, contracts, fleet, onClose,
   const results = useMemo(() => {
     if (lower.length < 2) return { prenotazioni: [], customers: [], contracts: [], fleet: [] };
 
-    const preno = (prenotazioni || []).filter(p => {
-      const hay = `${p.clienteNome} ${p.clienteCognome} ${p.clienteTel} ${p.vehicleLabel} ${p.note}`.toLowerCase();
+    const prenoAll = (prenotazioni || []).filter(p => {
+      const hay = `${p.clienteNome} ${p.clienteCognome} ${p.clienteTel} ${p.vehicleLabel} ${p.note} ${p.noteCliente} ${p.noteInterne}`.toLowerCase();
       return hay.includes(lower);
-    }).slice(0, 5);
+    });
+    const preno = prenoAll.slice(0, 20);
+    const prenoTotal = prenoAll.length;
 
     const cust = (customers || []).filter(c => {
       const hay = `${c.nome} ${c.cognome} ${c.telefono} ${c.email} ${c.documento}`.toLowerCase();
@@ -8133,7 +8262,7 @@ function GlobalSearchModal({ prenotazioni, customers, contracts, fleet, onClose,
       return hay.includes(lower);
     }).slice(0, 5);
 
-    return { prenotazioni: preno, customers: cust, contracts: contr, fleet: veh };
+    return { prenotazioni: preno, prenoTotal, customers: cust, contracts: contr, fleet: veh };
   }, [lower, prenotazioni, customers, contracts, fleet]);
 
   const totalCount = Object.values(results).reduce((n, arr) => n + arr.length, 0);
@@ -8202,7 +8331,12 @@ function GlobalSearchModal({ prenotazioni, customers, contracts, fleet, onClose,
 
           {results.prenotazioni.length > 0 && (
             <>
-              <SectionHead label="Prenotazioni" count={results.prenotazioni.length} />
+              <SectionHead
+                label="Prenotazioni"
+                count={results.prenoTotal > results.prenotazioni.length
+                  ? `${results.prenotazioni.length} di ${results.prenoTotal}`
+                  : results.prenotazioni.length}
+              />
               {results.prenotazioni.map(p => (
                 <Row key={p.id}
                   icon="📅"
@@ -8210,9 +8344,19 @@ function GlobalSearchModal({ prenotazioni, customers, contracts, fleet, onClose,
                   secondary={`${p.vehicleLabel || '—'} · ${formatDate(p.dal)} → ${formatDate(p.al)}`}
                   pill={p.stato}
                   pillColor={STATO_COLOR[p.stato]}
-                  onClick={() => setPage('prenotazioni')}
+                  onClick={() => {
+                    if (setPrenotazioniPrefill) setPrenotazioniPrefill({ focusId: p.id });
+                    setPage('prenotazioni');
+                  }}
                 />
               ))}
+              {results.prenoTotal > results.prenotazioni.length && (
+                <button type="button"
+                  onClick={() => { setPage('prenotazioni'); onClose(); }}
+                  style={{ width: '100%', padding: '6px 12px', border: 'none', background: 'transparent', color: 'var(--accent)', fontSize: 12, cursor: 'pointer', textAlign: 'left', fontWeight: 600 }}>
+                  + altri {results.prenoTotal - results.prenotazioni.length} risultati → vai a Prenotazioni
+                </button>
+              )}
             </>
           )}
 
@@ -8265,7 +8409,7 @@ function GlobalSearchModal({ prenotazioni, customers, contracts, fleet, onClose,
           <span style={{ fontSize: 11, color: 'var(--muted)' }}>
             {lower.length >= 2 ? `${totalCount} risultati` : 'Ricerca globale'}
           </span>
-          <span style={{ fontSize: 11, color: 'var(--muted)' }}>↵ vai alla sezione</span>
+          <span style={{ fontSize: 11, color: 'var(--muted)' }}>↵ apre la prenotazione</span>
         </div>
       </div>
     </div>
@@ -8322,14 +8466,15 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
     [prenotazioni]
   );
 
-  // Tipi unici per filtro
+  // Tipi unici per filtro — 'moto' è alias di 'scooter'
+  const normTipo = (t) => t === 'moto' ? 'scooter' : (t || '');
   const tipiDisponibili = useMemo(() =>
-    [...new Set(fleetList.map(v => v.tipo).filter(Boolean))].sort(),
+    [...new Set(fleetList.map(v => normTipo(v.tipo)).filter(Boolean))].sort(),
     [fleetList]
   );
 
   const fleetFiltered = useMemo(() =>
-    tipoFilter ? fleetList.filter(v => v.tipo === tipoFilter) : fleetList,
+    tipoFilter ? fleetList.filter(v => normTipo(v.tipo) === tipoFilter) : fleetList,
     [fleetList, tipoFilter]
   );
 
@@ -9609,13 +9754,13 @@ export default function App() {
                 il boundary si resetta automaticamente (la key cambia → nuovo mount). */}
             <ErrorBoundary key={page}>
               {page === 'calendario' && <CalendarioFlottaPage prenotazioni={prenotazioni} fleet={fleet} rentmeVehicles={rentmeVehicles} setPage={setPage} setPrenotazioniPrefill={setPrenotazioniPrefill} />}
-              {page === 'oggi'       && <OggiPage prenotazioni={prenotazioni} fleet={fleet} scadenze={scadenze} customers={customers} setPage={setPage} rentmeVehicles={rentmeVehicles} setPrenotazioniPrefill={setPrenotazioniPrefill} pushToast={pushToast} />}
+              {page === 'oggi'       && <OggiPage prenotazioni={prenotazioni} fleet={fleet} scadenze={scadenze} customers={customers} setPage={setPage} rentmeVehicles={rentmeVehicles} setPrenotazioniPrefill={setPrenotazioniPrefill} pushToast={pushToast} setPrenotazioni={setPrenotazioni} operator={operator} fermiFlotta={fermiFlotta} rentmePush={rentmeSync.pushBooking} rentmeConnected={rentmeSync.status === 'ok'} />}
               {page === 'dashboard'  && <Dashboard onNew={() => openWizard()} setPage={setPage} operator={operator} fleet={fleet} contracts={localContracts} partners={partners} onMarkReturned={markContractReturned} scadenze={scadenze} prenotazioni={prenotazioni} agency={agency} />}
               {page === 'cassa'      && <RegistroCassaPage cassa={cassa} setCassa={setCassa} prenotazioni={prenotazioni} customers={customers} operator={operator} pushToast={pushToast} />}
               {page === 'banco'      && <BancoRapidoPage rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} fleet={fleet} setPage={setPage} setPrenotazioniPrefill={setPrenotazioniPrefill} listino={listino} pushToast={pushToast} rentmeSyncStatus={rentmeSync.status} onRentmeSync={rentmeSync.sync} rentmeLastSync={rentmeSync.lastSync} />}
               {page === 'report'        && <ReportPage prenotazioni={prenotazioni} contracts={localContracts} cassa={cassa} customers={customers} fleet={fleet} operators={operators} pushToast={pushToast} />}
               {page === 'preventivi'    && <PreventiviPage setPage={setPage} setPrenotazioniPrefill={setPrenotazioniPrefill} listino={listino} />}
-              {page === 'prenotazioni' && <PrenotazioniPage prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} setCassa={setCassa} fleet={fleet} rentmeVehicles={rentmeVehicles} customers={customers} operator={operator} onOpenWizard={openWizard} pushToast={pushToast} prefill={prenotazioniPrefill} onClearPrefill={() => setPrenotazioniPrefill(null)} fermiFlotta={fermiFlotta} />}
+              {page === 'prenotazioni' && <PrenotazioniPage prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} setCassa={setCassa} fleet={fleet} rentmeVehicles={rentmeVehicles} customers={customers} operator={operator} onOpenWizard={openWizard} pushToast={pushToast} prefill={prenotazioniPrefill} onClearPrefill={() => setPrenotazioniPrefill(null)} fermiFlotta={fermiFlotta} rentmePush={rentmeSync.pushBooking} rentmeConnected={rentmeSync.status === 'ok'} />}
               {page === 'contracts'  && <ContractsList contracts={localContracts} operators={operators} onRetry={retryContract} onMarkReturned={markContractReturned} online={online} />}
               {page === 'fleet'      && <FleetPage fleet={fleet} prenotazioni={prenotazioni} admin={admin} onAddVehicle={() => setModal('newVehicle')} onEditVehicle={(v) => setModal({ type: 'editVehicle', vehicle: v })} onDeleteVehicle={requestDeleteVehicle} onImportCSV={() => setShowCsvImport(true)} scadenze={scadenze} setScadenze={setScadenze} fermiFlotta={fermiFlotta} setFermiFlotta={setFermiFlotta} />}
               {page === 'customers'  && <CustomersPage customers={customers} admin={admin} onShowQR={(c) => setModal({ type: 'qr', customer: c })} onNewWithCustomer={openWizard} onAddCustomer={() => setModal('newCustomer')} onEditCustomer={(c) => setModal({ type: 'editCustomer', customer: c })} onDeleteCustomer={deleteCustomer} onShowStorico={(c) => setStorioClienteId(c.id)} />}
@@ -9704,6 +9849,7 @@ export default function App() {
           contracts={localContracts}
           fleet={fleet}
           setPage={setPage}
+          setPrenotazioniPrefill={setPrenotazioniPrefill}
           onClose={() => setShowGlobalSearch(false)}
         />
       )}
