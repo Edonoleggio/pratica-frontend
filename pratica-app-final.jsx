@@ -10868,8 +10868,16 @@ function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, on
                   </div>
                   <VehicleIcon type={v.tipo} className="w-5 h-5" />
                 </div>
-                <div className="mono text-sm font-semibold tracking-wider px-2 py-1 inline-block rounded" style={{ background: 'var(--surface-2)', color: 'var(--ink)' }}>
-                  {v.targa}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <div className="mono text-sm font-semibold tracking-wider px-2 py-1 inline-block rounded" style={{ background: 'var(--surface-2)', color: 'var(--ink)' }}>
+                    {v.targa || '—'}
+                  </div>
+                  {v.rentmeId && (
+                    <div className="mono text-xs px-2 py-1 inline-block rounded" style={{ background: '#e8f0fa', color: '#1f5d83', border: '1px solid #b8d0ee' }}
+                      title="Codice RentMe">
+                      RM · {v.rentmeId}
+                    </div>
+                  )}
                 </div>
                 <div className="flex flex-wrap gap-1.5 mt-3 text-[11px] items-center">
                   {v.stato && v.stato !== 'available' && (
