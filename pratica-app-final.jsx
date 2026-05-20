@@ -486,6 +486,17 @@ const MOCK_OPERATORS = [
   { id: 'op-alessandra', initials: 'AR', nome: 'Alessandra Raptis', turno: '08:30 → 13:00 / 14:30 → 19:00', current: true, ruolo: 'Titolare', role: 'admin', tel: '+39 339 172 8645', email: 'edomoto@libero.it', enabled: true },
 ];
 
+// ─────────────────────────────────────────────────────────────────────
+// HELPER — label veicolo unificata: MODELLO · TARGA · rentmeId
+// Mostra sempre sia la targa reale sia il codice RentMe finché
+// non saremo completamente scollegati da RentMe.
+// ─────────────────────────────────────────────────────────────────────
+const makeVehicleLabel = (v) => {
+  if (!v) return '';
+  const parts = [v.modello || v.marca, v.targa, v.rentmeId].filter(Boolean);
+  return parts.join(' · ');
+};
+
 // ═══════════════════════════════════════════════════════════════════
 // AUTH — accesso con username e password
 // ═══════════════════════════════════════════════════════════════════
@@ -1951,7 +1962,7 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
     } else {
       const v = (fleet || []).find(x => x.id === id);
       set('vehicleId', id);
-      set('vehicleLabel', v ? `${v.marca} ${v.modello} · ${v.targa}`.trim() : '');
+      set('vehicleLabel', v ? makeVehicleLabel(v) : '');
       set('vehicleType', v ? v.tipo : 'auto');
     }
   }
@@ -2065,7 +2076,7 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
               <option value="">— Categoria generica —</option>
               {availableVehicles.map(v => (
                 <option key={v.id} value={v.id}>
-                  {v.marca ? `${v.marca} ${v.modello} · ${v.targa} (${v.tipo})` : `${v.modello}${v.targa ? ' · ' + v.targa : ''} (${v.tipo})`}
+                  {makeVehicleLabel(v)}{v.tipo ? ` (${v.tipo})` : ''}
                 </option>
               ))}
             </select>
@@ -2113,7 +2124,7 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
                     // Usa il primo mezzo come vehicleId principale, salva schedule completo
                     const first = smartCombo[0];
                     set('vehicleId', first.vehicleId);
-                    set('vehicleLabel', [first.vehicle?.modello, first.vehicle?.targa || first.vehicleId].filter(Boolean).join(' · '));
+                    set('vehicleLabel', first.vehicle ? makeVehicleLabel(first.vehicle) : first.vehicleId);
                     set('vehicleType', first.vehicle?.tipo || f.vehicleType);
                     setVehicleSchedule(smartCombo.map(s => ({ vehicleId: s.vehicleId, dal: s.dal, al: s.al })));
                   }}
@@ -2956,7 +2967,7 @@ function SostituzioneModal({ preno, prenotazioni, fleet, rentmeVehicles, onConfi
               <option value="">— Seleziona mezzo sostitutivo —</option>
               {candidati.map(v => (
                 <option key={v.id} value={v.id}>
-                  {v.modello || v.tipo || '—'} · {v.targa || v.id}
+                  {makeVehicleLabel(v) || v.id}
                 </option>
               ))}
             </select>
@@ -8511,7 +8522,7 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
                         // Slot libero → nuova prenotazione pre-compilata
                         setPrenotazioniPrefill && setPrenotazioniPrefill({
                           vehicleId:    v.id,
-                          vehicleLabel: [v.modello || v.marca, v.targa].filter(Boolean).join(' · '),
+                          vehicleLabel: makeVehicleLabel(v),
                           vehicleType:  v.tipo || 'auto',
                           dal: d,
                           al:  d,
@@ -8977,9 +8988,20 @@ export default function App() {
   const [agency,       setAgency,       agencySync]    = usePersistentState('edo:v1:agency',    INITIAL_AGENCY,          sharedOpts);
   const [prenotazioni, setPrenotazioni, prenoSync]     = usePersistentState('edo:v1:prenotazioni', [], {
     ...sharedOpts,
-    // Le foto e firme digitali sono base64 pesanti — restano solo in localStorage,
-    // il backend riceve solo i metadati (payload ridotto, niente 413).
-    sanitize: (arr) => arr.map(({ foto, firmaDigitale, ...rest }) => rest),
+    // Sanitize per il remote sync:
+    // 1. Rimuove campi base64 pesanti (foto, firmaDigitale) — niente immagini sul backend
+    // 2. Invia solo prenotazioni degli ultimi 6 mesi + quelle ancora attive/future
+    //    → evita 413 Content Too Large man mano che l'archivio storico cresce
+    //    → localStorage conserva TUTTO, il backend riceve solo il "working set"
+    sanitize: (arr) => {
+      const cutoff = new Date();
+      cutoff.setMonth(cutoff.getMonth() - 6);
+      const cutoffStr = cutoff.toISOString().slice(0, 10);
+      const STATI_ATTIVI = new Set(['bozza', 'confermata', 'in_corso', 'prorogata']);
+      return arr
+        .filter(p => STATI_ATTIVI.has(p.stato) || (p.al || p.dal || '') >= cutoffStr)
+        .map(({ foto, firmaDigitale, ...rest }) => rest);
+    },
   });
   const [rentmeVehicles, setRentmeVehicles] = usePersistentState('edo:v1:rentme_vehicles', [], { skipRemote: true });
   const [stagioni, setStagioni] = usePersistentState('edo:v1:stagioni', DEFAULT_STAGIONI_CONFIG, sharedOpts);
@@ -10938,7 +10960,7 @@ function FermiFlottaSection({ fleet, fermiFlotta, setFermiFlotta }) {
 
   const vehicleLabel = (vid) => {
     const v = fleet.find(x => x.id === vid || x.targa === vid);
-    return v ? `${v.targa || v.id} ${v.modello ? '· ' + v.modello : ''}`.trim() : vid;
+    return v ? makeVehicleLabel(v) : vid;
   };
 
   const addFermo = () => {
@@ -11401,14 +11423,16 @@ function SecuritySection({ appUsers, setAppUsers, onLogout, pushToast }) {
 
       {/* Form modifica / aggiunta */}
       {(editing || addMode) && (
-        <div className="p-4 rounded border mb-4" style={{ borderColor: 'var(--sea)', background: 'var(--sea-soft)' }}>
+        <form onSubmit={e => { e.preventDefault(); addMode ? saveAdd() : saveEdit(); }}
+          className="p-4 rounded border mb-4" style={{ borderColor: 'var(--sea)', background: 'var(--sea-soft)' }}
+          autoComplete="off">
           <div className="font-semibold text-sm mb-3" style={{ color: 'var(--sea)' }}>
             {addMode ? 'Nuovo utente' : `Modifica "${users.find(u => u.id === editing)?.username}"`}
           </div>
           <div className="grid grid-cols-2 gap-3 mb-3">
             <div>
               <label className="block text-[11px] font-semibold mb-1" style={{ color: 'var(--ink-2)' }}>Username</label>
-              <input style={inputStyle} value={form.username} onChange={e => setForm(f => ({ ...f, username: e.target.value }))} placeholder="nome utente" />
+              <input style={inputStyle} value={form.username} onChange={e => setForm(f => ({ ...f, username: e.target.value }))} placeholder="nome utente" autoComplete="username" />
             </div>
             <div />
             <div>
@@ -11416,7 +11440,7 @@ function SecuritySection({ appUsers, setAppUsers, onLogout, pushToast }) {
                 {editing ? 'Nuova password (lascia vuoto per non cambiare)' : 'Password'}
               </label>
               <div style={{ position: 'relative' }}>
-                <input style={{ ...inputStyle, paddingRight: 34 }} type={showPwd ? 'text' : 'password'} value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} placeholder={editing ? '(invariata)' : '••••••••'} />
+                <input style={{ ...inputStyle, paddingRight: 34 }} type={showPwd ? 'text' : 'password'} value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} placeholder={editing ? '(invariata)' : '••••••••'} autoComplete="new-password" />
                 <button type="button" onClick={() => setShowPwd(s => !s)} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)' }}>
                   {showPwd ? <EyeOff className="w-3.5 h-3.5" /> : <EyeIcon className="w-3.5 h-3.5" />}
                 </button>
@@ -11424,14 +11448,14 @@ function SecuritySection({ appUsers, setAppUsers, onLogout, pushToast }) {
             </div>
             <div>
               <label className="block text-[11px] font-semibold mb-1" style={{ color: 'var(--ink-2)' }}>Conferma password</label>
-              <input style={inputStyle} type={showPwd ? 'text' : 'password'} value={form.password2} onChange={e => setForm(f => ({ ...f, password2: e.target.value }))} placeholder="ripeti password" />
+              <input style={inputStyle} type={showPwd ? 'text' : 'password'} value={form.password2} onChange={e => setForm(f => ({ ...f, password2: e.target.value }))} placeholder="ripeti password" autoComplete="new-password" />
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <button type="button" onClick={addMode ? saveAdd : saveEdit} className="btn-primary px-4 py-1.5 rounded text-xs font-semibold">Salva</button>
+            <button type="submit" className="btn-primary px-4 py-1.5 rounded text-xs font-semibold">Salva</button>
             <button type="button" onClick={cancel} className="btn-ghost px-3 py-1.5 rounded text-xs border" style={{ borderColor: 'var(--border)' }}>Annulla</button>
           </div>
-        </div>
+        </form>
       )}
 
       <div className="flex items-center gap-3 flex-wrap">
