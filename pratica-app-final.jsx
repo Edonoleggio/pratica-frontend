@@ -10863,7 +10863,7 @@ function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, on
             // cerca la targa reale nel database statico tramite rentmeId
             const isNumericTarga = /^\d+$/.test(v.targa || '');
             const fleetRef = isNumericTarga
-              ? FLEET_DATA.find(fd => fd.rentmeId && fd.rentmeId.split(' ').pop() === v.targa)
+              ? INITIAL_FLEET.find(fd => fd.rentmeId && fd.rentmeId.split(' ').pop() === v.targa)
               : null;
             const realTarga  = fleetRef ? fleetRef.targa : (isNumericTarga ? null : v.targa);
             const rmCode     = v.rentmeId || (fleetRef ? fleetRef.rentmeId : (isNumericTarga ? v.targa : null));
