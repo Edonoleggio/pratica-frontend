@@ -269,7 +269,161 @@ const VehicleIcon = memo(function VehicleIcon({ type, className = 'w-5 h-5' }) {
 // ─── Database mezzi Edonoleggio (estratto da DATABASE_MEZZI_EDONOLEGGIO_2026.numbers) ─
 // Stati operativi del file originale: OK, FERMO/FERMA, INCIDENTATO, VENDUTO ?, TONY
 // Mappati internamente come 'available', 'fermo', 'incidentato', 'venduto'
-const INITIAL_FLEET = []; // flotta vuota — veicoli caricati da EDOX/RentMe
+const INITIAL_FLEET = [
+  {"id": "DZ063EP", "tipo": "auto", "marca": "", "modello": "C3", "targa": "DZ063EP", "colore": "GRIGIA MET", "cilindrata": "", "stato": "available", "rentmeId": "c3 119", "note": ""},
+  {"id": "SV256194", "tipo": "auto", "marca": "", "modello": "MEHARI", "targa": "SV256194", "colore": "ARANCIONE", "cilindrata": "", "stato": "available", "rentmeId": "mehari 130", "note": ""},
+  {"id": "PR292027", "tipo": "auto", "marca": "", "modello": "MEHARI", "targa": "PR292027", "colore": "VERDE/BIANCA", "cilindrata": "", "stato": "available", "rentmeId": "mehari 131", "note": ""},
+  {"id": "VI3397198", "tipo": "auto", "marca": "", "modello": "MEHARI", "targa": "VI3397198", "colore": "BIANCA", "cilindrata": "", "stato": "available", "rentmeId": "mehari 132", "note": ""},
+  {"id": "PC210411", "tipo": "auto", "marca": "", "modello": "MEHARI", "targa": "PC210411", "colore": "GIALLA", "cilindrata": "", "stato": "available", "rentmeId": "mehari 133", "note": ""},
+  {"id": "TS1922630", "tipo": "auto", "marca": "", "modello": "MEHARI", "targa": "TS1922630", "colore": "GIALLA", "cilindrata": "", "stato": "available", "rentmeId": "mehari 134", "note": ""},
+  {"id": "AG253022", "tipo": "auto", "marca": "", "modello": "MEHARI", "targa": "AG253022", "colore": "VEDRE/BIANCA", "cilindrata": "", "stato": "available", "rentmeId": "mehari 135", "note": ""},
+  {"id": "AG253021", "tipo": "auto", "marca": "", "modello": "MEHARI", "targa": "AG253021", "colore": "ARANCIONE", "cilindrata": "", "stato": "available", "rentmeId": "mehari 136", "note": ""},
+  {"id": "TOM28765", "tipo": "auto", "marca": "", "modello": "MEHARI", "targa": "TOM28765", "colore": "VERDE/GIALLA", "cilindrata": "", "stato": "available", "rentmeId": "mehari 137", "note": ""},
+  {"id": "FH854KY", "tipo": "auto", "marca": "", "modello": "MEHARI", "targa": "FH854KY", "colore": "BIANCA", "cilindrata": "", "stato": "available", "rentmeId": "mehari 138", "note": ""},
+  {"id": "MI35777G", "tipo": "auto", "marca": "", "modello": "MEHARI", "targa": "MI35777G", "colore": "", "cilindrata": "", "stato": "available", "rentmeId": "mehari 139", "note": ""},
+  {"id": "UD514492", "tipo": "auto", "marca": "", "modello": "MEHARI", "targa": "UD514492", "colore": "", "cilindrata": "", "stato": "available", "rentmeId": "mehari 140", "note": ""},
+  {"id": "TP342201", "tipo": "auto", "marca": "", "modello": "MEHARI", "targa": "TP342201", "colore": "", "cilindrata": "", "stato": "available", "rentmeId": "mehari 141", "note": ""},
+  {"id": "AG279352", "tipo": "auto", "marca": "", "modello": "MEHARI", "targa": "AG279352", "colore": "GIALLA /CELESTE", "cilindrata": "", "stato": "available", "rentmeId": "mehari 142", "note": ""},
+  {"id": "PV407892", "tipo": "auto", "marca": "", "modello": "DIANE", "targa": "PV407892", "colore": "", "cilindrata": "", "stato": "available", "rentmeId": "mehari 143", "note": ""},
+  {"id": "ROMA10123H", "tipo": "auto", "marca": "", "modello": "MEHARI", "targa": "ROMA10123H", "colore": "VERDE/GIALLA", "cilindrata": "", "stato": "available", "rentmeId": "mehari 144", "note": ""},
+  {"id": "MO484122", "tipo": "auto", "marca": "", "modello": "MEHARI", "targa": "MO484122", "colore": "BEIGE", "cilindrata": "", "stato": "available", "rentmeId": "mehari 145", "note": ""},
+  {"id": "BL113579", "tipo": "auto", "marca": "", "modello": "MEHARI", "targa": "BL113579", "colore": "ARANCIONE", "cilindrata": "", "stato": "available", "rentmeId": "mehari 146", "note": ""},
+  {"id": "AX391EK", "tipo": "auto", "marca": "", "modello": "MEHARI", "targa": "AX391EK", "colore": "BIANCA", "cilindrata": "", "stato": "available", "rentmeId": "mehari 147", "note": ""},
+  {"id": "LT421661", "tipo": "auto", "marca": "", "modello": "MEHARI", "targa": "LT421661", "colore": "GIALLA", "cilindrata": "", "stato": "available", "rentmeId": "mehari 148", "note": ""},
+  {"id": "NAP41156", "tipo": "auto", "marca": "", "modello": "MEHARI", "targa": "NAP41156", "colore": "BIANCA", "cilindrata": "", "stato": "available", "rentmeId": "mehari 149", "note": ""},
+  {"id": "TOM97379", "tipo": "auto", "marca": "", "modello": "MEHARI", "targa": "TOM97379", "colore": "AZZURRA", "cilindrata": "", "stato": "available", "rentmeId": "mehari 256", "note": ""},
+  {"id": "VC567189", "tipo": "auto", "marca": "", "modello": "MEHARI", "targa": "VC567189", "colore": "BEIGE", "cilindrata": "", "stato": "available", "rentmeId": "mehari 257", "note": ""},
+  {"id": "MI00033R", "tipo": "auto", "marca": "", "modello": "MEHARI", "targa": "MI00033R", "colore": "BIANCA", "cilindrata": "", "stato": "available", "rentmeId": "mehari 258", "note": ""},
+  {"id": "AG214750", "tipo": "auto", "marca": "", "modello": "MEHARI", "targa": "AG214750", "colore": "GIALLA /VERDE", "cilindrata": "", "stato": "available", "rentmeId": "mehari 283", "note": ""},
+  {"id": "CM506JG", "tipo": "auto", "marca": "", "modello": "MEHARI", "targa": "CM506JG", "colore": "ROSA", "cilindrata": "", "stato": "available", "rentmeId": "mehari 284", "note": ""},
+  {"id": "AG340818", "tipo": "auto", "marca": "", "modello": "MEHARI", "targa": "AG340818", "colore": "", "cilindrata": "", "stato": "available", "rentmeId": "mehari 285", "note": ""},
+  {"id": "CR267214", "tipo": "auto", "marca": "", "modello": "MEHARI", "targa": "CR267214", "colore": "VERDE/BIANCA", "cilindrata": "", "stato": "available", "rentmeId": "mehari 286", "note": ""},
+  {"id": "RML01307", "tipo": "auto", "marca": "", "modello": "MEHARI", "targa": "RML01307", "colore": "BIANCA/VERDE", "cilindrata": "", "stato": "available", "rentmeId": "mehari 287", "note": ""},
+  {"id": "VI272757", "tipo": "auto", "marca": "", "modello": "MEHARI", "targa": "VI272757", "colore": "VERDE/GIALLA", "cilindrata": "", "stato": "available", "rentmeId": "mehari 288", "note": ""},
+  {"id": "PI267354", "tipo": "auto", "marca": "", "modello": "MEHARI", "targa": "PI267354", "colore": "BIANCA/VERDE", "cilindrata": "", "stato": "available", "rentmeId": "Mehari 313", "note": ""},
+  {"id": "EM056GE", "tipo": "auto", "marca": "", "modello": "SANDERO", "targa": "EM056GE", "colore": "ROSSA MET", "cilindrata": "", "stato": "available", "rentmeId": "stepway 279", "note": ""},
+  {"id": "GA413YP", "tipo": "auto", "marca": "", "modello": "PANDA", "targa": "GA413YP", "colore": "ROSSA", "cilindrata": "", "stato": "available", "rentmeId": "panda 100", "note": ""},
+  {"id": "CR042MZ", "tipo": "auto", "marca": "", "modello": "PANDA", "targa": "CR042MZ", "colore": "BIANCA", "cilindrata": "", "stato": "available", "rentmeId": "panda 101", "note": ""},
+  {"id": "DP428KM", "tipo": "auto", "marca": "", "modello": "PANDA", "targa": "DP428KM", "colore": "GIALLA", "cilindrata": "", "stato": "available", "rentmeId": "panda 102", "note": ""},
+  {"id": "CX124KZ", "tipo": "auto", "marca": "", "modello": "PANDA", "targa": "CX124KZ", "colore": "VERDE CHIARO", "cilindrata": "", "stato": "available", "rentmeId": "panda 103", "note": ""},
+  {"id": "FV485FB", "tipo": "auto", "marca": "", "modello": "PANDA", "targa": "FV485FB", "colore": "NERO", "cilindrata": "", "stato": "available", "rentmeId": "panda 104", "note": ""},
+  {"id": "DG894VJ", "tipo": "auto", "marca": "", "modello": "PANDA", "targa": "DG894VJ", "colore": "GRIGIA MET", "cilindrata": "", "stato": "available", "rentmeId": "panda 105", "note": ""},
+  {"id": "CX312NY", "tipo": "auto", "marca": "", "modello": "PANDA", "targa": "CX312NY", "colore": "AZZURRA MET", "cilindrata": "", "stato": "available", "rentmeId": "panda 106", "note": ""},
+  {"id": "DP331AA", "tipo": "auto", "marca": "", "modello": "PANDA", "targa": "DP331AA", "colore": "GRIGIA MET", "cilindrata": "", "stato": "available", "rentmeId": "panda 107", "note": ""},
+  {"id": "DB391VR", "tipo": "auto", "marca": "", "modello": "PANDA", "targa": "DB391VR", "colore": "AZZURRO MET", "cilindrata": "", "stato": "available", "rentmeId": "panda 108", "note": ""},
+  {"id": "ED949RX", "tipo": "auto", "marca": "", "modello": "PANDA", "targa": "ED949RX", "colore": "NERA", "cilindrata": "", "stato": "available", "rentmeId": "panda 109", "note": ""},
+  {"id": "DS248VG", "tipo": "auto", "marca": "", "modello": "PANDA", "targa": "DS248VG", "colore": "GIALLA", "cilindrata": "", "stato": "available", "rentmeId": "panda 110", "note": ""},
+  {"id": "CV464EH", "tipo": "auto", "marca": "", "modello": "PANDA", "targa": "CV464EH", "colore": "BLU", "cilindrata": "", "stato": "available", "rentmeId": "panda 111", "note": ""},
+  {"id": "DE371MM", "tipo": "auto", "marca": "", "modello": "PANDA", "targa": "DE371MM", "colore": "GRIGIA MET", "cilindrata": "", "stato": "available", "rentmeId": "panda 112", "note": ""},
+  {"id": "DT796CM", "tipo": "auto", "marca": "", "modello": "GRANDE PUNTO", "targa": "DT796CM", "colore": "GRIGIA MET", "cilindrata": "", "stato": "available", "rentmeId": "gpunto 113", "note": ""},
+  {"id": "DF197JW", "tipo": "auto", "marca": "", "modello": "GRANDE PUNTO", "targa": "DF197JW", "colore": "GRIGIA SCURA MET", "cilindrata": "", "stato": "available", "rentmeId": "gpunto 114", "note": ""},
+  {"id": "DY441HX", "tipo": "auto", "marca": "", "modello": "FIAT 500", "targa": "DY441HX", "colore": "AZZURRA CHIARA", "cilindrata": "", "stato": "available", "rentmeId": "500 116", "note": ""},
+  {"id": "EM416AA", "tipo": "auto", "marca": "", "modello": "NEW PANDA", "targa": "EM416AA", "colore": "BEIGE", "cilindrata": "", "stato": "available", "rentmeId": "newpanda 123", "note": ""},
+  {"id": "FB599WD", "tipo": "auto", "marca": "", "modello": "NEW  PANDA", "targa": "FB599WD", "colore": "BEIGE", "cilindrata": "", "stato": "available", "rentmeId": "newpanda 124", "note": ""},
+  {"id": "EP804YM", "tipo": "auto", "marca": "", "modello": "NEW PANDA", "targa": "EP804YM", "colore": "ROSSA", "cilindrata": "", "stato": "available", "rentmeId": "newpanda 125", "note": ""},
+  {"id": "EV888PB", "tipo": "auto", "marca": "", "modello": "NEW PANDA", "targa": "EV888PB", "colore": "GRIGIA MET", "cilindrata": "", "stato": "available", "rentmeId": "newpanda 126", "note": ""},
+  {"id": "FS944BA", "tipo": "auto", "marca": "", "modello": "NEW PANDA", "targa": "FS944BA", "colore": "BIANCA", "cilindrata": "", "stato": "available", "rentmeId": "newpanda 127", "note": ""},
+  {"id": "GH649LD", "tipo": "auto", "marca": "", "modello": "500 CABRIO", "targa": "GH649LD", "colore": "BLU SCURO MET", "cilindrata": "", "stato": "available", "rentmeId": "500 151", "note": ""},
+  {"id": "BG345SV", "tipo": "auto", "marca": "", "modello": "MULTIIPLA", "targa": "BG345SV", "colore": "GRIGIA MET", "cilindrata": "", "stato": "available", "rentmeId": "multipla 153", "note": ""},
+  {"id": "CZ241RA", "tipo": "auto", "marca": "", "modello": "ULISSE", "targa": "CZ241RA", "colore": "AZZURRA MET", "cilindrata": "", "stato": "available", "rentmeId": "ulisse 154", "note": ""},
+  {"id": "DZ500KR", "tipo": "auto", "marca": "", "modello": "PANDA AUTOMATICA", "targa": "DZ500KR", "colore": "ROSSA", "cilindrata": "", "stato": "available", "rentmeId": "panda 277", "note": ""},
+  {"id": "FM873GS", "tipo": "auto", "marca": "", "modello": "NEW PANDA", "targa": "FM873GS", "colore": "BIANCA", "cilindrata": "", "stato": "available", "rentmeId": "new panda 278", "note": ""},
+  {"id": "EM461AA", "tipo": "auto", "marca": "", "modello": "NEW PANDA", "targa": "EM461AA", "colore": "BEIGE", "cilindrata": "", "stato": "available", "rentmeId": "newpanda 280", "note": ""},
+  {"id": "FY821LW", "tipo": "auto", "marca": "", "modello": "NEW PANDA", "targa": "FY821LW", "colore": "BIANCA", "cilindrata": "", "stato": "available", "rentmeId": "newpanda 281", "note": ""},
+  {"id": "EX856DA", "tipo": "auto", "marca": "", "modello": "NEW PANDA", "targa": "EX856DA", "colore": "GRIGIA MET", "cilindrata": "", "stato": "available", "rentmeId": "newpanda 282", "note": ""},
+  {"id": "DL923YK", "tipo": "auto", "marca": "", "modello": "DOBLO’", "targa": "DL923YK", "colore": "GRIGIA MET", "cilindrata": "", "stato": "available", "rentmeId": "doblò 306", "note": ""},
+  {"id": "CY937XX", "tipo": "auto", "marca": "", "modello": "PANDA", "targa": "CY937XX", "colore": "GRIGIA MET", "cilindrata": "", "stato": "available", "rentmeId": "panda 81", "note": ""},
+  {"id": "DS995DN", "tipo": "auto", "marca": "", "modello": "PANDA", "targa": "DS995DN", "colore": "GIALLA", "cilindrata": "", "stato": "available", "rentmeId": "panda 82", "note": ""},
+  {"id": "CL890CZ", "tipo": "auto", "marca": "", "modello": "PANDA", "targa": "CL890CZ", "colore": "GIALLA", "cilindrata": "", "stato": "available", "rentmeId": "panda 83", "note": ""},
+  {"id": "DA014MD", "tipo": "auto", "marca": "", "modello": "PANDA", "targa": "DA014MD", "colore": "GRIGIA MET", "cilindrata": "", "stato": "available", "rentmeId": "panda 84", "note": ""},
+  {"id": "CN308TV", "tipo": "auto", "marca": "", "modello": "PANDA", "targa": "CN308TV", "colore": "BLU", "cilindrata": "", "stato": "available", "rentmeId": "panda 85", "note": ""},
+  {"id": "CR452BP", "tipo": "auto", "marca": "", "modello": "PANDA", "targa": "CR452BP", "colore": "BORDEAUX MET", "cilindrata": "", "stato": "available", "rentmeId": "panda 86", "note": ""},
+  {"id": "DY669GW", "tipo": "auto", "marca": "", "modello": "PANDA", "targa": "DY669GW", "colore": "GRIGIA MET", "cilindrata": "", "stato": "available", "rentmeId": "panda 87", "note": ""},
+  {"id": "CP969XS", "tipo": "auto", "marca": "", "modello": "PANDA", "targa": "CP969XS", "colore": "AZZURRA MET", "cilindrata": "", "stato": "available", "rentmeId": "panda 88", "note": ""},
+  {"id": "CF847GS", "tipo": "auto", "marca": "", "modello": "PANDA", "targa": "CF847GS", "colore": "GIALLA", "cilindrata": "", "stato": "available", "rentmeId": "panda 89", "note": ""},
+  {"id": "DV274MC", "tipo": "auto", "marca": "", "modello": "PANDA", "targa": "DV274MC", "colore": "GRIGIA MET", "cilindrata": "", "stato": "available", "rentmeId": "panda 90", "note": ""},
+  {"id": "GH869KA", "tipo": "auto", "marca": "", "modello": "PANDA", "targa": "GH869KA", "colore": "BRONZO", "cilindrata": "", "stato": "available", "rentmeId": "panda 91", "note": ""},
+  {"id": "DB506ZV", "tipo": "auto", "marca": "", "modello": "PANDA", "targa": "DB506ZV", "colore": "GIALLA", "cilindrata": "", "stato": "available", "rentmeId": "panda 92", "note": ""},
+  {"id": "CX824KS", "tipo": "auto", "marca": "", "modello": "PANDA", "targa": "CX824KS", "colore": "GRIGIA MET", "cilindrata": "", "stato": "available", "rentmeId": "panda 93", "note": ""},
+  {"id": "FG705MC", "tipo": "auto", "marca": "", "modello": "PANDA", "targa": "FG705MC", "colore": "GRIGIA MET", "cilindrata": "", "stato": "available", "rentmeId": "panda 94", "note": ""},
+  {"id": "CW417RM", "tipo": "auto", "marca": "", "modello": "PANDA", "targa": "CW417RM", "colore": "BLU", "cilindrata": "", "stato": "available", "rentmeId": "panda 95", "note": ""},
+  {"id": "DP417KM", "tipo": "auto", "marca": "", "modello": "PANDA", "targa": "DP417KM", "colore": "AZZURRA MET", "cilindrata": "", "stato": "available", "rentmeId": "panda 96", "note": ""},
+  {"id": "DE474WL", "tipo": "auto", "marca": "", "modello": "PANDA", "targa": "DE474WL", "colore": "ROSSA", "cilindrata": "", "stato": "available", "rentmeId": "panda 97", "note": ""},
+  {"id": "CV403WW", "tipo": "auto", "marca": "", "modello": "PANDA", "targa": "CV403WW", "colore": "BLU", "cilindrata": "", "stato": "available", "rentmeId": "panda 98", "note": ""},
+  {"id": "DH407YR", "tipo": "auto", "marca": "", "modello": "PANDA", "targa": "DH407YR", "colore": "BLU MET", "cilindrata": "", "stato": "available", "rentmeId": "panda 99", "note": ""},
+  {"id": "CX891TB", "tipo": "auto", "marca": "", "modello": "PANDA", "targa": "CX891TB", "colore": "GIALLA", "cilindrata": "", "stato": "available", "rentmeId": "fiesta 122", "note": ""},
+  {"id": "DR856NT", "tipo": "auto", "marca": "", "modello": "MICRA", "targa": "DR856NT", "colore": "ROSSA MET", "cilindrata": "", "stato": "available", "rentmeId": "micra 118", "note": ""},
+  {"id": "DJ507XH", "tipo": "auto", "marca": "", "modello": "CORSA", "targa": "DJ507XH", "colore": "AZZURRA MET", "cilindrata": "", "stato": "available", "rentmeId": "corsa 120", "note": ""},
+  {"id": "DE530WF", "tipo": "auto", "marca": "", "modello": "CORSA", "targa": "DE530WF", "colore": "GIALLA MET", "cilindrata": "", "stato": "available", "rentmeId": "corsa 121", "note": ""},
+  {"id": "FL409XV", "tipo": "auto", "marca": "", "modello": "SMART", "targa": "FL409XV", "colore": "NERA", "cilindrata": "", "stato": "available", "rentmeId": "smart 129", "note": ""},
+  {"id": "BZ085ZB", "tipo": "auto", "marca": "", "modello": "SAMURAI", "targa": "BZ085ZB", "colore": "GRIGIA SCURA MET", "cilindrata": "", "stato": "available", "rentmeId": "samurai 150", "note": ""},
+  {"id": "CP875NR", "tipo": "auto", "marca": "", "modello": "RAV 4", "targa": "CP875NR", "colore": "GRIGIA MET", "cilindrata": "", "stato": "available", "rentmeId": "rav4 128", "note": ""},
+  {"id": "EJ001VV", "tipo": "auto", "marca": "", "modello": "LANCIA Y", "targa": "EJ001VV", "colore": "NERA", "cilindrata": "", "stato": "available", "rentmeId": "aygo 315", "note": ""},
+  {"id": "EH739XT", "tipo": "auto", "marca": "", "modello": "GOLF", "targa": "EH739XT", "colore": "BIANCA", "cilindrata": "", "stato": "available", "rentmeId": "golf 115", "note": ""},
+  {"id": "CK710JG", "tipo": "auto", "marca": "", "modello": "NEW BEETLE", "targa": "CK710JG", "colore": "GRIGIA MET.", "cilindrata": "", "stato": "available", "rentmeId": "newbeetle 152", "note": ""},
+  {"id": "X5B5DM", "tipo": "scooter", "marca": "", "modello": "", "targa": "X5B5DM", "colore": "", "cilindrata": "", "stato": "available", "rentmeId": "liberty 170", "note": ""},
+  {"id": "XB7854", "tipo": "scooter", "marca": "", "modello": "", "targa": "XB7854", "colore": "", "cilindrata": "", "stato": "available", "rentmeId": "liberty 171", "note": ""},
+  {"id": "X2XN4Z", "tipo": "scooter", "marca": "", "modello": "", "targa": "X2XN4Z", "colore": "", "cilindrata": "", "stato": "available", "rentmeId": "liberty 172", "note": ""},
+  {"id": "X2Y3HH", "tipo": "scooter", "marca": "", "modello": "", "targa": "X2Y3HH", "colore": "", "cilindrata": "", "stato": "available", "rentmeId": "liberty 173", "note": ""},
+  {"id": "X7SSPW", "tipo": "scooter", "marca": "", "modello": "", "targa": "X7SSPW", "colore": "", "cilindrata": "", "stato": "available", "rentmeId": "liberty 174", "note": ""},
+  {"id": "X7MMXX", "tipo": "scooter", "marca": "", "modello": "", "targa": "X7MMXX", "colore": "", "cilindrata": "", "stato": "available", "rentmeId": "liberty 175", "note": ""},
+  {"id": "X2XN4N", "tipo": "scooter", "marca": "", "modello": "", "targa": "X2XN4N", "colore": "", "cilindrata": "", "stato": "available", "rentmeId": "liberty 176", "note": ""},
+  {"id": "X5VP8K", "tipo": "scooter", "marca": "", "modello": "", "targa": "X5VP8K", "colore": "", "cilindrata": "", "stato": "available", "rentmeId": "liberty 177", "note": ""},
+  {"id": "X5VP8N", "tipo": "scooter", "marca": "", "modello": "", "targa": "X5VP8N", "colore": "", "cilindrata": "", "stato": "available", "rentmeId": "liberty 178", "note": ""},
+  {"id": "X86FTS", "tipo": "scooter", "marca": "", "modello": "", "targa": "X86FTS", "colore": "", "cilindrata": "", "stato": "available", "rentmeId": "liberty 179", "note": ""},
+  {"id": "X7NRR3", "tipo": "scooter", "marca": "", "modello": "", "targa": "X7NRR3", "colore": "", "cilindrata": "", "stato": "available", "rentmeId": "liberty 180", "note": ""},
+  {"id": "X2XN53", "tipo": "scooter", "marca": "", "modello": "", "targa": "X2XN53", "colore": "", "cilindrata": "", "stato": "available", "rentmeId": "liberty 181", "note": ""},
+  {"id": "X5VP8M", "tipo": "scooter", "marca": "", "modello": "", "targa": "X5VP8M", "colore": "", "cilindrata": "", "stato": "available", "rentmeId": "liberty 182", "note": ""},
+  {"id": "X4BJLB", "tipo": "scooter", "marca": "", "modello": "", "targa": "X4BJLB", "colore": "", "cilindrata": "", "stato": "available", "rentmeId": "liberty 183", "note": ""},
+  {"id": "X2Y3H9", "tipo": "scooter", "marca": "", "modello": "", "targa": "X2Y3H9", "colore": "", "cilindrata": "", "stato": "available", "rentmeId": "liberty 184", "note": ""},
+  {"id": "X7SSPV", "tipo": "scooter", "marca": "", "modello": "", "targa": "X7SSPV", "colore": "", "cilindrata": "", "stato": "available", "rentmeId": "liberty 185", "note": ""},
+  {"id": "X2Y3HG", "tipo": "scooter", "marca": "", "modello": "", "targa": "X2Y3HG", "colore": "", "cilindrata": "", "stato": "available", "rentmeId": "liberty 186", "note": ""},
+  {"id": "X4BJLC", "tipo": "scooter", "marca": "", "modello": "", "targa": "X4BJLC", "colore": "", "cilindrata": "", "stato": "available", "rentmeId": "liberty 187", "note": ""},
+  {"id": "X86FTR", "tipo": "scooter", "marca": "", "modello": "", "targa": "X86FTR", "colore": "", "cilindrata": "", "stato": "available", "rentmeId": "liberty 188", "note": ""},
+  {"id": "X7MMXW", "tipo": "scooter", "marca": "", "modello": "", "targa": "X7MMXW", "colore": "", "cilindrata": "", "stato": "available", "rentmeId": "liberty 189", "note": ""},
+  {"id": "X7NRR2", "tipo": "scooter", "marca": "", "modello": "", "targa": "X7NRR2", "colore": "", "cilindrata": "", "stato": "available", "rentmeId": "liberty 190", "note": ""},
+  {"id": "X7NRR4", "tipo": "scooter", "marca": "", "modello": "", "targa": "X7NRR4", "colore": "", "cilindrata": "", "stato": "available", "rentmeId": "liberty 191", "note": ""},
+  {"id": "X7XXZB", "tipo": "scooter", "marca": "", "modello": "", "targa": "X7XXZB", "colore": "", "cilindrata": "", "stato": "available", "rentmeId": "liberty 192", "note": ""},
+  {"id": "X7MMXV", "tipo": "scooter", "marca": "", "modello": "", "targa": "X7MMXV", "colore": "", "cilindrata": "", "stato": "available", "rentmeId": "liberty 193", "note": ""},
+  {"id": "X3BGRP", "tipo": "scooter", "marca": "", "modello": "", "targa": "X3BGRP", "colore": "", "cilindrata": "", "stato": "available", "rentmeId": "liberty 194", "note": ""},
+  {"id": "X2Y3HB", "tipo": "scooter", "marca": "", "modello": "", "targa": "X2Y3HB", "colore": "", "cilindrata": "", "stato": "available", "rentmeId": "liberty 195", "note": ""},
+  {"id": "X2Y3HF", "tipo": "scooter", "marca": "", "modello": "", "targa": "X2Y3HF", "colore": "", "cilindrata": "", "stato": "available", "rentmeId": "liberty 196", "note": ""},
+  {"id": "X2Y3HC", "tipo": "scooter", "marca": "", "modello": "", "targa": "X2Y3HC", "colore": "", "cilindrata": "", "stato": "available", "rentmeId": "liberty 197", "note": ""},
+  {"id": "X7XXZC", "tipo": "scooter", "marca": "", "modello": "", "targa": "X7XXZC", "colore": "", "cilindrata": "", "stato": "available", "rentmeId": "liberty 198", "note": ""},
+  {"id": "X7YZYP", "tipo": "scooter", "marca": "", "modello": "", "targa": "X7YZYP", "colore": "", "cilindrata": "", "stato": "available", "rentmeId": "liberty 199", "note": ""},
+  {"id": "X84X4N", "tipo": "scooter", "marca": "", "modello": "", "targa": "X84X4N", "colore": "", "cilindrata": "", "stato": "available", "rentmeId": "liberty 200", "note": ""},
+  {"id": "X2Y3HJ", "tipo": "scooter", "marca": "", "modello": "", "targa": "X2Y3HJ", "colore": "", "cilindrata": "", "stato": "available", "rentmeId": "liberty 201", "note": ""},
+  {"id": "X9RTS7", "tipo": "scooter", "marca": "", "modello": "", "targa": "X9RTS7", "colore": "", "cilindrata": "", "stato": "available", "rentmeId": "liberty 202", "note": ""},
+  {"id": "X2XN4Y", "tipo": "scooter", "marca": "", "modello": "", "targa": "X2XN4Y", "colore": "", "cilindrata": "", "stato": "available", "rentmeId": "liberty 203", "note": ""},
+  {"id": "X2XN4P", "tipo": "scooter", "marca": "", "modello": "", "targa": "X2XN4P", "colore": "", "cilindrata": "", "stato": "available", "rentmeId": "liberty 204", "note": ""},
+  {"id": "X6RZ3M", "tipo": "scooter", "marca": "", "modello": "", "targa": "X6RZ3M", "colore": "", "cilindrata": "", "stato": "available", "rentmeId": "liberty 205", "note": ""},
+  {"id": "X84X9C", "tipo": "scooter", "marca": "", "modello": "", "targa": "X84X9C", "colore": "", "cilindrata": "", "stato": "available", "rentmeId": "liberty 206", "note": ""},
+  {"id": "X2XN4R", "tipo": "scooter", "marca": "", "modello": "", "targa": "X2XN4R", "colore": "", "cilindrata": "", "stato": "available", "rentmeId": "liberty 207", "note": ""},
+  {"id": "X8KTLT", "tipo": "scooter", "marca": "", "modello": "", "targa": "X8KTLT", "colore": "", "cilindrata": "", "stato": "available", "rentmeId": "liberty 208", "note": ""},
+  {"id": "X2XN54", "tipo": "scooter", "marca": "", "modello": "", "targa": "X2XN54", "colore": "", "cilindrata": "", "stato": "available", "rentmeId": "liberty 209", "note": ""},
+  {"id": "X2XN52", "tipo": "scooter", "marca": "", "modello": "", "targa": "X2XN52", "colore": "", "cilindrata": "", "stato": "available", "rentmeId": "liberty 210", "note": ""},
+  {"id": "X2Y3HK", "tipo": "scooter", "marca": "", "modello": "", "targa": "X2Y3HK", "colore": "", "cilindrata": "", "stato": "available", "rentmeId": "liberty 211", "note": ""},
+  {"id": "X2Y3HL", "tipo": "scooter", "marca": "", "modello": "", "targa": "X2Y3HL", "colore": "", "cilindrata": "", "stato": "available", "rentmeId": "liberty 212", "note": ""},
+  {"id": "X2Y3H8", "tipo": "scooter", "marca": "", "modello": "", "targa": "X2Y3H8", "colore": "", "cilindrata": "", "stato": "available", "rentmeId": "liberty 213", "note": ""},
+  {"id": "X79M4M", "tipo": "scooter", "marca": "", "modello": "", "targa": "X79M4M", "colore": "", "cilindrata": "", "stato": "available", "rentmeId": "liberty 214", "note": ""},
+  {"id": "X6RZ3R", "tipo": "scooter", "marca": "", "modello": "", "targa": "X6RZ3R", "colore": "", "cilindrata": "", "stato": "available", "rentmeId": "liberty 261", "note": ""},
+  {"id": "X8KTMV", "tipo": "quad", "marca": "", "modello": "", "targa": "X8KTMV", "colore": "", "cilindrata": "", "stato": "available", "rentmeId": "mxu 155", "note": ""},
+  {"id": "X89DDS", "tipo": "quad", "marca": "", "modello": "", "targa": "X89DDS", "colore": "", "cilindrata": "", "stato": "available", "rentmeId": "mxu 156", "note": ""},
+  {"id": "X8CN34", "tipo": "quad", "marca": "", "modello": "", "targa": "X8CN34", "colore": "", "cilindrata": "", "stato": "available", "rentmeId": "mxu 157", "note": ""},
+  {"id": "X2XN4W", "tipo": "quad", "marca": "", "modello": "", "targa": "X2XN4W", "colore": "", "cilindrata": "", "stato": "available", "rentmeId": "mxu 158", "note": ""},
+  {"id": "X2XN4X", "tipo": "quad", "marca": "", "modello": "", "targa": "X2XN4X", "colore": "", "cilindrata": "", "stato": "available", "rentmeId": "mxu 159", "note": ""},
+  {"id": "X79M46", "tipo": "quad", "marca": "", "modello": "", "targa": "X79M46", "colore": "", "cilindrata": "", "stato": "available", "rentmeId": "mxu 160", "note": ""},
+  {"id": "X6RZ3P", "tipo": "quad", "marca": "", "modello": "", "targa": "X6RZ3P", "colore": "", "cilindrata": "", "stato": "available", "rentmeId": "mxu 161", "note": ""},
+  {"id": "X7JHXZ", "tipo": "quad", "marca": "", "modello": "", "targa": "X7JHXZ", "colore": "", "cilindrata": "", "stato": "available", "rentmeId": "mxu 162", "note": ""},
+  {"id": "X83W5N", "tipo": "quad", "marca": "", "modello": "", "targa": "X83W5N", "colore": "", "cilindrata": "", "stato": "available", "rentmeId": "mxu 163", "note": ""},
+  {"id": "X2XN4V", "tipo": "quad", "marca": "", "modello": "", "targa": "X2XN4V", "colore": "", "cilindrata": "", "stato": "available", "rentmeId": "mxu 164", "note": ""},
+  {"id": "X2XN4S", "tipo": "quad", "marca": "", "modello": "", "targa": "X2XN4S", "colore": "", "cilindrata": "", "stato": "available", "rentmeId": "mxu 165", "note": ""},
+  {"id": "X2XN4T", "tipo": "quad", "marca": "", "modello": "", "targa": "X2XN4T", "colore": "", "cilindrata": "", "stato": "available", "rentmeId": "mxu 166", "note": ""},
+  {"id": "EF82687", "tipo": "quad", "marca": "", "modello": "QUAD", "targa": "EF82687", "colore": "", "cilindrata": "", "stato": "available", "rentmeId": "mxu 168", "note": ""},
+  {"id": "DC06822", "tipo": "quad", "marca": "", "modello": "QUAD", "targa": "DC06822", "colore": "", "cilindrata": "", "stato": "available", "rentmeId": "mxu 169", "note": ""},
+  {"id": "DW08528", "tipo": "quad", "marca": "", "modello": "QUAD", "targa": "DW08528", "colore": "", "cilindrata": "", "stato": "available", "rentmeId": "mxu 312", "note": ""},
+  {"id": "FS23036", "tipo": "quad", "marca": "", "modello": "QUAD", "targa": "FS23036", "colore": "VERDE", "cilindrata": "", "stato": "available", "rentmeId": "xwolf 311", "note": ""},
+]; // 153 veicoli EDOX — auto-caricati da CSV
 
 // Stati operativi del veicolo
 const VEHICLE_STATUS = {
@@ -4090,6 +4244,21 @@ function StagioniEditor({ stagioni, onSave }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
+// Mappa il tipo EDOX (es. "mehari", "panda", "mxu") → tipo Pratica (auto/scooter/quad/ebike)
+function normalizzaTipoEdox(idRentme, modello, cc) {
+  const id  = (idRentme || '').toLowerCase();
+  const mod = (modello  || '').toLowerCase();
+  const raw = id.split(' ')[0] || '';
+  // Quad / ATV
+  if (['mxu','xwolf','quad','atv'].includes(raw) || mod.includes('quad')) return 'quad';
+  // Scooter / moto
+  if (['scooter','moto','vespa','maxi'].includes(raw) || mod.includes('scooter')) return 'scooter';
+  // E-bike
+  if (raw === 'ebike' || mod.includes('ebike') || mod.includes('e-bike')) return 'ebike';
+  // Tutto il resto è auto (mehari, panda, stepway, golf, corsa, smart, rav4, ecc.)
+  return 'auto';
+}
+
 // FLEET CSV IMPORT — carica flotta da file CSV
 // Formati supportati:
 //   1. Formato EDOX/RentMe:  ID RENTME;Modello;Targa;Colore;;CC;
@@ -4134,7 +4303,7 @@ function FleetCSVImport({ fleet, onImport, onClose }) {
         id:        r.targa,                        // targa = vehicleId univoco
         targa:     r.targa,
         idRentme:  r.idRentme,                     // es. "mehari 130"
-        tipo:      r.idRentme.split(' ')[0] || '',  // tipo = prima parola dell'id
+        tipo:      normalizzaTipoEdox(r.idRentme, r.modello, r.cc), // mappa a auto/scooter/quad/ebike
         modello:   r.modello,
         colore:    r.colore,
         marca:     '',
@@ -6089,7 +6258,7 @@ function FirmaModal({ preno, onSave, onClose }) {
 // OGGI PAGE — partenze, rientri, in corso, mezzi liberi, scadenze
 // ═══════════════════════════════════════════════════════════════════
 
-function OggiPage({ prenotazioni, fleet, scadenze, customers, setPage }) {
+function OggiPage({ prenotazioni, fleet, scadenze, customers, setPage, rentmeVehicles, setPrenotazioniPrefill, pushToast }) {
   const [now, setNow] = useState(() => new Date());
 
   // Orologio live — aggiorna ogni minuto
@@ -6396,6 +6565,67 @@ function OggiPage({ prenotazioni, fleet, scadenze, customers, setPage }) {
           </div>
         </>
       )}
+
+
+      {/* ── WALK-IN RAPIDO ──────────────────────────────────────────── */}
+      {(() => {
+        const wToday = today;
+        const walkAvail = calcAvailability(wToday, wToday, rentmeVehicles, prenoList);
+        if (walkAvail.length === 0) return null;
+        const catColor = (cat) => {
+          if (cat.free <= 0) return { bg: '#fdecea', border: '#c0392b', text: '#c0392b', label: 'Esaurito' };
+          if (cat.alert)     return { bg: '#fff8e6', border: '#e67e22', text: '#d35400', label: 'Quasi esaurito' };
+          return { bg: '#eafaf1', border: '#27ae60', text: '#1e8449', label: 'Disponibile' };
+        };
+        const handleWalkIn = (cat) => {
+          if (cat.free <= 0) {
+            pushToast && pushToast({ tone: 'warning', title: 'Categoria esaurita', message: `Nessun ${cat.nome} libero oggi` });
+            return;
+          }
+          setPrenotazioniPrefill && setPrenotazioniPrefill({ vehicleId: cat.id, vehicleLabel: cat.nome, vehicleType: cat.tipo, dal: wToday, al: wToday, fonte: 'walk_in' });
+          setPage('prenotazioni');
+          pushToast && pushToast({ tone: 'success', title: '🚶 Walk-in', message: `${cat.nome} · oggi` });
+        };
+        return (
+          <>
+            <SectionTitle icon="🚶" label="Walk-in rapido" count={walkAvail.filter(c => c.free > 0).length} color="#7c4dff" />
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 10, marginBottom: 8 }}>
+              {walkAvail.map(cat => {
+                const c = catColor(cat);
+                const pct = cat.total > 0 ? Math.round((cat.free / cat.total) * 100) : 0;
+                return (
+                  <button key={cat.id} type="button"
+                    onClick={() => handleWalkIn(cat)}
+                    disabled={cat.free <= 0}
+                    style={{
+                      background: c.bg, border: `1.5px solid ${c.border}`, borderRadius: 10,
+                      padding: '12px 14px', textAlign: 'left',
+                      cursor: cat.free > 0 ? 'pointer' : 'not-allowed',
+                      opacity: cat.free <= 0 ? 0.72 : 1,
+                      transition: 'transform 0.1s, box-shadow 0.1s',
+                    }}
+                    onMouseEnter={e => { if (cat.free > 0) { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 4px 14px rgba(0,0,0,.1)'; }}}
+                    onMouseLeave={e => { e.currentTarget.style.transform = ''; e.currentTarget.style.boxShadow = ''; }}
+                  >
+                    <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: c.text, marginBottom: 4 }}>{c.label}</div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)', marginBottom: 6, lineHeight: 1.3 }}>{cat.nome}</div>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, marginBottom: 8 }}>
+                      <span style={{ fontSize: 28, fontWeight: 700, fontFamily: 'var(--font-serif)', color: c.text, lineHeight: 1 }}>{cat.free}</span>
+                      <span style={{ fontSize: 12, color: 'var(--muted)' }}>/ {cat.total}</span>
+                    </div>
+                    <div style={{ height: 3, background: 'rgba(0,0,0,.08)', borderRadius: 2, overflow: 'hidden' }}>
+                      <div style={{ height: '100%', width: `${pct}%`, background: c.border, borderRadius: 2 }} />
+                    </div>
+                    {cat.free > 0 && (
+                      <div style={{ marginTop: 6, fontSize: 11, color: c.text, fontWeight: 600 }}>Prenota →</div>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        );
+      })()}
 
       {/* Footer con link rapidi */}
       <div style={{ marginTop: 32, paddingTop: 20, borderTop: '1px solid var(--border)', display: 'flex', gap: 10, flexWrap: 'wrap' }}>
@@ -7829,7 +8059,7 @@ export default function App() {
                 il boundary si resetta automaticamente (la key cambia → nuovo mount). */}
             <ErrorBoundary key={page}>
               {page === 'calendario' && <CalendarioFlottaPage prenotazioni={prenotazioni} fleet={fleet} rentmeVehicles={rentmeVehicles} setPage={setPage} />}
-              {page === 'oggi'       && <OggiPage prenotazioni={prenotazioni} fleet={fleet} scadenze={scadenze} customers={customers} setPage={setPage} />}
+              {page === 'oggi'       && <OggiPage prenotazioni={prenotazioni} fleet={fleet} scadenze={scadenze} customers={customers} setPage={setPage} rentmeVehicles={rentmeVehicles} setPrenotazioniPrefill={setPrenotazioniPrefill} pushToast={pushToast} />}
               {page === 'dashboard'  && <Dashboard onNew={() => openWizard()} setPage={setPage} operator={operator} fleet={fleet} contracts={localContracts} partners={partners} onMarkReturned={markContractReturned} scadenze={scadenze} prenotazioni={prenotazioni} agency={agency} />}
               {page === 'cassa'      && <RegistroCassaPage cassa={cassa} setCassa={setCassa} prenotazioni={prenotazioni} customers={customers} operator={operator} pushToast={pushToast} />}
               {page === 'banco'      && <BancoRapidoPage rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} fleet={fleet} setPage={setPage} setPrenotazioniPrefill={setPrenotazioniPrefill} listino={listino} pushToast={pushToast} rentmeSyncStatus={rentmeSync.status} onRentmeSync={rentmeSync.sync} rentmeLastSync={rentmeSync.lastSync} />}
@@ -8940,7 +9170,7 @@ function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, on
       ) : (
         <div className="grid grid-cols-3 gap-4">
           {filtered.map(v => {
-            const t = VEHICLE_TYPES[v.tipo];
+            const t = VEHICLE_TYPES[v.tipo] || VEHICLE_TYPES.auto; // fallback se tipo non riconosciuto
             const status = VEHICLE_STATUS[v.stato] || VEHICLE_STATUS.available;
             const StatusIcon = status.icon;
             const dimmed = v.stato === 'venduto';
@@ -9992,7 +10222,7 @@ function Wizard({ onClose, prefillCustomer, operator, fleet, customers, partners
   const [submitResult, setSubmitResult] = useState(null);
 
   const update = useCallback((k, v) => setData(d => ({ ...d, [k]: v })), []);
-  const t = data.tipoVeicolo ? VEHICLE_TYPES[data.tipoVeicolo] : null;
+  const t = data.tipoVeicolo ? (VEHICLE_TYPES[data.tipoVeicolo] || VEHICLE_TYPES.auto) : null;
   // CARGOS effettivo = obbligatorio per legge sul tipo veicolo E non disattivato dall'operatore.
   // Se override = 'off', il contratto viene salvato come 'paper' anche per le auto.
   const isCargosBound = t?.cargosRequired === true && data.cargosOverride !== 'off';
@@ -10389,7 +10619,7 @@ function Step3Vehicle({ data, update, fleet }) {
     <div className="max-w-4xl mx-auto">
       <h3 className="serif text-2xl font-medium mb-2">Seleziona il veicolo</h3>
       <p className="text-sm mb-4" style={{ color: 'var(--muted)' }}>
-        {VEHICLE_TYPES[data.tipoVeicolo].label} · {typeFleet.length} disponibili nella flotta
+        {(VEHICLE_TYPES[data.tipoVeicolo] || VEHICLE_TYPES.auto).label} · {typeFleet.length} disponibili nella flotta
       </p>
 
       <div className="relative mb-5">
@@ -10573,7 +10803,7 @@ function StructureSelect({ label, req, partners, structureId, onStructureChange,
 
 // ─── Step 5 — Conferma ────────────────────────────────────────────
 function Step5Confirm({ data, operator, partners, onShowPdf, update, agency }) {
-  const t = VEHICLE_TYPES[data.tipoVeicolo];
+  const t = VEHICLE_TYPES[data.tipoVeicolo] || VEHICLE_TYPES.auto;
   // Disponibilità CARGOS: lo permette la normativa per questo tipo veicolo?
   const cargosAllowed = t.cargosRequired;
   // Effettivo: chiede CARGOS la norma, E l'operatore non ha forzato off?
@@ -10748,7 +10978,7 @@ const SummaryRow = memo(function SummaryRow({ icon: Icon, label, value, sub }) {
 
 // ─── Result screen ────────────────────────────────────────────────
 function ResultScreen({ data, onClose, operator, submitResult, onShowPdf }) {
-  const t = VEHICLE_TYPES[data.tipoVeicolo];
+  const t = VEHICLE_TYPES[data.tipoVeicolo] || VEHICLE_TYPES.auto;
   const isCargosBound = t.cargosRequired;
 
   // Stati possibili dal submitResult:
@@ -10832,7 +11062,7 @@ function ResultScreen({ data, onClose, operator, submitResult, onShowPdf }) {
 // ═══════════════════════════════════════════════════════════════════
 function ContractPdfModal({ data, operator, partners, onClose, agency }) {
   const printRef = useRef(null);
-  const t = VEHICLE_TYPES[data.tipoVeicolo];
+  const t = VEHICLE_TYPES[data.tipoVeicolo] || VEHICLE_TYPES.auto;
   const c = data.cliente?.full || {};
   const v = data.veicolo || {};
   const pag = TIPO_PAGAMENTO[data.pagamento];
@@ -11103,7 +11333,7 @@ function NewVehicleModal({ vehicle, onClose, onSave }) {
     stato: 'available', note: '',
   });
   const upd = useCallback((k, v) => setForm(f => ({ ...f, [k]: v })), []);
-  const valid = form.marca && form.modello && (VEHICLE_TYPES[form.tipo].hasPlate ? form.targa : true);
+  const valid = form.marca && form.modello && ((VEHICLE_TYPES[form.tipo] || VEHICLE_TYPES.auto).hasPlate ? form.targa : true);
 
   return (
     <ModalShell
@@ -11136,7 +11366,7 @@ function NewVehicleModal({ vehicle, onClose, onSave }) {
         <div className="grid grid-cols-2 gap-3">
           <FormField id="nv-marca"  label="Marca"   req value={form.marca}      onChange={v => upd('marca', v)}  placeholder="es. Fiat, Vespa" />
           <FormField id="nv-modello" label="Modello" req value={form.modello}    onChange={v => upd('modello', v)} placeholder="es. Panda, Primavera" />
-          <FormField id="nv-targa"  label={`Targa${VEHICLE_TYPES[form.tipo].hasPlate ? '' : ' (non richiesta)'}`} req={VEHICLE_TYPES[form.tipo].hasPlate} value={form.targa} onChange={v => upd('targa', v.toUpperCase().replace(/\s+/g, ''))} mono placeholder="es. AB123CD" />
+          <FormField id="nv-targa"  label={`Targa${(VEHICLE_TYPES[form.tipo]||VEHICLE_TYPES.auto).hasPlate ? '' : ' (non richiesta)'}`} req={(VEHICLE_TYPES[form.tipo]||VEHICLE_TYPES.auto).hasPlate} value={form.targa} onChange={v => upd('targa', v.toUpperCase().replace(/\s+/g, ''))} mono placeholder="es. AB123CD" />
           <FormField id="nv-colore" label="Colore"   value={form.colore}         onChange={v => upd('colore', v)} />
           <FormField id="nv-cc"     label="Cilindrata / potenza" value={form.cilindrata} onChange={v => upd('cilindrata', v)} placeholder="es. 1200cc, 250W" />
           <FormField id="nv-anno"   label="Anno"     type="number" value={form.anno}      onChange={v => upd('anno', parseInt(v) || '')} mono />
@@ -11179,7 +11409,7 @@ function NewVehicleModal({ vehicle, onClose, onSave }) {
         </div>
         <div className="text-xs p-3 rounded flex items-start gap-2" style={{ background: 'var(--surface-2)', color: 'var(--ink-2)' }}>
           <Info className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" aria-hidden="true" />
-          <span>Categoria <strong>{VEHICLE_TYPES[form.tipo].label}</strong>: {VEHICLE_TYPES[form.tipo].description}</span>
+          <span>Categoria <strong>{(VEHICLE_TYPES[form.tipo]||VEHICLE_TYPES.auto).label}</strong>: {(VEHICLE_TYPES[form.tipo]||VEHICLE_TYPES.auto).description}</span>
         </div>
       </div>
     </ModalShell>
@@ -11979,7 +12209,7 @@ function PlateScanModal({ fleet, onClose }) {
                     {VEHICLE_STATUS[match.stato].label}
                   </span>
                 )}
-                <span className="pill pill-neutral">{VEHICLE_TYPES[match.tipo].label}</span>
+                <span className="pill pill-neutral">{(VEHICLE_TYPES[match.tipo]||VEHICLE_TYPES.auto).label}</span>
               </div>
             </div>
           </div>
