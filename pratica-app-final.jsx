@@ -20,10 +20,21 @@ import { CalendarDays, Receipt, BarChart2,
 // Convenzione: x.y.z dove x = major rewrite, y = feature, z = fix.
 // La data accanto aiuta a verificare al volo che il deploy sia andato a buon fine.
 const APP_VERSION = {
-  number: '0.31.0',
-  codename: 'Fix 413 + CORS proxy configurabile',
+  number: '0.32.1',
+  codename: '8 nuove funzionalità · formula preventivi · admin pw · import clienti',
   date: '2026-05-21',
   changelog: [
+    // v0.32.1 — 2026-05-21
+    'Conteggio giorni inclusivo: dal 18 al 24 = 7 giorni (non 6) — vale per preventivi, form, report e banco rapido',
+    // v0.32.0 — 2026-05-21
+    'Formula preventivi: (settimanale/7+5)×giorni per tutti i mesi fuori agosto — formula diretta, niente ottimizzazioni',
+    'Admin password: accesso admin protetto da password "edonoleggio" — modal al click, disattivazione diretta',
+    'Oggi: ogni riga prenotazione è cliccabile → naviga a Prenotazioni con scroll/focus automatico',
+    'Banco rapido: click categoria → modal elenco veicoli → click mezzo → form prenotazione precompilato',
+    'Prenotazioni: toggle "Gruppi" — vista raggruppata per mese e settimana con totali revenue',
+    'Preventivi PDF: editor interno prezzi (prezzo override + note interne, non visibili al cliente)',
+    'Clienti: import CSV/Excel — anteprima, dedup automatica (stesso cognome+tel), import massivo',
+    'Report: box "?" che spiega Incassato, Rimborsi, Netto, Ticket medio, Durata media, Clienti unici',
     // v0.31.0 — 2026-05-21
     'Fix 413: sanitize prenotazioni esclude fonte=rentme e rentme_storico — payload ridotto ~90%',
     'Safety valve 400KB: se il payload supera la soglia, mantiene solo le 300 prenotazioni più recenti',
@@ -1559,7 +1570,7 @@ function formatDate(d) {
 
 function daysDiff(dal, al) {
   if (!dal || !al) return 0;
-  return Math.max(0, Math.round((new Date(al) - new Date(dal)) / 86400000));
+  return Math.max(1, Math.round((new Date(al) - new Date(dal)) / 86400000) + 1);
 }
 
 function todayISO() {
@@ -2428,6 +2439,7 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rent
   const [showAdvFilter, setShowAdvFilter] = useState(false);
   const [prePage, setPrePage] = useState(1);
   const PAGE_SIZE = 20;
+  const [viewMode, setViewMode] = useState('lista'); // 'lista' | 'gruppi'
   // Modali contratto e firma
   const [contrattoPreno, setContrattoPreno] = useState(null);
   const [firmaPreno, setFirmaPreno] = useState(null);
@@ -2664,7 +2676,7 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rent
   function handleRicrea(p) {
     const t = todayISO();
     const durataGiorni = p.dal && p.al
-      ? Math.max(1, Math.round((new Date(p.al) - new Date(p.dal)) / 86400000))
+      ? Math.max(1, Math.round((new Date(p.al) - new Date(p.dal)) / 86400000) + 1)
       : 1;
     const newAl = (() => {
       const d = new Date(t);
@@ -2695,7 +2707,7 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rent
     const dal    = formatDate(p.dal);
     const al     = formatDate(p.al);
     const giorni = p.dal && p.al
-      ? Math.max(1, Math.round((new Date(p.al) - new Date(p.dal)) / 86400000))
+      ? Math.max(1, Math.round((new Date(p.al) - new Date(p.dal)) / 86400000) + 1)
       : '?';
     const totale  = p.prezzo  != null ? `€${p.prezzo}` : 'da definire';
     const acconto = p.acconto != null && p.acconto > 0 ? `€${p.acconto}` : null;
@@ -2813,6 +2825,12 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rent
           {sortDir === 'asc' ? '↑ Prossime' : '↓ Recenti'}
         </button>
         <button type="button"
+          onClick={() => setViewMode(m => m === 'lista' ? 'gruppi' : 'lista')}
+          title={viewMode === 'lista' ? 'Passa alla vista raggruppata per mese' : 'Torna alla lista'}
+          style={{ padding: '5px 12px', borderRadius: 20, fontSize: 12, border: viewMode === 'gruppi' ? 'none' : '1px solid var(--border)', background: viewMode === 'gruppi' ? 'var(--ink)' : 'transparent', color: viewMode === 'gruppi' ? 'var(--bg)' : 'var(--ink-2)', cursor: 'pointer' }}>
+          {viewMode === 'lista' ? '≡ Lista' : '▦ Gruppi'}
+        </button>
+        <button type="button"
           onClick={() => setShowAdvFilter(v => !v)}
           style={{ padding: '5px 12px', borderRadius: 20, fontSize: 12, border: showAdvFilter ? 'none' : '1px solid var(--border)', background: showAdvFilter ? 'var(--ink)' : 'transparent', color: showAdvFilter ? 'var(--bg)' : 'var(--ink-2)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
           <Filter style={{ width: 12, height: 12 }} /> Filtri
@@ -2855,7 +2873,7 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rent
         </div>
       )}
 
-      {/* Lista */}
+      {/* Lista / Gruppi */}
       {filtered.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--muted)' }}>
           <CalendarDays style={{ width: 40, height: 40, margin: '0 auto 12px', opacity: 0.3 }} />
@@ -2866,7 +2884,93 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rent
             {(prenotazioni || []).length === 0 && 'Crea la prima prenotazione con il pulsante qui sopra.'}
           </div>
         </div>
-      ) : (
+      ) : viewMode === 'gruppi' ? (() => {
+        // Raggruppa per mese (dal)
+        const byMonth = {};
+        filtered.forEach(p => {
+          const key = (p.dal || '9999-12').slice(0, 7); // YYYY-MM
+          if (!byMonth[key]) byMonth[key] = [];
+          byMonth[key].push(p);
+        });
+        const monthKeys = Object.keys(byMonth).sort(sortDir === 'asc' ? undefined : (a,b) => b.localeCompare(a));
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+            {monthKeys.map(ym => {
+              const [year, month] = ym.split('-');
+              const monthLabel = new Date(`${ym}-15`).toLocaleDateString('it-IT', { month: 'long', year: 'numeric' });
+              const items = byMonth[ym];
+              // Raggruppa per settimana del mese
+              const byWeek = {};
+              items.forEach(p => {
+                const d = new Date((p.dal || ym + '-01') + 'T12:00:00');
+                const weekNum = Math.ceil(d.getDate() / 7);
+                const wk = `${ym}-W${weekNum}`;
+                if (!byWeek[wk]) byWeek[wk] = { weekNum, items: [] };
+                byWeek[wk].items.push(p);
+              });
+              const weekKeys = Object.keys(byWeek).sort();
+              return (
+                <div key={ym}>
+                  {/* Intestazione mese */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                    <span style={{ fontFamily: 'var(--font-serif)', fontWeight: 700, fontSize: 16, color: 'var(--ink)', textTransform: 'capitalize' }}>
+                      {monthLabel}
+                    </span>
+                    <span style={{ fontSize: 11, padding: '1px 8px', borderRadius: 10, background: 'var(--surface-2)', color: 'var(--muted)', fontWeight: 600 }}>
+                      {items.length} prenotazion{items.length === 1 ? 'e' : 'i'}
+                    </span>
+                    <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+                      €{items.reduce((s, p) => s + (p.prezzo || 0), 0).toLocaleString('it-IT')}
+                    </span>
+                    <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+                  </div>
+                  {weekKeys.map(wk => {
+                    const { weekNum, items: wItems } = byWeek[wk];
+                    const wStart = (wItems[0]?.dal || '');
+                    const wEnd   = (wItems[wItems.length - 1]?.al || '');
+                    return (
+                      <div key={wk} style={{ marginBottom: 12 }}>
+                        {/* Intestazione settimana */}
+                        <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase',
+                          letterSpacing: '0.06em', marginBottom: 6, paddingLeft: 4,
+                          display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span>Settimana {weekNum}</span>
+                          {wStart && <span style={{ fontWeight: 400 }}>{formatDate(wStart)}{wEnd && wEnd !== wStart ? ` – ${formatDate(wEnd)}` : ''}</span>}
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingLeft: 8, borderLeft: '2px solid var(--border)' }}>
+                          {wItems.map(p => (
+                            <div key={p.id} id={`preno-card-${p.id}`}
+                              style={{ borderRadius: 8, transition: 'box-shadow 0.3s, outline 0.3s' }}>
+                              <PrenoCard p={p}
+                                onEdit={(rec) => setForm(rec)}
+                                onConvert={convertToPratica}
+                                onDelete={deletePreno}
+                                onFoto={(rec) => setFotoPreno(rec)}
+                                onFirma={(rec) => setFirmaPreno(rec)}
+                                onContratto={(rec) => setContrattoPreno(rec)}
+                                onSaldo={(rec) => setSaldoPreno(rec)}
+                                onDeposito={(rec, mode) => setDepositoPreno({ preno: rec, mode })}
+                                onRientro={handleRientro}
+                                onRiconsegna={(rec) => setRiconsegnaPreno(rec)}
+                                onProroga={(rec) => setProrogaPreno(rec)}
+                                onSostituzione={(rec) => setSostituzionePreno(rec)}
+                                onConsegna={(rec) => setConsegnaPreno(rec)}
+                                onRicrea={handleRicrea}
+                                onSaldoRapido={handleSaldoRapido}
+                                onWaConferma={(rec) => { window.open(buildWaConferma(rec), '_blank', 'noopener'); }}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
+        );
+      })() : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {paginated.map(p => (
             <div key={p.id} id={`preno-card-${p.id}`}
@@ -3898,7 +4002,7 @@ const LISTINO = [
 // + eventuale arrotondamento alla settimana intera se conviene.
 // Regola agosto: solo tariffa settimanale, minimo 7 giorni.
 function calcPreventivo(cat, dal, al) {
-  const giorni = Math.max(0, Math.round((new Date(al + 'T12:00:00') - new Date(dal + 'T12:00:00')) / 86400000));
+  const giorni = Math.max(1, Math.round((new Date(al + 'T12:00:00') - new Date(dal + 'T12:00:00')) / 86400000) + 1);
   if (giorni <= 0) return null;
 
   const agosto = isAugust(dal);
@@ -3915,30 +4019,13 @@ function calcPreventivo(cat, dal, al) {
     righe.push({ desc: `${settimane} settimana${settimane > 1 ? 'e' : ''} × €${rates.weekly}`, sub: totale });
     if (giorni < 7) righe.push({ desc: '⚠ Agosto: minimo 7 giorni', sub: null, warn: true });
   } else {
-    // Tariffa giornaliera effettiva = ceil(settimanale/7 + 5) — rincaro fuori agosto
+    // Formula fuori agosto: (tariffa settimanale / 7 + 5) × giorni
     const effectiveDaily = Math.ceil(rates.weekly / 7 + 5);
-    const soloGiornaliero = giorni * effectiveDaily;
-    const settimane  = Math.floor(giorni / 7);
-    const rimanenti  = giorni % 7;
-    const conSettim  = settimane * rates.weekly + rimanenti * effectiveDaily;
-    const arrotondato = Math.ceil(giorni / 7) * rates.weekly;
-
-    totale = Math.min(soloGiornaliero, conSettim, arrotondato);
-
-    if (totale === arrotondato && arrotondato < soloGiornaliero) {
-      const sett = Math.ceil(giorni / 7);
-      righe.push({ desc: `${sett} settimana${sett > 1 ? 'e' : ''} × €${rates.weekly} (arrotondato su)`, sub: arrotondato });
-      risparmio = soloGiornaliero - arrotondato;
-    } else if (totale === conSettim && settimane > 0) {
-      righe.push({ desc: `${settimane} settimana${settimane > 1 ? 'e' : ''} × €${rates.weekly}`, sub: settimane * rates.weekly });
-      if (rimanenti > 0) righe.push({ desc: `${rimanenti} giorno${rimanenti > 1 ? 'i' : ''} × €${effectiveDaily} (+€5/g rincaro)`, sub: rimanenti * effectiveDaily });
-      risparmio = soloGiornaliero - conSettim;
-    } else {
-      righe.push({ desc: `${giorni} giorno${giorni > 1 ? 'i' : ''} × €${effectiveDaily} (+€5/g rincaro)`, sub: soloGiornaliero });
-    }
+    totale = giorni * effectiveDaily;
+    righe.push({ desc: `${giorni} giorno${giorni > 1 ? 'i' : ''} × €${effectiveDaily}/g`, sub: totale });
   }
 
-  return { totale, righe, risparmio, giorni, season, agosto, rates, effectiveDaily: rates.agosto ? null : Math.ceil(rates.weekly / 7 + 5) };
+  return { totale, righe, risparmio, giorni, season, agosto, rates, effectiveDaily: agosto ? null : Math.ceil(rates.weekly / 7 + 5) };
 }
 
 // ── QuoteCard — singola categoria con prezzo calcolato ───────────────
@@ -3950,6 +4037,11 @@ function QuoteCard({ cat, dal, al, onPrenota }) {
   // Modal dati cliente prima di generare il PDF
   const [showClienteModal, setShowClienteModal] = useState(false);
   const [clientePdf, setClientePdf] = useState({ nome: '', tel: '', email: '', note: '' });
+  // Pre-PDF: prezzo override e note interne (solo uso interno, non nel PDF al cliente)
+  const [prezzoOverride, setPrezzoOverride] = useState('');
+  const [noteInterne, setNoteInterne] = useState('');
+  // Reset prezzoOverride quando il calcolo cambia
+  useEffect(() => { setPrezzoOverride(q ? String(q.totale ?? '') : ''); }, [dal, al]);
 
   const q = calcPreventivo(cat, dal, al);
   if (!q) return null;
@@ -4100,17 +4192,54 @@ function QuoteCard({ cat, dal, al, onPrenota }) {
           <div style={{ background: 'var(--bg)', borderRadius: 12, padding: '24px 28px', width: 380, boxShadow: '0 24px 60px rgba(0,0,0,.3)' }}
             onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <div style={{ fontFamily: 'var(--font-serif)', fontWeight: 600, fontSize: 16 }}>Dati cliente per il PDF</div>
+              <div style={{ fontFamily: 'var(--font-serif)', fontWeight: 600, fontSize: 16 }}>Preventivo PDF</div>
               <button type="button" onClick={() => setShowClienteModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', fontSize: 20 }}>×</button>
             </div>
             <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 14 }}>
-              Opzionale — verrà stampato nel preventivo. Codice: <strong style={{ fontFamily: 'monospace', letterSpacing: '.1em' }}>{bookingCode}</strong>
+              Codice: <strong style={{ fontFamily: 'monospace', letterSpacing: '.1em' }}>{bookingCode}</strong> · Compila i dati e personalizza il preventivo prima di stamparlo.
             </div>
+
+            {/* ── Prezzi (solo interno — non visibile al cliente) ── */}
+            <div style={{ background:'var(--surface-2)', border:'1px solid var(--border)', borderRadius:8, padding:'12px 14px', marginBottom:14 }}>
+              <div style={{ fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', color:'#b87333', marginBottom:8 }}>
+                🔒 Solo interno — non compare nel PDF al cliente
+              </div>
+              <div style={{ display:'flex', gap:10, alignItems:'flex-end' }}>
+                <div style={{ flex:1 }}>
+                  <label style={{ display:'block', fontSize:11, fontWeight:600, color:'var(--ink-2)', textTransform:'uppercase', letterSpacing:'.05em', marginBottom:4 }}>
+                    Prezzo (€) <span style={{ fontWeight:400, color:'var(--muted)' }}>— calcolato: €{q.totale}</span>
+                  </label>
+                  <input
+                    type="number" min="0" step="1"
+                    value={prezzoOverride}
+                    onChange={e => setPrezzoOverride(e.target.value)}
+                    placeholder={String(q.totale || '')}
+                    style={{ width:'100%', padding:'7px 10px', borderRadius:6, border:'1.5px solid #b87333', fontSize:15, fontWeight:700, background:'var(--bg)', color:'var(--ink)' }}
+                  />
+                </div>
+                <button type="button" onClick={() => setPrezzoOverride(String(q.totale || ''))}
+                  style={{ padding:'7px 10px', borderRadius:6, border:'1px solid var(--border)', background:'transparent', color:'var(--muted)', fontSize:12, cursor:'pointer', whiteSpace:'nowrap', flexShrink:0 }}>
+                  Reset
+                </button>
+              </div>
+              <div style={{ marginTop:8 }}>
+                <label style={{ display:'block', fontSize:11, fontWeight:600, color:'var(--ink-2)', textTransform:'uppercase', letterSpacing:'.05em', marginBottom:4 }}>Note interne</label>
+                <input
+                  type="text"
+                  value={noteInterne}
+                  onChange={e => setNoteInterne(e.target.value)}
+                  placeholder="Appunti per uso interno (non nel PDF)…"
+                  style={{ width:'100%', padding:'7px 10px', borderRadius:6, border:'1px solid var(--border)', fontSize:12, background:'var(--bg)', color:'var(--ink)' }}
+                />
+              </div>
+            </div>
+
+            {/* ── Dati cliente per il PDF ── */}
             {[
               { key: 'nome',  label: 'Nome e cognome',  placeholder: 'Es. Mario Rossi' },
               { key: 'tel',   label: 'Telefono',        placeholder: '+39 320 …' },
               { key: 'email', label: 'Email',           placeholder: 'cliente@email.com' },
-              { key: 'note',  label: 'Note',            placeholder: 'Volo, ora arrivo…' },
+              { key: 'note',  label: 'Note per il cliente', placeholder: 'Volo, ora arrivo…' },
             ].map(f => (
               <div key={f.key} style={{ marginBottom: 10 }}>
                 <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--ink-2)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 4 }}>{f.label}</label>
@@ -4125,15 +4254,19 @@ function QuoteCard({ cat, dal, al, onPrenota }) {
                 Annulla
               </button>
               <button type="button" onClick={() => {
+                const prezzoFinal = prezzoOverride !== '' && !isNaN(Number(prezzoOverride)) ? Number(prezzoOverride) : q.totale;
                 setShowClienteModal(false);
                 exportPreventivoPDF({
                   catName: cat.nome, dal, al,
-                  stagione: q.season, isWeekly: totale === Math.ceil(q.giorni / 7) * q.rates.weekly,
-                  total: q.totale,
+                  stagione: q.season, isWeekly: false,
+                  total: prezzoFinal,
                   totalDays: q.giorni,
                   codice: bookingCode,
                   cliente: clientePdf,
-                  breakdown: q.righe.map(r => ({ label: r.desc || '', gg: 0, price: 0, subtotal: r.sub || 0 })),
+                  breakdown: [
+                    ...q.righe.map(r => ({ label: r.desc || '', gg: 0, price: 0, subtotal: r.sub || 0 })),
+                    ...(prezzoFinal !== q.totale ? [{ label: 'Prezzo personalizzato', gg: 0, price: 0, subtotal: prezzoFinal }] : []),
+                  ],
                 }, null, lang);
               }}
                 style={{ flex: 1, padding: '9px', borderRadius: 6, border: 'none', background: '#1a1815', color: 'white', cursor: 'pointer', fontSize: 13, fontWeight: 700 }}>
@@ -4235,7 +4368,7 @@ function PreventiviPage({ setPage, setPrenotazioniPrefill, listino: listinoProps
   }
 
   const giorni = dal && al
-    ? Math.max(0, Math.round((new Date(al + 'T12:00:00') - new Date(dal + 'T12:00:00')) / 86400000))
+    ? Math.max(1, Math.round((new Date(al + 'T12:00:00') - new Date(dal + 'T12:00:00')) / 86400000) + 1)
     : 0;
 
   const season = getSeason(dal);
@@ -4689,7 +4822,7 @@ function useReportData({ prenotazioni, contracts, cassa, customers, fleet, opera
     const prenoConDate = allP.filter(p => p.dal && p.al);
     const avgDurata = prenoConDate.length > 0
       ? Math.round(prenoConDate.reduce((s,p) =>
-          s + Math.max(1, Math.round((new Date(p.al) - new Date(p.dal)) / 86400000)), 0
+          s + Math.max(1, Math.round((new Date(p.al) - new Date(p.dal)) / 86400000) + 1), 0
         ) / prenoConDate.length) : 0;
     const clientiUniciSet = new Set(allP.map(p =>
       p.clienteId || `${(p.clienteCognome||'').toLowerCase()}:${(p.clienteNome||'').toLowerCase()}`
@@ -4726,7 +4859,7 @@ function useReportData({ prenotazioni, contracts, cassa, customers, fleet, opera
     // ── Distribuzione durate ─────────────────────────────────────
     const durBuckets = { '1 giorno': 0, '2–3 gg': 0, '4–7 gg': 0, '1–2 sett.': 0, '> 2 sett.': 0 };
     allP.filter(p => p.dal && p.al).forEach(p => {
-      const d = Math.max(1, Math.round((new Date(p.al) - new Date(p.dal)) / 86400000));
+      const d = Math.max(1, Math.round((new Date(p.al) - new Date(p.dal)) / 86400000) + 1);
       if (d === 1)      durBuckets['1 giorno']   += 1;
       else if (d <= 3)  durBuckets['2–3 gg']     += 1;
       else if (d <= 7)  durBuckets['4–7 gg']     += 1;
@@ -4756,7 +4889,7 @@ function useReportData({ prenotazioni, contracts, cassa, customers, fleet, opera
       veicoloMap[key].revenue += (p.prezzo || 0);
       veicoloMap[key].noleggi += 1;
       veicoloMap[key].giorni  += p.dal && p.al
-        ? Math.max(1, Math.round((new Date(p.al) - new Date(p.dal)) / 86400000)) : 0;
+        ? Math.max(1, Math.round((new Date(p.al) - new Date(p.dal)) / 86400000) + 1) : 0;
     });
     const perVeicolo = Object.values(veicoloMap)
       .sort((a,b) => b.revenue - a.revenue).slice(0, 15);
@@ -4934,6 +5067,7 @@ function ReportPage({ prenotazioni, contracts, cassa, customers, fleet, operator
   const currentYear = new Date().getFullYear().toString();
   const [year, setYear] = useState(currentYear);
   const [tab,  setTab]  = useState('overview'); // overview | occupazione | clienti | operatori
+  const [showKpiInfo, setShowKpiInfo] = useState(false);
 
   const availYears = useMemo(() => {
     const years = new Set();
@@ -5021,13 +5155,57 @@ function ReportPage({ prenotazioni, contracts, cassa, customers, fleet, operator
       </div>
 
       {/* KPI — 2 righe × 3 */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12, marginBottom:24 }}>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12, marginBottom:12 }}>
         {card('Prenotazioni '+year, d.totPreno, `${d.totContratti} contratti CARGOS`)}
         {card('Incassato (cassa)', `€${d.incassoCassa.toLocaleString('it-IT')}`, `Rimborsi: €${d.rimborsiCassa}`, '#1f5d83')}
         {card('Netto cassa', `€${d.nettoCassa.toLocaleString('it-IT')}`, 'entrate − uscite', '#2e6e3e')}
         {card('Ticket medio', d.avgTicket > 0 ? `€${d.avgTicket}` : '—', 'valore medio prenotazione', '#b87333')}
         {card('Durata media', d.avgDurata > 0 ? `${d.avgDurata}g` : '—', 'giorni medi per noleggio', '#6a3d8f')}
         {card('Clienti unici', d.clientiUnici, `annullamenti: ${d.tassoAnnullamento}%`, d.tassoAnnullamento > 15 ? '#c85050' : 'var(--ink)')}
+      </div>
+
+      {/* ── Spiegazione KPI ─────────────────────────────────────────── */}
+      <div style={{ marginBottom:20 }}>
+        <button type="button" onClick={() => setShowKpiInfo(v => !v)}
+          style={{ display:'flex', alignItems:'center', gap:5, fontSize:11, color:'var(--muted)',
+            background:'none', border:'none', cursor:'pointer', padding:'4px 0' }}>
+          <span style={{ width:16, height:16, borderRadius:'50%', border:'1px solid var(--muted)',
+            display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:10, fontWeight:700, flexShrink:0 }}>?</span>
+          {showKpiInfo ? 'Nascondi spiegazione' : 'Come si calcolano questi numeri?'}
+        </button>
+        {showKpiInfo && (
+          <div style={{ background:'var(--surface-2)', border:'1px solid var(--border)', borderRadius:8,
+            padding:'14px 18px', marginTop:8, fontSize:12, color:'var(--ink-2)', lineHeight:1.7 }}>
+            <div style={{ fontWeight:700, color:'var(--ink)', marginBottom:8, fontSize:13 }}>📊 Guida ai numeri del report</div>
+            <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+              <div>
+                <strong>Prenotazioni {year}</strong> — totale prenotazioni con data inizio nell'anno selezionato (tutti gli stati, incluse annullate e completate).
+              </div>
+              <div>
+                <strong>Incassato (cassa)</strong> — somma dei movimenti di cassa <em>in entrata</em> (tipo ≠ rimborso) registrati quell'anno, manualmente o automaticamente al saldo. <em>Non include caparre non ancora registrate.</em>
+              </div>
+              <div>
+                <strong>Rimborsi</strong> — movimenti di tipo "rimborso" in cassa; vengono sottratti per calcolare il netto.
+              </div>
+              <div>
+                <strong>Netto cassa</strong> — <code>Incassato − Rimborsi</code>. Il flusso di cassa reale dopo le restituzioni.
+              </div>
+              <div>
+                <strong>Ticket medio</strong> — media del campo <em>prezzo</em> delle prenotazioni non annullate (non dei movimenti cassa).
+              </div>
+              <div>
+                <strong>Durata media</strong> — media giorni tra <em>dal</em> e <em>al</em> delle prenotazioni non annullate.
+              </div>
+              <div>
+                <strong>Clienti unici</strong> — clienti distinti per cognome+nome o ID. Il tasso annullamento è la % di prenotazioni con stato "annullata".
+              </div>
+              <div style={{ marginTop:4, padding:'8px 12px', background:'var(--bg)', borderRadius:6,
+                border:'1px solid var(--border)', fontSize:11, color:'var(--muted)' }}>
+                💡 <strong>Perché Incassato ≠ Prenotazioni×prezzo?</strong> L'incassato conta solo i soldi registrati in cassa. Una prenotazione con prezzo €200 ma senza movimento cassa registrato non compare nell'incassato.
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Tab nav */}
@@ -6599,6 +6777,8 @@ function BancoRapidoPage({ rentmeVehicles, prenotazioni, fleet, setPage, setPren
   const today = new Date().toISOString().slice(0,10);
   const [dal, setDal] = useState(today);
   const [al,  setAl]  = useState(today);
+  // Modal veicoli: categoria selezionata o null
+  const [vehicleModal, setVehicleModal] = useState(null); // null | { cat, vehicles }
 
   const availability = useMemo(
     () => calcAvailability(dal, al, rentmeVehicles, prenotazioni, fleet),
@@ -6608,15 +6788,60 @@ function BancoRapidoPage({ rentmeVehicles, prenotazioni, fleet, setPage, setPren
   // Alert: categorie sotto soglia
   const alerts = availability.filter(c => c.alert);
 
+  // Calcola veicoli liberi per una categoria nelle date selezionate
+  function getVehiclesForCat(cat) {
+    const allVehicles = [
+      ...(fleet || []).filter(v => v.tipo === cat.tipo || v.targa),
+      ...(rentmeVehicles || []).filter(v => v.nome?.toLowerCase().includes(cat.nome?.toLowerCase().split(' ')[0]?.toLowerCase() || '')),
+    ];
+    // Dedup by id
+    const seen = new Set();
+    const merged = [];
+    for (const v of allVehicles) {
+      const id = v.id || v.targa;
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      merged.push(v);
+    }
+    // Filter by tipo match
+    const byTipo = merged.filter(v => {
+      const t = (v.tipo || '').toLowerCase();
+      const ct = (cat.tipo || '').toLowerCase();
+      return t === ct || t === 'moto' && ct === 'scooter' || t === 'scooter' && ct === 'moto';
+    });
+    // Mark occupati
+    const occupati = new Set(
+      (prenotazioni || [])
+        .filter(p => p.dal <= al && p.al >= dal && p.stato !== 'annullata' && p.stato !== 'completata')
+        .map(p => p.vehicleId)
+        .filter(Boolean)
+    );
+    return byTipo.map(v => ({ ...v, libero: !occupati.has(v.id) }));
+  }
+
   const handleSelect = (cat) => {
     if (cat.free <= 0) {
       pushToast({ tone: 'warning', title: 'Categoria esaurita', message: `Nessun ${cat.nome} libero per le date selezionate` });
       return;
     }
-    setPrenotazioniPrefill({ vehicleId: cat.id, vehicleLabel: cat.nome, vehicleType: cat.tipo, dal, al, fonte: 'walk_in' });
-    setPage('prenotazioni');
-    pushToast({ tone: 'success', title: '🚶 Walk-in', message: `${cat.nome} · ${dal === al ? dal : dal + ' → ' + al}` });
+    // Mostra modal con veicoli individuali
+    const vehicles = getVehiclesForCat(cat);
+    setVehicleModal({ cat, vehicles });
   };
+
+  function handleVehicleBook(cat, v) {
+    setVehicleModal(null);
+    setPrenotazioniPrefill({
+      vehicleId:    v.id,
+      vehicleLabel: v.label || v.targa || v.nome || cat.nome,
+      vehicleTarga: v.targa || v.plate || '',
+      vehicleType:  cat.tipo,
+      dal, al,
+      fonte: 'walk_in',
+    });
+    setPage('prenotazioni');
+    pushToast({ tone: 'success', title: '🚶 Walk-in', message: `${v.label || v.targa || cat.nome} · ${dal === al ? dal : dal + ' → ' + al}` });
+  }
 
   const fmtLastSync = (iso) => {
     if (!iso) return null;
@@ -6633,11 +6858,12 @@ function BancoRapidoPage({ rentmeVehicles, prenotazioni, fleet, setPage, setPren
   const nGiorni = (() => {
     const d1 = new Date(dal + 'T12:00:00');
     const d2 = new Date(al  + 'T12:00:00');
-    const diff = Math.round((d2 - d1) / 86400000);
-    return diff <= 0 ? 'Giornaliero' : `${diff + 1} giorni`;
+    const diff = Math.round((d2 - d1) / 86400000) + 1;
+    return diff <= 1 ? 'Giornaliero' : `${diff} giorni`;
   })();
 
   return (
+    <>
     <div style={{ padding: '28px 32px', maxWidth: 960, margin: '0 auto' }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24 }}>
@@ -6776,6 +7002,109 @@ function BancoRapidoPage({ rentmeVehicles, prenotazioni, fleet, setPage, setPren
         </div>
       )}
     </div>
+
+    {/* ── Modal veicoli individuali ───────────────────────────────── */}
+    {vehicleModal && (
+      <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.55)', zIndex:1000,
+        display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}
+        onClick={() => setVehicleModal(null)}>
+        <div style={{ background:'var(--bg)', borderRadius:14, width:'100%', maxWidth:480,
+          maxHeight:'80vh', display:'flex', flexDirection:'column', boxShadow:'0 24px 60px rgba(0,0,0,.35)' }}
+          onClick={e => e.stopPropagation()}>
+          {/* Modal header */}
+          <div style={{ padding:'18px 22px', borderBottom:'1px solid var(--border)', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+            <div>
+              <div style={{ fontFamily:'var(--font-serif)', fontWeight:600, fontSize:17, color:'var(--ink)' }}>
+                {vehicleModal.cat.nome}
+              </div>
+              <div style={{ fontSize:12, color:'var(--muted)', marginTop:2 }}>
+                Scegli il mezzo · {dal} → {al}
+              </div>
+            </div>
+            <button type="button" onClick={() => setVehicleModal(null)}
+              style={{ background:'none', border:'none', cursor:'pointer', color:'var(--muted)', fontSize:22, lineHeight:1 }}>
+              ×
+            </button>
+          </div>
+          {/* Lista veicoli */}
+          <div style={{ overflowY:'auto', flex:1, padding:'10px 14px' }}>
+            {vehicleModal.vehicles.length === 0 && (
+              <div style={{ padding:'32px 20px', textAlign:'center', color:'var(--muted)', fontSize:13 }}>
+                Nessun veicolo trovato in questa categoria.<br/>
+                <button type="button" onClick={() => {
+                  setVehicleModal(null);
+                  // Prenota generica per categoria
+                  setPrenotazioniPrefill({ vehicleType: vehicleModal.cat.tipo, vehicleLabel: vehicleModal.cat.nome, dal, al, fonte: 'walk_in' });
+                  setPage('prenotazioni');
+                }} style={{ marginTop:12, padding:'8px 18px', background:'var(--ink)', color:'var(--paper)', border:'none', borderRadius:6, fontSize:13, cursor:'pointer', fontWeight:600 }}>
+                  Prenota senza mezzo specifico →
+                </button>
+              </div>
+            )}
+            {vehicleModal.vehicles.map(v => {
+              const TIPO_EMOJI = { auto:'🚗', scooter:'🛵', moto:'🛵', quad:'🏎', ebike:'⚡', bici:'🚲' };
+              const emoji = TIPO_EMOJI[v.tipo] || '🚗';
+              const label = v.label || v.nome || v.targa || v.id;
+              const targa = v.targa || v.plate || '';
+              return (
+                <button key={v.id || label} type="button"
+                  onClick={() => v.libero ? handleVehicleBook(vehicleModal.cat, v) : null}
+                  disabled={!v.libero}
+                  style={{
+                    width:'100%', display:'flex', alignItems:'center', gap:12,
+                    padding:'12px 14px', borderRadius:8, border:'1.5px solid var(--border)',
+                    marginBottom:8, textAlign:'left', cursor: v.libero ? 'pointer' : 'not-allowed',
+                    background: v.libero ? 'var(--bg)' : 'var(--surface-2)',
+                    opacity: v.libero ? 1 : 0.55,
+                    transition: 'border-color 0.15s, box-shadow 0.15s',
+                  }}
+                  onMouseEnter={e => { if (v.libero) { e.currentTarget.style.borderColor='var(--accent)'; e.currentTarget.style.boxShadow='0 2px 10px rgba(0,0,0,.1)'; }}}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor='var(--border)'; e.currentTarget.style.boxShadow=''; }}
+                >
+                  <span style={{ fontSize:24 }}>{emoji}</span>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontWeight:600, fontSize:14, color:'var(--ink)', display:'flex', alignItems:'center', gap:6 }}>
+                      {label}
+                      {targa && targa !== label && (
+                        <span style={{ fontFamily:'monospace', fontSize:11, padding:'1px 6px', background:'var(--surface-2)', borderRadius:4, border:'1px solid var(--border)', color:'var(--ink-2)' }}>
+                          {targa}
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ fontSize:12, color:'var(--muted)', marginTop:2 }}>
+                      {v.tipo ? v.tipo.charAt(0).toUpperCase() + v.tipo.slice(1) : ''}
+                      {v.anno && ` · ${v.anno}`}
+                      {v.colore && ` · ${v.colore}`}
+                    </div>
+                  </div>
+                  <div style={{
+                    fontSize:11, fontWeight:700, padding:'3px 10px', borderRadius:10,
+                    background: v.libero ? '#eafaf1' : '#fdecea',
+                    color: v.libero ? '#1e8449' : '#c0392b',
+                    flexShrink: 0,
+                  }}>
+                    {v.libero ? 'Libero' : 'Occupato'}
+                  </div>
+                  {v.libero && <span style={{ color:'var(--accent)', fontWeight:700, fontSize:16, flexShrink:0 }}>→</span>}
+                </button>
+              );
+            })}
+          </div>
+          {/* Footer */}
+          <div style={{ padding:'12px 22px', borderTop:'1px solid var(--border)' }}>
+            <button type="button" onClick={() => {
+              setVehicleModal(null);
+              setPrenotazioniPrefill({ vehicleType: vehicleModal.cat.tipo, vehicleLabel: vehicleModal.cat.nome, dal, al, fonte: 'walk_in' });
+              setPage('prenotazioni');
+            }} style={{ width:'100%', padding:'9px', borderRadius:7, border:'1px solid var(--border)',
+              background:'transparent', color:'var(--ink-2)', cursor:'pointer', fontSize:13 }}>
+              Prenota senza mezzo specifico
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }
 
@@ -9426,9 +9755,13 @@ function OggiPage({ prenotazioni, fleet, scadenze, customers, setPage, rentmeVeh
   );
 
   function PrenoRow({ p, accentColor }) {
+    function handleClick() {
+      if (setPrenotazioniPrefill) setPrenotazioniPrefill({ focusId: p.id });
+      if (setPage) setPage('prenotazioni');
+    }
     return (
-      <Card color={accentColor}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+      <Card color={accentColor} style={{ cursor: 'pointer' }}>
+        <div onClick={handleClick} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
               <span style={{ fontSize: 14 }}>{TIPO_EMOJI[p.tipo] || '🚗'}</span>
@@ -12265,7 +12598,35 @@ function Sidebar({ page, setPage, onNew, online, agency, rentmeSyncStatus, rentm
 // TOPBAR
 // ═══════════════════════════════════════════════════════════════════
 function Topbar({ online, setOnline, pendingQueue, operator, admin, setAdmin, onScanPlate, onShiftChange, agency, onOpenSearch, sessionUser, onLogout, darkMode, setDarkMode, kioskMode, setKioskMode }) {
+  // Admin password modal
+  const [showAdminPwd, setShowAdminPwd] = useState(false);
+  const [adminPwdInput, setAdminPwdInput] = useState('');
+  const [adminPwdError, setAdminPwdError] = useState(false);
+  const ADMIN_PASSWORD = 'edonoleggio';
+
+  function handleAdminToggle() {
+    if (admin) {
+      // Disattiva direttamente senza password
+      setAdmin(false);
+    } else {
+      // Richiedi password per attivare
+      setAdminPwdInput('');
+      setAdminPwdError(false);
+      setShowAdminPwd(true);
+    }
+  }
+  function confirmAdminPwd() {
+    if (adminPwdInput === ADMIN_PASSWORD) {
+      setAdmin(true);
+      setShowAdminPwd(false);
+      setAdminPwdInput('');
+      setAdminPwdError(false);
+    } else {
+      setAdminPwdError(true);
+    }
+  }
   return (
+    <>
     <header className="border-b px-8 py-3 flex items-center gap-3" style={{ borderColor: 'var(--border)', background: 'var(--bg)' }}>
       <div className="flex items-center gap-2 text-sm" style={{ color: 'var(--ink-2)' }}>
         <Building2 className="w-4 h-4" aria-hidden="true" />
@@ -12292,7 +12653,7 @@ function Topbar({ online, setOnline, pendingQueue, operator, admin, setAdmin, on
 
       <button
         type="button"
-        onClick={() => setAdmin(!admin)}
+        onClick={handleAdminToggle}
         className="flex items-center gap-2 px-3 py-1.5 rounded text-xs border transition-all"
         style={{
           borderColor: admin ? 'var(--accent)' : 'var(--border)',
@@ -12394,6 +12755,54 @@ function Topbar({ online, setOnline, pendingQueue, operator, admin, setAdmin, on
         </button>
       )}
     </header>
+
+    {/* ── Modal password Admin ─────────────────────────────────────── */}
+    {showAdminPwd && (
+      <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.55)', zIndex:9999,
+        display:'flex', alignItems:'center', justifyContent:'center' }}
+        onClick={() => setShowAdminPwd(false)}>
+        <div style={{ background:'var(--bg)', borderRadius:12, padding:'28px 32px', width:340,
+          boxShadow:'0 24px 60px rgba(0,0,0,.35)' }}
+          onClick={e => e.stopPropagation()}>
+          <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:8 }}>
+            <Lock style={{ width:20, height:20, color:'var(--accent)' }} />
+            <span style={{ fontFamily:'var(--font-serif)', fontWeight:600, fontSize:18 }}>Modalità Admin</span>
+          </div>
+          <p style={{ fontSize:13, color:'var(--muted)', margin:'0 0 18px' }}>
+            Inserisci la password per attivare l'accesso amministratore.
+          </p>
+          <input
+            type="password"
+            autoFocus
+            value={adminPwdInput}
+            onChange={e => { setAdminPwdInput(e.target.value); setAdminPwdError(false); }}
+            onKeyDown={e => { if (e.key === 'Enter') confirmAdminPwd(); if (e.key === 'Escape') setShowAdminPwd(false); }}
+            placeholder="Password…"
+            style={{ width:'100%', padding:'9px 12px', border:`1.5px solid ${adminPwdError ? 'var(--accent)' : 'var(--border)'}`,
+              borderRadius:7, fontSize:14, background:'var(--bg)', color:'var(--ink)', marginBottom:6,
+              outline:'none', boxSizing:'border-box' }}
+          />
+          {adminPwdError && (
+            <div style={{ fontSize:12, color:'var(--accent)', marginBottom:10, fontWeight:600 }}>
+              ✕ Password errata. Riprova.
+            </div>
+          )}
+          <div style={{ display:'flex', gap:8, marginTop:14 }}>
+            <button type="button" onClick={() => setShowAdminPwd(false)}
+              style={{ flex:1, padding:'9px', borderRadius:6, border:'1px solid var(--border)',
+                background:'transparent', color:'var(--ink-2)', cursor:'pointer', fontSize:13 }}>
+              Annulla
+            </button>
+            <button type="button" onClick={confirmAdminPwd}
+              style={{ flex:1, padding:'9px', borderRadius:6, border:'none',
+                background:'var(--ink)', color:'var(--paper)', cursor:'pointer', fontSize:13, fontWeight:700 }}>
+              Accedi
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }
 
@@ -13434,6 +13843,85 @@ function FermiFlottaSection({ fleet, fermiFlotta, setFermiFlotta }) {
 function CustomersPage({ customers, setCustomers, prenotazioni, admin, onShowQR, onNewWithCustomer, onAddCustomer, onEditCustomer, onDeleteCustomer, onShowStorico }) {
   const [search, setSearch]     = useState('');
   const [schedaId, setSchedaId] = useState(null);
+  // Import CSV/Excel
+  const [importModal, setImportModal] = useState(null); // null | { preview, raw }
+  const importRef = useRef(null);
+
+  function parseCSVLine(line) {
+    const result = [];
+    let cur = '', inQ = false;
+    for (let i = 0; i < line.length; i++) {
+      const c = line[i];
+      if (c === '"') { inQ = !inQ; }
+      else if ((c === ',' || c === ';') && !inQ) { result.push(cur.trim()); cur = ''; }
+      else cur += c;
+    }
+    result.push(cur.trim());
+    return result;
+  }
+
+  function handleImportFile(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+    const name = file.name.toLowerCase();
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        if (name.endsWith('.csv') || name.endsWith('.txt')) {
+          const text = ev.target.result;
+          const lines = text.split(/\r?\n/).filter(l => l.trim());
+          if (lines.length < 2) { alert('File CSV vuoto o con solo intestazione.'); return; }
+          const headers = parseCSVLine(lines[0]).map(h => h.toLowerCase().replace(/\s+/g, '_'));
+          const COL = (keys) => headers.findIndex(h => keys.some(k => h.includes(k)));
+          const iNome     = COL(['nome']);
+          const iCognome  = COL(['cognome']);
+          const iTel      = COL(['tel','phone','cellulare','mobile']);
+          const iEmail    = COL(['email','mail']);
+          const iDoc      = COL(['doc_num','documento','passaport','passport','codice_fis']);
+          const iDocTipo  = COL(['doc_tipo','tipo_doc','tipo_documento']);
+          const iCitta    = COL(['citta','città','cittadinanza','nation','paese','country']);
+          const iNote     = COL(['note','notes']);
+          const preview = lines.slice(1).map((l, idx) => {
+            const cols = parseCSVLine(l);
+            return {
+              id: 'imp_' + Date.now() + '_' + idx,
+              nome:         iNome    >= 0 ? cols[iNome]    || '' : '',
+              cognome:      iCognome >= 0 ? cols[iCognome] || '' : '',
+              tel:          iTel     >= 0 ? cols[iTel]     || '' : '',
+              email:        iEmail   >= 0 ? cols[iEmail]   || '' : '',
+              docNumero:    iDoc     >= 0 ? cols[iDoc]     || '' : '',
+              docTipo:      iDocTipo >= 0 ? cols[iDocTipo] || '' : '',
+              cittadinanza: iCitta   >= 0 ? cols[iCitta]  || '' : '',
+              note:         iNote    >= 0 ? cols[iNote]    || '' : '',
+              createdAt:    new Date().toISOString(),
+            };
+          }).filter(c => c.nome || c.cognome || c.tel);
+          setImportModal({ preview, fileName: file.name });
+        } else {
+          alert('Formato non supportato. Usa CSV (UTF-8) o esporta da Excel come CSV.');
+        }
+      } catch(err) {
+        alert('Errore lettura file: ' + err.message);
+      }
+    };
+    reader.readAsText(file, 'UTF-8');
+  }
+
+  function confirmImport() {
+    if (!importModal) return;
+    const existing = new Set((customers || []).map(c =>
+      `${(c.cognome||'').toLowerCase()}|${(c.tel||'').replace(/\s/g,'')}`.trim()
+    ));
+    const toAdd = importModal.preview.filter(c => {
+      const key = `${(c.cognome||'').toLowerCase()}|${(c.tel||'').replace(/\s/g,'')}`.trim();
+      return key && !existing.has(key);
+    });
+    if (toAdd.length === 0) { alert('Nessun cliente nuovo da importare (tutti già presenti).'); setImportModal(null); return; }
+    setCustomers(prev => [...prev, ...toAdd]);
+    setImportModal(null);
+    alert(`✓ Importati ${toAdd.length} nuovi clienti.`);
+  }
 
   const filtered = useMemo(() => {
     if (!search.trim()) return customers;
@@ -13454,6 +13942,7 @@ function CustomersPage({ customers, setCustomers, prenotazioni, admin, onShowQR,
   };
 
   return (
+    <>
     <div>
       <div className="flex items-end justify-between mb-4">
         <div>
@@ -13468,6 +13957,12 @@ function CustomersPage({ customers, setCustomers, prenotazioni, admin, onShowQR,
             placeholder="Cerca…" className="input"
             style={{ width: 200, fontSize: 13, padding: '7px 10px' }}
           />
+          {/* Import CSV */}
+          <input ref={importRef} type="file" accept=".csv,.txt" onChange={handleImportFile} style={{ display:'none' }} />
+          <button type="button" onClick={() => importRef.current?.click()}
+            style={{ padding:'7px 14px', borderRadius:6, border:'1px solid var(--border)', background:'transparent', color:'var(--ink-2)', fontSize:13, cursor:'pointer', display:'flex', alignItems:'center', gap:6 }}>
+            ⬆ Importa
+          </button>
           {admin && (
             <button type="button" onClick={onAddCustomer} className="btn-primary px-4 py-2 rounded text-sm font-semibold flex items-center gap-2">
               <Plus className="w-4 h-4" /> Nuovo
@@ -13615,6 +14110,66 @@ function CustomersPage({ customers, setCustomers, prenotazioni, admin, onShowQR,
         )}
       </div>
     </div>
+
+    {/* ── Import modal preview ─────────────────────────────────────── */}
+    {importModal && (
+      <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.55)', zIndex:1000,
+        display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}
+        onClick={() => setImportModal(null)}>
+        <div style={{ background:'var(--bg)', borderRadius:14, width:'100%', maxWidth:600,
+          maxHeight:'80vh', display:'flex', flexDirection:'column', boxShadow:'0 24px 60px rgba(0,0,0,.35)' }}
+          onClick={e => e.stopPropagation()}>
+          <div style={{ padding:'18px 22px', borderBottom:'1px solid var(--border)', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+            <div>
+              <div style={{ fontFamily:'var(--font-serif)', fontWeight:600, fontSize:17 }}>Importa clienti</div>
+              <div style={{ fontSize:12, color:'var(--muted)', marginTop:2 }}>
+                {importModal.fileName} · {importModal.preview.length} clienti rilevati
+              </div>
+            </div>
+            <button type="button" onClick={() => setImportModal(null)}
+              style={{ background:'none', border:'none', cursor:'pointer', color:'var(--muted)', fontSize:22 }}>×</button>
+          </div>
+          <div style={{ overflowY:'auto', flex:1 }}>
+            <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+              <thead>
+                <tr style={{ background:'var(--surface-2)', position:'sticky', top:0 }}>
+                  {['Cognome','Nome','Telefono','Email','Doc. N°','Note'].map(h => (
+                    <th key={h} style={{ padding:'8px 12px', textAlign:'left', fontWeight:700, color:'var(--ink-2)',
+                      borderBottom:'1px solid var(--border)', fontSize:11, textTransform:'uppercase', letterSpacing:'.05em' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {importModal.preview.map((c, i) => (
+                  <tr key={c.id} style={{ borderBottom:'1px solid var(--border)', background: i % 2 === 0 ? 'transparent' : 'var(--surface-2)' }}>
+                    <td style={{ padding:'7px 12px', fontWeight:600 }}>{c.cognome || '—'}</td>
+                    <td style={{ padding:'7px 12px' }}>{c.nome || '—'}</td>
+                    <td style={{ padding:'7px 12px', fontFamily:'monospace' }}>{c.tel || '—'}</td>
+                    <td style={{ padding:'7px 12px', color:'var(--muted)' }}>{c.email || '—'}</td>
+                    <td style={{ padding:'7px 12px', fontFamily:'monospace', fontSize:11 }}>{c.docNumero || '—'}</td>
+                    <td style={{ padding:'7px 12px', color:'var(--muted)', maxWidth:140, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{c.note || ''}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div style={{ padding:'14px 22px', borderTop:'1px solid var(--border)', display:'flex', gap:8 }}>
+            <div style={{ flex:1, fontSize:12, color:'var(--muted)', alignSelf:'center' }}>
+              ⚠ I duplicati (stesso cognome + telefono) verranno saltati automaticamente.
+            </div>
+            <button type="button" onClick={() => setImportModal(null)}
+              style={{ padding:'9px 18px', borderRadius:6, border:'1px solid var(--border)', background:'transparent', color:'var(--ink-2)', cursor:'pointer', fontSize:13 }}>
+              Annulla
+            </button>
+            <button type="button" onClick={confirmImport}
+              style={{ padding:'9px 18px', borderRadius:6, border:'none', background:'var(--ink)', color:'var(--paper)', cursor:'pointer', fontSize:13, fontWeight:700 }}>
+              ⬆ Importa {importModal.preview.length} clienti
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }
 
