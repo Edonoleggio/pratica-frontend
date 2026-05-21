@@ -20,10 +20,16 @@ import { CalendarDays, Receipt, BarChart2,
 // Convenzione: x.y.z dove x = major rewrite, y = feature, z = fix.
 // La data accanto aiuta a verificare al volo che il deploy sia andato a buon fine.
 const APP_VERSION = {
-  number: '0.28.0',
-  codename: 'Targhe reali — lookup render-time, nessuna mutazione stato',
+  number: '0.29.0',
+  codename: 'Filtri categoria — Base · Superior · Cabrio · 5/6/7 Posti · Aperta · …',
   date: '2026-05-21',
   changelog: [
+    // v0.29.0 — 2026-05-21
+    'Filtro categoria Auto: BASE · 5POSTI · APERTA · SUPERIOR · CABRIO · 6POSTI · 7POSTI · SERIE2 · AUTOMATICA',
+    'Filtro categoria Scooter 125: STANDARD · SUPERIOR — stesse categorie di EDOX/RentMe',
+    'Badge categoria su ogni card veicolo in Flotta',
+    'Campo categoria salvato durante importazione RentMe (riconoscimento keyword su modello)',
+    'Reset categoria automatico quando si cambia tipo (Auto → Scooter ecc.)',
     // v0.28.0 — 2026-05-21
     'Fix targhe: resolveVehicleDisplay() mappa al volo i codici RentMe → targhe reali senza mutare lo stato',
     'Fix Gantt: colonna mezzo mostra targa e modello reale da RENTME_TARGA_MAP',
@@ -251,6 +257,48 @@ function canonicalTipo(v) {
     return 'ebike';
   }
   return t;
+}
+
+// ── CATEGORIE RENTME per tipo ──────────────────────────────────────
+// Rispecchiano i gruppi di EDOX / RentMe usati per le prenotazioni.
+const RENTME_CATEGORIE_MAP = {
+  auto:    ['BASE', '5POSTI', 'APERTA', 'SUPERIOR', 'CABRIO', '6POSTI', '7POSTI', 'SERIE2', 'AUTOMATICA'],
+  scooter: ['STANDARD', 'SUPERIOR'],
+};
+const CATEGORIA_LABEL = {
+  'BASE':       'Base',
+  '5POSTI':     '5 Posti',
+  'APERTA':     'Aperta',
+  'SUPERIOR':   'Superior',
+  'CABRIO':     'Cabrio',
+  '6POSTI':     '6 Posti',
+  '7POSTI':     '7 Posti',
+  'SERIE2':     'Serie 2',
+  'AUTOMATICA': 'Automatica',
+  'STANDARD':   'Standard',
+};
+// Ordine priorità: specificità decrescente (es. AUTOMATICA prima di BASE)
+const CATEGORIA_KEYWORDS = {
+  'AUTOMATICA': ['automatica'],
+  'SERIE2':     ['serie2', 'serie 2'],
+  '7POSTI':     ['7posti', '7 posti', '7posto'],
+  '6POSTI':     ['6posti', '6 posti', '6posto'],
+  '5POSTI':     ['5posti', '5 posti', '5posto'],
+  'CABRIO':     ['cabrio'],
+  'APERTA':     ['aperta'],
+  'SUPERIOR':   ['superior'],
+  'STANDARD':   ['standard'],
+  'BASE':       ['base'],
+};
+function getVehicleCategoria(v) {
+  // Fast path: campo già salvato durante l'import
+  if (v?.categoria) return v.categoria;
+  const vr = resolveVehicleDisplay(v);
+  const text = `${vr.modello || ''} ${vr.marca || ''} ${v.rentmeId || ''}`.toLowerCase();
+  for (const [cat, kws] of Object.entries(CATEGORIA_KEYWORDS)) {
+    if (kws.some(kw => text.includes(kw))) return cat;
+  }
+  return null;
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -11556,6 +11604,12 @@ export default function App() {
       const nomeClean = tipoStr && nomeRaw.toLowerCase().startsWith(tipoStr + ' ')
         ? nomeRaw.slice(tipoStr.length + 1).trim() : nomeRaw;
       const modelloVal = mapEntry?.modello || nomeClean || v.slug || '';
+      // Estrai categoria dalla mappa (es. 'superior' → 'SUPERIOR')
+      const catText = `${modelloVal} ${nomeRaw}`.toLowerCase();
+      let categoriaVal = null;
+      for (const [cat, kws] of Object.entries(CATEGORIA_KEYWORDS)) {
+        if (kws.some(kw => catText.includes(kw))) { categoriaVal = cat; break; }
+      }
       return {
         id:         (targaVal || rmCode.toUpperCase()) || `rm-${i}`,
         tipo:       v.tipo || 'auto',
@@ -11563,6 +11617,7 @@ export default function App() {
         modello:    modelloVal,
         targa:      targaVal,
         rentmeId:   rmCode,   // codice EDOX originale (es. "panda 81") sempre salvato
+        categoria:  categoriaVal,
         colore:     '',
         stato:      'available',
         cilindrata: '',
@@ -12863,6 +12918,7 @@ function ContractsList({ contracts, operators, onRetry, onMarkReturned, online }
 // ═══════════════════════════════════════════════════════════════════
 function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, onDeleteVehicle, onImportCSV, scadenze, setScadenze, fermiFlotta, setFermiFlotta }) {
   const [typeFilter, setTypeFilter] = useState('all');
+  const [categoriaFilter, setCategoriaFilter] = useState(null);
   const [statusFilter, setStatusFilter] = useState('all');
   const [query, setQuery] = useState('');
   const [scadenzeModalVeh, setScadenzeModalVeh] = useState(null);
@@ -12892,6 +12948,7 @@ function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, on
     let f = typeFilter === 'all'
       ? fleet.filter(v => canonicalTipo(v) !== 'bici')
       : fleet.filter(v => canonicalTipo(v) === typeFilter);
+    if (categoriaFilter) f = f.filter(v => getVehicleCategoria(v) === categoriaFilter);
     if (statusFilter !== 'all') f = f.filter(v => (v.stato || 'available') === statusFilter);
     if (query.trim()) {
       const q = query.toLowerCase();
@@ -12899,11 +12956,24 @@ function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, on
         (v.targa || '').toLowerCase().includes(q) ||
         (v.marca || '').toLowerCase().includes(q) ||
         (v.modello || '').toLowerCase().includes(q) ||
-        (v.colore || '').toLowerCase().includes(q)
+        (v.colore || '').toLowerCase().includes(q) ||
+        (getVehicleCategoria(v) || '').toLowerCase().includes(q)
       );
     }
     return f;
-  }, [fleet, typeFilter, statusFilter, query]);
+  }, [fleet, typeFilter, categoriaFilter, statusFilter, query]);
+
+  // Categorie disponibili nel tipo selezionato (solo quelle con almeno 1 veicolo)
+  const categorieDisponibili = useMemo(() => {
+    if (typeFilter !== 'auto' && typeFilter !== 'scooter') return [];
+    const inTipo = fleet.filter(v => canonicalTipo(v) === typeFilter);
+    const cats = RENTME_CATEGORIE_MAP[typeFilter] || [];
+    return cats.map(cat => ({
+      id: cat,
+      label: CATEGORIA_LABEL[cat] || cat,
+      n: inTipo.filter(v => getVehicleCategoria(v) === cat).length,
+    })).filter(c => c.n > 0);
+  }, [fleet, typeFilter]);
 
   const noBiciCount = fleet.filter(v => canonicalTipo(v) !== 'bici').length;
   const filters = [
@@ -12952,7 +13022,7 @@ function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, on
           <button
             key={t.id}
             type="button"
-            onClick={() => setTypeFilter(t.id)}
+            onClick={() => { setTypeFilter(t.id); setCategoriaFilter(null); }}
             className={`px-3 py-1.5 rounded text-xs flex items-center gap-2 border transition-all ${typeFilter === t.id ? 'btn-primary border-transparent' : 'btn-ghost'}`}
             style={{ borderColor: typeFilter === t.id ? 'transparent' : 'var(--border)' }}
             aria-pressed={typeFilter === t.id}
@@ -12963,6 +13033,34 @@ function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, on
           </button>
         ))}
       </div>
+
+      {/* Filtro categoria — appare solo per Auto e Scooter, solo se ci sono categorie */}
+      {categorieDisponibili.length > 0 && (
+        <div className="flex gap-2 mb-2 flex-wrap" role="group" aria-label="Filtra per categoria">
+          <button
+            type="button"
+            onClick={() => setCategoriaFilter(null)}
+            className={`px-2.5 py-1 rounded text-[11px] border transition-all ${!categoriaFilter ? 'btn-primary border-transparent' : 'btn-ghost'}`}
+            style={{ borderColor: !categoriaFilter ? 'transparent' : 'var(--border)' }}
+            aria-pressed={!categoriaFilter}
+          >
+            Tutte
+          </button>
+          {categorieDisponibili.map(c => (
+            <button
+              key={c.id}
+              type="button"
+              onClick={() => setCategoriaFilter(categoriaFilter === c.id ? null : c.id)}
+              className={`px-2.5 py-1 rounded text-[11px] border transition-all ${categoriaFilter === c.id ? 'btn-primary border-transparent' : 'btn-ghost'}`}
+              style={{ borderColor: categoriaFilter === c.id ? 'transparent' : 'var(--border)' }}
+              aria-pressed={categoriaFilter === c.id}
+            >
+              {c.label}
+              <span className="opacity-60 ml-1">{c.n}</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="flex gap-2 mb-4 flex-wrap" role="group" aria-label="Filtra per stato veicolo">
         {statusFilters.map(s => {
@@ -13043,6 +13141,14 @@ function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, on
                   )}
                 </div>
                 <div className="flex flex-wrap gap-1.5 mt-3 text-[11px] items-center">
+                  {(() => {
+                    const cat = getVehicleCategoria(v);
+                    return cat ? (
+                      <span className="pill pill-neutral" title="Categoria EDOX" style={{ letterSpacing: '.04em', fontWeight: 700 }}>
+                        {CATEGORIA_LABEL[cat] || cat}
+                      </span>
+                    ) : null;
+                  })()}
                   {v.stato && v.stato !== 'available' && (
                     <span className={`pill ${status.pill}`}>
                       <StatusIcon className="w-3 h-3" /> {status.label}
