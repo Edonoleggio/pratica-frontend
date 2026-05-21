@@ -1946,17 +1946,19 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
 
   function handleVehicleChange(e) {
     const id = e.target.value;
-    // Cerca prima in rentmeVehicles (per targa), poi in fleet locale
-    const rm = (rentmeVehicles || []).find(v => (v.targa || '').trim().toUpperCase() === id);
-    if (rm) {
+    // Usa allVehicles (già unifica RentMe + fleet locale con targa normalizzata)
+    const v = allVehicles.find(x => x.id === id);
+    if (v) {
       set('vehicleId', id);
-      set('vehicleLabel', rm.nome || id);
-      set('vehicleType', rm.tipo || 'auto');
+      // makeVehicleLabel include sia modello che targa reale → es. "Mehari 130 · AB123CD"
+      set('vehicleLabel', makeVehicleLabel(v));
+      set('vehicleType', v.tipo || 'auto');
     } else {
-      const v = (fleet || []).find(x => x.id === id);
+      // fallback: cerca direttamente in fleet locale per id interno
+      const fv = (fleet || []).find(x => x.id === id);
       set('vehicleId', id);
-      set('vehicleLabel', v ? makeVehicleLabel(v) : '');
-      set('vehicleType', v ? v.tipo : 'auto');
+      set('vehicleLabel', fv ? makeVehicleLabel(fv) : id);
+      set('vehicleType', fv ? fv.tipo : 'auto');
     }
   }
 
@@ -3263,9 +3265,8 @@ function ConsegnaModal({ preno, prenotazioni, fleet, rentmeVehicles, onConfirm, 
     if (!canConfirm) return;
     if (useCombo && smartCombo && !smartCombo.impossible) {
       const first = smartCombo[0];
-      const label = candidati.find(v => v.id === first.vehicleId)
-        ? `${candidati.find(v=>v.id===first.vehicleId).modello||''} ${first.vehicleId}`.trim()
-        : first.vehicleId;
+      const fv = candidati.find(v => v.id === first.vehicleId);
+      const label = fv ? makeVehicleLabel(fv) : first.vehicleId;
       onConfirm({
         vehicleId: first.vehicleId,
         vehicleLabel: label,
@@ -3275,9 +3276,7 @@ function ConsegnaModal({ preno, prenotazioni, fleet, rentmeVehicles, onConfirm, 
         noteConsegna,
       });
     } else {
-      const label = selVehicle
-        ? `${selVehicle.modello || ''} ${selVehicle.targa}`.trim()
-        : selectedId;
+      const label = selVehicle ? makeVehicleLabel(selVehicle) : selectedId;
       onConfirm({
         vehicleId: selectedId,
         vehicleLabel: label,
