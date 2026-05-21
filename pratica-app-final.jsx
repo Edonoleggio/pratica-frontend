@@ -20,10 +20,25 @@ import { CalendarDays, Receipt, BarChart2,
 // Convenzione: x.y.z dove x = major rewrite, y = feature, z = fix.
 // La data accanto aiuta a verificare al volo che il deploy sia andato a buon fine.
 const APP_VERSION = {
-  number: '0.25.0',
-  codename: 'Autocomplete · Categoria OB · Deposito · Flotta live',
-  date: '2026-05-19',
+  number: '0.27.0',
+  codename: 'Report espanso — Insight · Previsione · Retention · Mix avanzato',
+  date: '2026-05-21',
   changelog: [
+    // v0.27.0 — 2026-05-21
+    'Report Panoramica: insight automatici generati dai dati (miglior mese, retention, ticket medio, fonte top, mezzo top)',
+    'Report Panoramica: nuovo grafico combinato prenotazioni + revenue incassata + stimata su unico asse',
+    'Report Panoramica: widget retention clienti con tasso % e barra visiva + widget prossime prenotazioni',
+    'Tab Previsione 🔮: KPI forward-looking (preno future, revenue confermata, potenziale) + chart per mese + tabella',
+    'Tab Clienti 👤: distribuzione grafica spesa + podio 🥇🥈🥉 + ticket medio per cliente',
+    'Tab Mix: nuovo widget giorno della settimana (dove parte più noleggi) + widget metodi pagamento con %',
+    'Fix: sintassi template literal nel tab Mix (brace mancante), fix caratteri cirillici in "noleggi"',
+    // v0.26.0 — 2026-05-20
+    'Saldo rapido: pulsante "💶 Salda €X" sulla card con popover metodo pagamento — zero clic extra',
+    'WA Conferma: tasto 📲 sulle prenotazioni confermate genera messaggio WhatsApp con mezzo, date, totale e residuo',
+    'Promemoria documenti: OggiPage segnala clienti con documento scaduto o in scadenza (<30gg) tra le consegne di oggi',
+    'Link preventivo condivisibile: pulsante 🔗 copia URL ?preventivo=tipo|dal|al — diretto su WhatsApp/email',
+    'Export calendario .ics: scarica tutte le prenotazioni come file calendario compatibile Apple/Google',
+    'Ricrea prenotazione: pulsante 🔁 su pratiche completate/annullate ripropone il form pre-compilato con date aggiornate a oggi',
     // v0.25.0 — 2026-05-19
     'Autocomplete clienti: suggerisce dalla rubrica mentre si digita cognome o telefono, compila tutti i campi con un click',
     'Anti-overbooking categoria: controlla disponibilità per tipo veicolo anche quando nessun mezzo specifico è assegnato',
@@ -1396,6 +1411,45 @@ function prenoId() {
   return 'pr' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 }
 
+// ── Stato pagamento prenotazione ─────────────────────────────────────
+// Restituisce { pagato, residuo, completato, colore }
+function statoPagamento(p) {
+  const totale  = p.prezzo  != null ? Number(p.prezzo)  : null;
+  const acconto = p.acconto != null ? Number(p.acconto) : 0;
+  const saldato = p.saldato != null ? Number(p.saldato) : 0;
+  const pagato  = acconto + saldato;
+  if (totale == null) return { pagato, residuo: null, completato: false, colore: '#888' };
+  const residuo     = Math.max(0, totale - pagato);
+  const completato  = residuo === 0;
+  const colore      = completato ? '#4a6a30' : pagato > 0 ? '#b07820' : '#c83434';
+  return { pagato, residuo, totale, completato, colore };
+}
+
+// ── Codice prenotazione univoco 6 caratteri alfanumerici ─────────────
+// Es. A987SA — generato alla creazione del preventivo, segue fino alla
+// conferma prenotazione. Un solo codice per tutto il ciclo del noleggio.
+function generateBookingCode() {
+  const C = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O/1/I per chiarezza visiva
+  let s = '';
+  for (let i = 0; i < 6; i++) s += C[Math.floor(Math.random() * C.length)];
+  return s;
+}
+
+// ── Colore cliente per timeline Gantt ────────────────────────────────
+// Stesso cliente → stesso colore in tutta la griglia.
+const CLIENTE_PALETTE = [
+  '#c0392b','#e67e22','#d4a017','#27ae60','#16a085',
+  '#2980b9','#8e44ad','#d35400','#1abc9c','#546e7a',
+  '#e91e63','#ff5722','#6d4c41','#00897b','#1565c0',
+  '#4caf50','#f57c00','#7b1fa2','#283593','#c62828',
+];
+function clienteColorHash(key) {
+  if (!key) return CLIENTE_PALETTE[0];
+  let h = 0;
+  for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) & 0x7fffffff;
+  return CLIENTE_PALETTE[h % CLIENTE_PALETTE.length];
+}
+
 function formatDate(d) {
   if (!d) return '—';
   const [y, m, g] = d.split('-');
@@ -1428,8 +1482,10 @@ function PrenoStatPill({ stato }) {
 }
 
 // ── PrenoCard ────────────────────────────────────────────────────────
-function PrenoCard({ p, onEdit, onConvert, onDelete, onFoto, onContratto, onFirma, onSaldo, onDeposito, onRientro, onRiconsegna, onProroga, onSostituzione, onConsegna }) {
+function PrenoCard({ p, onEdit, onConvert, onDelete, onFoto, onContratto, onFirma, onSaldo, onDeposito, onRientro, onRiconsegna, onProroga, onSostituzione, onConsegna, onRicrea, onWaConferma, onSaldoRapido }) {
   const giorni = daysDiff(p.dal, p.al);
+  const [saldoRapidoOpen, setSaldoRapidoOpen] = useState(false);
+  const sp = statoPagamento(p);
   return (
     <div style={{
       background: 'var(--bg)', border: '1px solid var(--border)',
@@ -1498,7 +1554,16 @@ function PrenoCard({ p, onEdit, onConvert, onDelete, onFoto, onContratto, onFirm
               [{p.rentmeCode}]
             </span>
           )}
-          {p.clienteTel && <> · <a href={`tel:${p.clienteTel}`} style={{ color: 'var(--ink-2)' }}>{p.clienteTel}</a></>}
+          {p.clienteTel && <>
+            {' · '}
+            <a href={`tel:${p.clienteTel}`} style={{ color: 'var(--ink-2)' }}>{p.clienteTel}</a>
+            {' '}
+            <a href={`https://wa.me/${p.clienteTel.replace(/\D/g,'')}`} target="_blank" rel="noreferrer"
+              style={{ fontSize: 11, padding: '1px 5px', borderRadius: 4, background: '#25d36622', color: '#25d366', fontWeight: 700, textDecoration: 'none', marginLeft: 2 }}
+              title="Apri WhatsApp">
+              WA
+            </a>
+          </>}
         </div>
         <div style={{ fontSize: 11, color: 'var(--muted)' }}>
           {formatDate(p.dal)} → {formatDate(p.al)}
@@ -1569,6 +1634,42 @@ function PrenoCard({ p, onEdit, onConvert, onDelete, onFoto, onContratto, onFirm
             💰 Saldo
           </button>
         )}
+        {(p.stato === 'in_corso' || p.stato === 'confermata') && !p.saldoRegistrato && sp.residuo > 0 && onSaldoRapido && (
+          <div style={{ position: 'relative' }}>
+            <button type="button" onClick={() => setSaldoRapidoOpen(o => !o)}
+              style={{ fontSize: 11, padding: '4px 10px', borderRadius: 4, border: '1px solid #1f5d83',
+                background: saldoRapidoOpen ? '#1f5d83' : 'transparent',
+                color: saldoRapidoOpen ? 'white' : '#1f5d83', fontWeight: 600, cursor: 'pointer' }}>
+              💶 Salda €{sp.residuo}
+            </button>
+            {saldoRapidoOpen && (
+              <div style={{
+                position: 'absolute', right: 0, top: '110%', zIndex: 200,
+                background: 'var(--bg)', border: '1px solid var(--border)',
+                borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,.18)',
+                padding: '12px 14px', minWidth: 180,
+              }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink)', marginBottom: 8 }}>
+                  Saldo rapido · €{sp.residuo}
+                </div>
+                {['contanti','carta','bonifico','altro'].map(m => (
+                  <button key={m} type="button"
+                    onClick={() => { onSaldoRapido(p, sp.residuo, m); setSaldoRapidoOpen(false); }}
+                    style={{ display: 'block', width: '100%', textAlign: 'left',
+                      fontSize: 12, padding: '6px 8px', marginBottom: 3, borderRadius: 5,
+                      border: '1px solid var(--border)', background: 'transparent',
+                      color: 'var(--ink)', cursor: 'pointer' }}>
+                    {m === 'contanti' ? '💵' : m === 'carta' ? '💳' : m === 'bonifico' ? '🏦' : '💶'} {m.charAt(0).toUpperCase() + m.slice(1)}
+                  </button>
+                ))}
+                <button type="button" onClick={() => setSaldoRapidoOpen(false)}
+                  style={{ fontSize: 10, color: 'var(--muted)', background: 'none', border: 'none', cursor: 'pointer', marginTop: 2 }}>
+                  Annulla
+                </button>
+              </div>
+            )}
+          </div>
+        )}
         {p.stato === 'in_corso' && (
           <button type="button" onClick={() => onRiconsegna && onRiconsegna(p)}
             style={{ fontSize: 11, padding: '4px 10px', borderRadius: 4, border: 'none',
@@ -1615,6 +1716,20 @@ function PrenoCard({ p, onEdit, onConvert, onDelete, onFoto, onContratto, onFirm
           style={{ fontSize: 11, padding: '4px 10px', borderRadius: 4, border: '1px solid var(--border)', background: 'transparent', color: '#6a3d8f', cursor: 'pointer' }}>
           🖨️ Contratto
         </button>
+        {p.stato === 'confermata' && onWaConferma && (
+          <button type="button" onClick={() => onWaConferma(p)}
+            style={{ fontSize: 11, padding: '4px 10px', borderRadius: 4, border: '1px solid #25d366',
+              background: 'transparent', color: '#25d366', cursor: 'pointer', fontWeight: 600 }}>
+            📲 WA Conferma
+          </button>
+        )}
+        {(p.stato === 'completata' || p.stato === 'annullata') && onRicrea && (
+          <button type="button" onClick={() => onRicrea(p)}
+            style={{ fontSize: 11, padding: '4px 10px', borderRadius: 4, border: '1px solid #1f5d83',
+              background: 'transparent', color: '#1f5d83', cursor: 'pointer', fontWeight: 600 }}>
+            🔁 Ricrea
+          </button>
+        )}
         <button type="button" onClick={() => onDelete(p.id)}
           style={{ fontSize: 11, padding: '4px 10px', borderRadius: 4, border: '1px solid #f0d0d0', background: 'transparent', color: '#c85050', cursor: 'pointer' }}>
           Elimina
@@ -1932,6 +2047,18 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
         </div>
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {/* Avviso blacklist */}
+          {(() => {
+            const matchBl = (customers || []).find(c => c.blacklist &&
+              c.cognome?.toLowerCase() === f.clienteCognome?.toLowerCase() &&
+              c.nome?.toLowerCase()    === f.clienteNome?.toLowerCase()    &&
+              f.clienteCognome.length > 1);
+            return matchBl ? (
+              <div style={{ background: 'var(--accent-soft)', border: '1.5px solid var(--accent)', borderRadius: 6, padding: '10px 14px', fontSize: 12, color: 'var(--accent-deep)', fontWeight: 600 }}>
+                ⛔ Attenzione: {matchBl.cognome} {matchBl.nome} è in <strong>blacklist</strong>{matchBl.blacklistNote ? ` — ${matchBl.blacklistNote}` : ''}. Verifica prima di procedere.
+              </div>
+            ) : null;
+          })()}
           {/* Cliente */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
             <div>
@@ -2405,6 +2532,88 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rent
     pushToast && pushToast({ tone: 'info', title: 'Wizard aperto', message: 'Dati prenotazione trasferiti nella pratica' });
   }
 
+  // ── Saldo rapido (one-click, senza modal) ───────────────────────
+  function handleSaldoRapido(preno, importo, metodo) {
+    const record = {
+      id: 'cassa_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+      createdAt: new Date().toISOString(),
+      data: todayISO(),
+      clienteNome: [preno.clienteCognome, preno.clienteNome].filter(Boolean).join(' ') || '',
+      prenotazioneId: preno.id,
+      vehicleLabel: preno.vehicleLabel || '',
+      importo,
+      metodo,
+      tipo: 'saldo',
+      nota: `Saldo rapido · ${formatDate(preno.dal)}→${formatDate(preno.al)}`,
+      operatorId: operator?.id || '',
+      operatorName: operator?.nome || '',
+    };
+    setCassa && setCassa(prev => [record, ...(prev || [])]);
+    setPrenotazioni(ps => ps.map(p => p.id === preno.id ? {
+      ...p, saldoRegistrato: true, saldato: importo,
+      stato: p.stato === 'in_corso' ? 'completata' : p.stato,
+      updatedAt: new Date().toISOString(),
+    } : p));
+    pushToast && pushToast({ tone: 'success', title: '💶 Saldo registrato', message: `€${importo} · ${metodo}` });
+  }
+
+  // ── Ricrea prenotazione ──────────────────────────────────────────
+  function handleRicrea(p) {
+    const t = todayISO();
+    const durataGiorni = p.dal && p.al
+      ? Math.max(1, Math.round((new Date(p.al) - new Date(p.dal)) / 86400000))
+      : 1;
+    const newAl = (() => {
+      const d = new Date(t);
+      d.setDate(d.getDate() + durataGiorni);
+      return d.toISOString().slice(0, 10);
+    })();
+    const prefill = {
+      id: '__new__',
+      clienteNome:     p.clienteNome     || '',
+      clienteCognome:  p.clienteCognome  || '',
+      clienteTel:      p.clienteTel      || '',
+      clienteId:       p.clienteId       || null,
+      vehicleId:       p.vehicleId       || null,
+      vehicleLabel:    p.vehicleLabel    || '',
+      vehicleType:     p.vehicleType     || p.tipo || '',
+      fonte:           p.fonte           || '',
+      dal:             t,
+      al:              newAl,
+    };
+    setForm(prefill);
+    pushToast && pushToast({ tone: 'info', title: '🔁 Ricrea prenotazione', message: `${p.clienteCognome || ''} ${p.clienteNome || ''} · date aggiornate a oggi` });
+  }
+
+  // ── WA Conferma ──────────────────────────────────────────────────
+  function buildWaConferma(p) {
+    const nome   = [p.clienteCognome, p.clienteNome].filter(Boolean).join(' ') || 'Cliente';
+    const mezzo  = p.vehicleLabel || p.vehicleType || 'mezzo';
+    const dal    = formatDate(p.dal);
+    const al     = formatDate(p.al);
+    const giorni = p.dal && p.al
+      ? Math.max(1, Math.round((new Date(p.al) - new Date(p.dal)) / 86400000))
+      : '?';
+    const totale  = p.prezzo  != null ? `€${p.prezzo}` : 'da definire';
+    const acconto = p.acconto != null && p.acconto > 0 ? `€${p.acconto}` : null;
+    const sp      = statoPagamento(p);
+    const residuo = sp.residuo != null ? `€${sp.residuo}` : null;
+
+    const testo =
+      `✅ Prenotazione confermata — Edonoleggio Lampedusa\n\n` +
+      `👤 ${nome}\n` +
+      `🛵 ${mezzo}\n` +
+      `📅 Dal *${dal}* al *${al}* (${giorni} giorni)\n` +
+      `💶 Totale: *${totale}*` +
+      (acconto ? ` · Acconto: ${acconto}` : '') +
+      (residuo && !sp.completato ? ` · Saldo alla consegna: *${residuo}*` : '') +
+      (p.codice ? `\n🔖 Codice: *${p.codice}*` : '') +
+      `\n\nTi aspettiamo! 🌊 Lampedusa`;
+    const phone = (p.clienteTel || '').replace(/\D/g, '');
+    const base  = phone ? `https://wa.me/${phone.startsWith('39') ? phone : '39' + phone}` : 'https://wa.me/';
+    return `${base}?text=${encodeURIComponent(testo)}`;
+  }
+
   // Filtri e ordinamento
   const today = todayISO();
   const filtered = (prenotazioni || [])
@@ -2575,6 +2784,9 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rent
               onProroga={(rec) => setProrogaPreno(rec)}
               onSostituzione={(rec) => setSostituzionePreno(rec)}
               onConsegna={(rec) => setConsegnaPreno(rec)}
+              onRicrea={handleRicrea}
+              onSaldoRapido={handleSaldoRapido}
+              onWaConferma={(rec) => { window.open(buildWaConferma(rec), '_blank', 'noopener'); }}
             />
             </div>
           ))}
@@ -3603,10 +3815,12 @@ function calcPreventivo(cat, dal, al) {
     righe.push({ desc: `${settimane} settimana${settimane > 1 ? 'e' : ''} × €${rates.weekly}`, sub: totale });
     if (giorni < 7) righe.push({ desc: '⚠ Agosto: minimo 7 giorni', sub: null, warn: true });
   } else {
-    const soloGiornaliero = giorni * rates.daily;
+    // Tariffa giornaliera effettiva = ceil(settimanale/7 + 5) — rincaro fuori agosto
+    const effectiveDaily = Math.ceil(rates.weekly / 7 + 5);
+    const soloGiornaliero = giorni * effectiveDaily;
     const settimane  = Math.floor(giorni / 7);
     const rimanenti  = giorni % 7;
-    const conSettim  = settimane * rates.weekly + rimanenti * rates.daily;
+    const conSettim  = settimane * rates.weekly + rimanenti * effectiveDaily;
     const arrotondato = Math.ceil(giorni / 7) * rates.weekly;
 
     totale = Math.min(soloGiornaliero, conSettim, arrotondato);
@@ -3617,28 +3831,36 @@ function calcPreventivo(cat, dal, al) {
       risparmio = soloGiornaliero - arrotondato;
     } else if (totale === conSettim && settimane > 0) {
       righe.push({ desc: `${settimane} settimana${settimane > 1 ? 'e' : ''} × €${rates.weekly}`, sub: settimane * rates.weekly });
-      if (rimanenti > 0) righe.push({ desc: `${rimanenti} giorno${rimanenti > 1 ? 'i' : ''} × €${rates.daily}`, sub: rimanenti * rates.daily });
+      if (rimanenti > 0) righe.push({ desc: `${rimanenti} giorno${rimanenti > 1 ? 'i' : ''} × €${effectiveDaily} (+€5/g rincaro)`, sub: rimanenti * effectiveDaily });
       risparmio = soloGiornaliero - conSettim;
     } else {
-      righe.push({ desc: `${giorni} giorno${giorni > 1 ? 'i' : ''} × €${rates.daily}`, sub: soloGiornaliero });
+      righe.push({ desc: `${giorni} giorno${giorni > 1 ? 'i' : ''} × €${effectiveDaily} (+€5/g rincaro)`, sub: soloGiornaliero });
     }
   }
 
-  return { totale, righe, risparmio, giorni, season, agosto, rates };
+  return { totale, righe, risparmio, giorni, season, agosto, rates, effectiveDaily: rates.agosto ? null : Math.ceil(rates.weekly / 7 + 5) };
 }
 
 // ── QuoteCard — singola categoria con prezzo calcolato ───────────────
 function QuoteCard({ cat, dal, al, onPrenota }) {
   const [open, setOpen] = useState(false);
   const [lang, setLang] = useState('it');
+  // Codice univoco generato una volta per questo preventivo — segue fino alla prenotazione
+  const [bookingCode] = useState(() => generateBookingCode());
+  // Modal dati cliente prima di generare il PDF
+  const [showClienteModal, setShowClienteModal] = useState(false);
+  const [clientePdf, setClientePdf] = useState({ nome: '', tel: '', email: '', note: '' });
+
   const q = calcPreventivo(cat, dal, al);
   if (!q) return null;
 
   const seas = EDO_SEASONS[q.season];
+  const displayDaily = q.effectiveDaily || q.rates.daily;
 
   function buildWhatsApp() {
     const i18n = PREVENTIVO_I18N[lang] || PREVENTIVO_I18N.it;
-    const testo = i18n.waText(cat.nome, formatDate(dal), formatDate(al), q.giorni, seas.name, q.totale, q.risparmio||0);
+    const testo = i18n.waText(cat.nome, formatDate(dal), formatDate(al), q.giorni, seas.name, q.totale, q.risparmio||0)
+      + `\n\nCodice preventivo: *${bookingCode}*`;
     return `https://wa.me/?text=${encodeURIComponent(testo)}`;
   }
 
@@ -3660,7 +3882,12 @@ function QuoteCard({ cat, dal, al, onPrenota }) {
               color: seas.color, background: seas.bg, marginRight: 6,
             }}>{seas.label}</span>
             {q.agosto && <span style={{ color: '#c14a2b', fontWeight: 600 }}>Regola agosto · </span>}
-            €{q.rates.daily}/g · €{q.rates.weekly}/sett
+            {!q.agosto && q.effectiveDaily && q.effectiveDaily !== q.rates.daily && (
+              <span style={{ color: '#b87333', fontWeight: 600 }}>€{q.effectiveDaily}/g </span>
+            )}
+            {!q.agosto && (!q.effectiveDaily || q.effectiveDaily === q.rates.daily) && `€${q.rates.daily}/g `}
+            · €{q.rates.weekly}/sett
+            {!q.agosto && <span style={{ color: 'var(--muted)', marginLeft: 4, fontSize: 9 }}>(+€5/g rincaro)</span>}
           </div>
         </div>
 
@@ -3719,6 +3946,13 @@ function QuoteCard({ cat, dal, al, onPrenota }) {
               {PREVENTIVO_LANGS.find(l => l.id === lang)?.label}
             </span>
           </div>
+          {/* Codice prenotazione */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, padding: '7px 10px', borderRadius: 6, background: 'var(--bg)', border: '1px dashed var(--border)' }}>
+            <span style={{ fontSize: 10, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em' }}>Codice</span>
+            <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 14, letterSpacing: '.12em', color: 'var(--ink)' }}>{bookingCode}</span>
+            <span style={{ fontSize: 10, color: 'var(--muted)', marginLeft: 'auto' }}>segue nella prenotazione</span>
+          </div>
+
           <div style={{ display: 'flex', gap: 8 }}>
             <a
               href={buildWhatsApp()}
@@ -3734,25 +3968,19 @@ function QuoteCard({ cat, dal, al, onPrenota }) {
             </a>
             <button
               type="button"
-              onClick={() => exportPreventivoPDF({
-                catName: cat.nome, dal, al,
-                stagione: q.stagione, isWeekly: q.isWeekly,
-                total: parseFloat(q.totale) || 0,
-                totalDays: q.giorni,
-                breakdown: (q.dettaglio || []).map(d => ({ label: d.label || '', gg: d.gg || 0, price: d.price || 0, subtotal: (d.gg||0)*(d.price||0) })),
-              }, null, lang)}
+              onClick={() => setShowClienteModal(true)}
               style={{
                 padding: '7px 12px', borderRadius: 5, border: 'none',
                 fontSize: 12, fontWeight: 600, cursor: 'pointer',
                 background: '#1a1815', color: 'white', display: 'flex', alignItems: 'center', gap: 4,
               }}
-              title="Scarica / stampa PDF preventivo"
+              title="Inserisci dati cliente e genera PDF preventivo"
             >
               <Printer className="w-3 h-3" /> PDF
             </button>
             <button
               type="button"
-              onClick={() => onPrenota({ cat, dal, al, totale: q.totale, giorni: q.giorni })}
+              onClick={() => onPrenota({ cat, dal, al, totale: q.totale, giorni: q.giorni, codice: bookingCode })}
               style={{
                 flex: 1, padding: '7px 0', borderRadius: 5, border: 'none',
                 fontSize: 12, fontWeight: 600, cursor: 'pointer',
@@ -3761,6 +3989,57 @@ function QuoteCard({ cat, dal, al, onPrenota }) {
             >
               + Prenota
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal dati cliente per PDF ──────────────────────────────── */}
+      {showClienteModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          onClick={() => setShowClienteModal(false)}>
+          <div style={{ background: 'var(--bg)', borderRadius: 12, padding: '24px 28px', width: 380, boxShadow: '0 24px 60px rgba(0,0,0,.3)' }}
+            onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <div style={{ fontFamily: 'var(--font-serif)', fontWeight: 600, fontSize: 16 }}>Dati cliente per il PDF</div>
+              <button type="button" onClick={() => setShowClienteModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', fontSize: 20 }}>×</button>
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 14 }}>
+              Opzionale — verrà stampato nel preventivo. Codice: <strong style={{ fontFamily: 'monospace', letterSpacing: '.1em' }}>{bookingCode}</strong>
+            </div>
+            {[
+              { key: 'nome',  label: 'Nome e cognome',  placeholder: 'Es. Mario Rossi' },
+              { key: 'tel',   label: 'Telefono',        placeholder: '+39 320 …' },
+              { key: 'email', label: 'Email',           placeholder: 'cliente@email.com' },
+              { key: 'note',  label: 'Note',            placeholder: 'Volo, ora arrivo…' },
+            ].map(f => (
+              <div key={f.key} style={{ marginBottom: 10 }}>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--ink-2)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 4 }}>{f.label}</label>
+                <input value={clientePdf[f.key]} onChange={e => setClientePdf(c => ({ ...c, [f.key]: e.target.value }))}
+                  placeholder={f.placeholder}
+                  style={{ width: '100%', padding: '7px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 13, background: 'var(--bg)', color: 'var(--ink)' }} />
+              </div>
+            ))}
+            <div style={{ display: 'flex', gap: 8, marginTop: 18 }}>
+              <button type="button" onClick={() => setShowClienteModal(false)}
+                style={{ flex: 1, padding: '9px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', color: 'var(--ink-2)', cursor: 'pointer', fontSize: 13 }}>
+                Annulla
+              </button>
+              <button type="button" onClick={() => {
+                setShowClienteModal(false);
+                exportPreventivoPDF({
+                  catName: cat.nome, dal, al,
+                  stagione: q.season, isWeekly: totale === Math.ceil(q.giorni / 7) * q.rates.weekly,
+                  total: q.totale,
+                  totalDays: q.giorni,
+                  codice: bookingCode,
+                  cliente: clientePdf,
+                  breakdown: q.righe.map(r => ({ label: r.desc || '', gg: 0, price: 0, subtotal: r.sub || 0 })),
+                }, null, lang);
+              }}
+                style={{ flex: 1, padding: '9px', borderRadius: 6, border: 'none', background: '#1a1815', color: 'white', cursor: 'pointer', fontSize: 13, fontWeight: 700 }}>
+                🖨 Genera PDF
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -3827,6 +4106,33 @@ function PreventiviPage({ setPage, setPrenotazioniPrefill, listino: listinoProps
   const [al, setAl]   = useState('');
   const [filterTipo, setFilterTipo] = useState('tutti');
   const [view, setView] = useState('preventivo'); // 'preventivo' | 'listino'
+  const [linkCopiato, setLinkCopiato] = useState(false);
+
+  // Leggi ?preventivo=tipo|dal|al dalla URL al mount
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const val = params.get('preventivo');
+      if (val) {
+        const [tipo, d, a] = val.split('|');
+        if (d) setDal(d);
+        if (a) setAl(a);
+        if (tipo && tipo !== 'tutti') setFilterTipo(tipo);
+      }
+    } catch {}
+  }, []);
+
+  function copiaLinkPreventivo() {
+    try {
+      const base = window.location.origin + window.location.pathname;
+      const param = [filterTipo !== 'tutti' ? filterTipo : 'tutti', dal, al].join('|');
+      const url = `${base}?preventivo=${encodeURIComponent(param)}`;
+      navigator.clipboard.writeText(url).then(() => {
+        setLinkCopiato(true);
+        setTimeout(() => setLinkCopiato(false), 2200);
+      });
+    } catch {}
+  }
 
   const giorni = dal && al
     ? Math.max(0, Math.round((new Date(al + 'T12:00:00') - new Date(dal + 'T12:00:00')) / 86400000))
@@ -3875,7 +4181,20 @@ function PreventiviPage({ setPage, setPrenotazioniPrefill, listino: listinoProps
             Seleziona le date e vedi subito il prezzo per ogni categoria.
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 6 }}>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          {dal && al && (
+            <button type="button" onClick={copiaLinkPreventivo}
+              title="Copia link condivisibile con queste date e categoria"
+              style={{
+                padding: '7px 12px', borderRadius: 6, fontSize: 12, cursor: 'pointer',
+                border: '1px solid var(--border)',
+                background: linkCopiato ? '#e8f5e9' : 'transparent',
+                color: linkCopiato ? '#2e6e3e' : 'var(--ink-2)',
+                fontWeight: 500, display: 'flex', alignItems: 'center', gap: 5,
+              }}>
+              {linkCopiato ? '✓ Link copiato!' : '🔗 Copia link'}
+            </button>
+          )}
           {['preventivo', 'listino'].map(v => (
             <button
               key={v}
@@ -4263,8 +4582,157 @@ function useReportData({ prenotazioni, contracts, cassa, customers, fleet, opera
     const statiPreno = {};
     allP.forEach(p => { statiPreno[p.stato||'attesa'] = (statiPreno[p.stato||'attesa']||0)+1; });
 
+    // ── KPI derivati ─────────────────────────────────────────────
+    const prenoConPrezzo = allP.filter(p => p.prezzo > 0);
+    const avgTicket = prenoConPrezzo.length > 0
+      ? Math.round(prenoConPrezzo.reduce((s,p) => s + p.prezzo, 0) / prenoConPrezzo.length) : 0;
+    const prenoConDate = allP.filter(p => p.dal && p.al);
+    const avgDurata = prenoConDate.length > 0
+      ? Math.round(prenoConDate.reduce((s,p) =>
+          s + Math.max(1, Math.round((new Date(p.al) - new Date(p.dal)) / 86400000)), 0
+        ) / prenoConDate.length) : 0;
+    const clientiUniciSet = new Set(allP.map(p =>
+      p.clienteId || `${(p.clienteCognome||'').toLowerCase()}:${(p.clienteNome||'').toLowerCase()}`
+    ).filter(Boolean));
+    const clientiUnici = clientiUniciSet.size;
+    const tassoAnnullamento = allP.length > 0
+      ? Math.round(((allP.filter(p => p.stato === 'annullata' || p.stato === 'cancellata').length) / allP.length) * 100) : 0;
+
+    // ── Metodi pagamento (dalla cassa) ───────────────────────────
+    const metodiMap = {};
+    allK.filter(k => k.tipo !== 'rimborso').forEach(k => {
+      const m = k.metodo || 'altro';
+      if (!metodiMap[m]) metodiMap[m] = { metodo: m, importo: 0, count: 0 };
+      metodiMap[m].importo += (k.importo || 0);
+      metodiMap[m].count   += 1;
+    });
+    const metodi = Object.values(metodiMap).sort((a,b) => b.importo - a.importo);
+
+    // ── Split acconto / saldo / deposito ─────────────────────────
+    const tipiCassa = { acconto: 0, saldo: 0, deposito: 0, rimborso: 0, altro: 0 };
+    allK.forEach(k => {
+      const t = tipiCassa.hasOwnProperty(k.tipo) ? k.tipo : 'altro';
+      tipiCassa[t] += (k.importo || 0);
+    });
+
+    // ── Fonti prenotazione ───────────────────────────────────────
+    const fontiMap = {};
+    allP.forEach(p => {
+      const f = p.fonte || 'diretto';
+      fontiMap[f] = (fontiMap[f] || 0) + 1;
+    });
+    const fonti = Object.entries(fontiMap).sort((a,b) => b[1]-a[1]);
+
+    // ── Distribuzione durate ─────────────────────────────────────
+    const durBuckets = { '1 giorno': 0, '2–3 gg': 0, '4–7 gg': 0, '1–2 sett.': 0, '> 2 sett.': 0 };
+    allP.filter(p => p.dal && p.al).forEach(p => {
+      const d = Math.max(1, Math.round((new Date(p.al) - new Date(p.dal)) / 86400000));
+      if (d === 1)      durBuckets['1 giorno']   += 1;
+      else if (d <= 3)  durBuckets['2–3 gg']     += 1;
+      else if (d <= 7)  durBuckets['4–7 gg']     += 1;
+      else if (d <= 14) durBuckets['1–2 sett.']  += 1;
+      else              durBuckets['> 2 sett.']   += 1;
+    });
+
+    // ── Funnel stati ─────────────────────────────────────────────
+    const funnel = [
+      { label: 'Bozze',       n: allP.filter(p => p.stato === 'bozza').length,       color: '#888' },
+      { label: 'Confermate',  n: allP.filter(p => p.stato === 'confermata').length,  color: '#2e6e3e' },
+      { label: 'In corso',    n: allP.filter(p => p.stato === 'in_corso').length,    color: '#1f5d83' },
+      { label: 'Completate',  n: allP.filter(p => p.stato === 'completata').length,  color: '#4a6a30' },
+      { label: 'Annullate',   n: allP.filter(p => p.stato === 'annullata' || p.stato === 'cancellata').length, color: '#c85050' },
+    ];
+
+    // ── Per veicolo (top 15 per revenue stimata) ─────────────────
+    const veicoloMap = {};
+    allP.filter(p => p.vehicleId || p.vehicleLabel).forEach(p => {
+      const key = p.vehicleId || p.vehicleLabel || '—';
+      if (!veicoloMap[key]) veicoloMap[key] = {
+        id: key,
+        label: p.vehicleLabel || p.vehicleId || '—',
+        tipo: p.vehicleType || p.tipo || '—',
+        revenue: 0, giorni: 0, noleggi: 0,
+      };
+      veicoloMap[key].revenue += (p.prezzo || 0);
+      veicoloMap[key].noleggi += 1;
+      veicoloMap[key].giorni  += p.dal && p.al
+        ? Math.max(1, Math.round((new Date(p.al) - new Date(p.dal)) / 86400000)) : 0;
+    });
+    const perVeicolo = Object.values(veicoloMap)
+      .sort((a,b) => b.revenue - a.revenue).slice(0, 15);
+    const maxVRevenue = perVeicolo[0]?.revenue || 1;
+
+    // ── Retention clienti (tutti gli anni) ───────────────────────
+    const clienteCountAll = {};
+    (prenotazioni || []).filter(p => p.stato !== 'annullata' && p.stato !== 'cancellata').forEach(p => {
+      const key = p.clienteId || `${(p.clienteCognome||'').toLowerCase()}:${(p.clienteNome||'').toLowerCase()}`;
+      if (key && key !== ':') clienteCountAll[key] = (clienteCountAll[key] || 0) + 1;
+    });
+    const clientiTotaliUnici = Object.keys(clienteCountAll).length;
+    const clientiRitornati   = Object.values(clienteCountAll).filter(n => n > 1).length;
+    const tassoRetention     = clientiTotaliUnici > 0 ? Math.round((clientiRitornati / clientiTotaliUnici) * 100) : 0;
+
+    // ── Previsione revenue futura ─────────────────────────────────
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const prenoFuture = (prenotazioni || []).filter(p =>
+      p.dal > todayStr && (p.stato === 'confermata' || p.stato === 'bozza')
+    );
+    const revenueFutura     = prenoFuture.filter(p => p.stato === 'confermata').reduce((s,p) => s+(p.prezzo||0), 0);
+    const revenuePotenziale = prenoFuture.filter(p => p.stato === 'bozza').reduce((s,p) => s+(p.prezzo||0), 0);
+    const previsioneMap = {};
+    prenoFuture.forEach(p => {
+      const ym = p.dal.slice(0, 7);
+      if (!previsioneMap[ym]) previsioneMap[ym] = {
+        ym, label: new Date(`${ym}-15`).toLocaleDateString('it-IT', { month:'short', year:'2-digit' }),
+        confermata: 0, bozza: 0, n: 0,
+      };
+      previsioneMap[ym].n += 1;
+      if (p.stato === 'confermata') previsioneMap[ym].confermata += (p.prezzo||0);
+      if (p.stato === 'bozza')      previsioneMap[ym].bozza      += (p.prezzo||0);
+    });
+    const previsioneList = Object.values(previsioneMap).sort((a,b) => a.ym.localeCompare(b.ym)).slice(0, 9);
+    const maxPrev = Math.max(...previsioneList.map(m => m.confermata + m.bozza), 1);
+
+    // ── Distribuzione per giorno della settimana ─────────────────
+    const DOW_LABEL = ['Dom','Lun','Mar','Mer','Gio','Ven','Sab'];
+    const dowMap = [0,0,0,0,0,0,0];
+    allP.filter(p => p.dal).forEach(p => {
+      const dow = new Date(p.dal + 'T12:00:00').getDay();
+      dowMap[dow] += 1;
+    });
+    const giorniSettimana = DOW_LABEL.map((label, i) => ({ label, n: dowMap[i] }));
+    const maxDow = Math.max(...dowMap, 1);
+
+    // ── Insight automatici ───────────────────────────────────────
+    const insights = [];
+    if (totPreno > 0) {
+      const bestMese = [...mesi].sort((a,b) => b.revCassa - a.revCassa)[0];
+      if (bestMese?.revCassa > 0)
+        insights.push({ icon:'🏆', text:`${bestMese.label} è il mese con più incassi: €${bestMese.revCassa.toLocaleString('it-IT')}` });
+      if (tassoRetention > 0)
+        insights.push({ icon:'🔁', text:`${tassoRetention}% dei clienti è tornato più di una volta` });
+      if (avgTicket > 0)
+        insights.push({ icon:'💶', text:`Ticket medio €${avgTicket} · durata media ${avgDurata} giorni a noleggio` });
+      if (fonti.length > 0) {
+        const tf = fonti[0];
+        const FNAME = { walk_in:'walk-in', sito:'sito web', whatsapp:'WhatsApp', telefono:'telefono', diretto:'canale diretto' };
+        insights.push({ icon:'📌', text:`${Math.round((tf[1]/totPreno)*100)}% delle prenotazioni arriva da ${FNAME[tf[0]]||tf[0]}` });
+      }
+      if (tassoAnnullamento > 15)
+        insights.push({ icon:'⚠️', text:`Tasso annullamento elevato: ${tassoAnnullamento}% — verifica le cause` });
+      if (perVeicolo.length > 0 && perVeicolo[0].revenue > 0)
+        insights.push({ icon:'🚗', text:`Mezzo più redditizio: ${perVeicolo[0].label} — €${perVeicolo[0].revenue.toLocaleString('it-IT')}` });
+      if (revenueFutura > 0)
+        insights.push({ icon:'🔮', text:`€${revenueFutura.toLocaleString('it-IT')} di revenue futura già confermata` });
+    }
+
     return { totPreno, totContratti, incassoPreno, incassoCassa, rimborsiCassa, nettoCassa,
-             mesi, maxPreno, maxRev, occupazione, topCats, topClienti, topOp, statiPreno, allP, allK };
+             avgTicket, avgDurata, clientiUnici, tassoAnnullamento,
+             metodi, tipiCassa, fonti, durBuckets, funnel, perVeicolo, maxVRevenue,
+             mesi, maxPreno, maxRev, occupazione, topCats, topClienti, topOp, statiPreno, allP, allK,
+             clientiRitornati, clientiTotaliUnici, tassoRetention,
+             revenueFutura, revenuePotenziale, prenoFuture, previsioneList, maxPrev,
+             giorniSettimana, maxDow, insights };
   }, [prenotazioni, contracts, cassa, customers, fleet, operators, year]);
 }
 
@@ -4380,10 +4848,36 @@ function ReportPage({ prenotazioni, contracts, cassa, customers, fleet, operator
 
   const TABS = [
     { id:'overview',    label:'Panoramica' },
+    { id:'previsione',  label:'Previsione 🔮' },
     { id:'occupazione', label:'Occupazione %' },
-    { id:'clienti',     label:'Top clienti' },
+    { id:'clienti',     label:'Clienti 👤' },
     { id:'operatori',   label:'Per operatore' },
+    { id:'stagionale',  label:'Stagionale 📅' },
+    { id:'cassa',       label:'Cassa 💵' },
+    { id:'flotta',      label:'Flotta 🚗' },
+    { id:'mix',         label:'Mix 📊' },
   ];
+
+  // Dati mensili per grafico stagionale
+  const mesiLabels = ['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic'];
+  const datiMensili = useMemo(() => {
+    return mesiLabels.map((label, mi) => {
+      const meseStr = `${year}-${String(mi+1).padStart(2,'0')}`;
+      const prenoMese = (prenotazioni||[]).filter(p => (p.dal||'').startsWith(meseStr) && p.stato !== 'annullata');
+      const revenueMese = prenoMese.reduce((s,p) => s + (p.prezzo||0), 0);
+      const cassaMese = (cassa||[]).filter(k => (k.data||'').startsWith(meseStr) && k.importo > 0).reduce((s,k) => s + k.importo, 0);
+      const fleetCount = (fleet||[]).length || 1;
+      const giorni = new Date(Number(year), mi+1, 0).getDate();
+      const giorniOccupati = prenoMese.reduce((s,p) => {
+        const dal = new Date(Math.max(new Date(p.dal), new Date(`${meseStr}-01`)));
+        const al  = new Date(Math.min(new Date(p.al),  new Date(`${meseStr}-${String(giorni).padStart(2,'0')}`)));
+        const diff = Math.max(0, Math.round((al - dal) / 86400000) + 1);
+        return s + diff;
+      }, 0);
+      const occ = Math.min(100, Math.round(giorniOccupati / (fleetCount * giorni) * 100));
+      return { label, mese: meseStr, prenotazioni: prenoMese.length, revenue: revenueMese, cassa: cassaMese, occupazione: occ };
+    });
+  }, [prenotazioni, cassa, fleet, year]);
 
   const tabBtn = (t) => (
     <button key={t.id} type="button" onClick={() => setTab(t.id)}
@@ -4426,11 +4920,14 @@ function ReportPage({ prenotazioni, contracts, cassa, customers, fleet, operator
         </div>
       </div>
 
-      {/* KPI */}
+      {/* KPI — 2 righe × 3 */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12, marginBottom:24 }}>
-        {card('Prenotazioni '+year, d.totPreno, `${d.totPreno} totali`)}
+        {card('Prenotazioni '+year, d.totPreno, `${d.totContratti} contratti CARGOS`)}
         {card('Incassato (cassa)', `€${d.incassoCassa.toLocaleString('it-IT')}`, `Rimborsi: €${d.rimborsiCassa}`, '#1f5d83')}
-        {card('Netto cassa', `€${d.nettoCassa.toLocaleString('it-IT')}`, `${d.totContratti} contratti CARGOS`, '#2e6e3e')}
+        {card('Netto cassa', `€${d.nettoCassa.toLocaleString('it-IT')}`, 'entrate − uscite', '#2e6e3e')}
+        {card('Ticket medio', d.avgTicket > 0 ? `€${d.avgTicket}` : '—', 'valore medio prenotazione', '#b87333')}
+        {card('Durata media', d.avgDurata > 0 ? `${d.avgDurata}g` : '—', 'giorni medi per noleggio', '#6a3d8f')}
+        {card('Clienti unici', d.clientiUnici, `annullamenti: ${d.tassoAnnullamento}%`, d.tassoAnnullamento > 15 ? '#c85050' : 'var(--ink)')}
       </div>
 
       {/* Tab nav */}
@@ -4441,57 +4938,78 @@ function ReportPage({ prenotazioni, contracts, cassa, customers, fleet, operator
       {/* ── PANORAMICA ────────────────────────────────────────── */}
       {tab === 'overview' && (
         <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
-          {/* Grafico prenotazioni mensili */}
-          <div style={{ background:'var(--bg)', border:'1px solid var(--border)', borderRadius:8, padding:'16px 18px' }}>
-            <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', color:'var(--ink-2)', marginBottom:16 }}>
-              Prenotazioni per mese
-            </div>
-            <div style={{ display:'flex', alignItems:'flex-end', gap:4, height:110 }}>
-              {d.mesi.map(m => (
-                <div key={m.ym} style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:3 }}>
-                  <div style={{ fontSize:9, color:'var(--muted)', fontWeight:600 }}>{m.preno||''}</div>
-                  <div style={{
-                    width:'100%', borderRadius:'3px 3px 0 0',
-                    height:`${Math.max(4, (m.preno/d.maxPreno)*90)}px`,
-                    background: m.ym===thisMonth ? '#1f5d83' : 'var(--ink)',
-                    opacity: m.ym===thisMonth ? 1 : 0.2+(m.preno/d.maxPreno)*0.6,
-                    transition:'height .3s',
-                  }} />
-                  <div style={{ fontSize:9, color:'var(--muted)' }}>{m.label}</div>
-                </div>
-              ))}
-            </div>
-          </div>
 
-          {/* Revenue mensile */}
-          <div style={{ background:'var(--bg)', border:'1px solid var(--border)', borderRadius:8, padding:'16px 18px' }}>
-            <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', color:'var(--ink-2)', marginBottom:16 }}>
-              Revenue per mese (€)
+          {/* ── Insight strip ─────────────────────────────────── */}
+          {d.insights.length > 0 && (
+            <div style={{ background:'var(--surface-2)', border:'1px solid var(--border)', borderRadius:8, padding:'14px 18px' }}>
+              <div style={{ fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', color:'var(--muted)', marginBottom:10 }}>
+                💡 Insight · {year}
+              </div>
+              <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                {d.insights.map((ins, i) => (
+                  <div key={i} style={{ display:'flex', alignItems:'flex-start', gap:8, fontSize:12, color:'var(--ink)' }}>
+                    <span style={{ fontSize:14, lineHeight:1.4 }}>{ins.icon}</span>
+                    <span style={{ lineHeight:1.5 }}>{ins.text}</span>
+                  </div>
+                ))}
+              </div>
             </div>
-            <div style={{ display:'flex', alignItems:'flex-end', gap:4, height:110 }}>
+          )}
+
+          {/* ── Grafico combinato: prenotazioni + revenue ─────── */}
+          <div style={{ background:'var(--bg)', border:'1px solid var(--border)', borderRadius:8, padding:'16px 18px' }}>
+            <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', color:'var(--ink-2)', marginBottom:4 }}>
+              Prenotazioni e revenue mensile
+            </div>
+            <div style={{ fontSize:11, color:'var(--muted)', marginBottom:14 }}>
+              Barre scure = prenotazioni · barre verdi = incassato · barre sottili = stimato (preventivi)
+            </div>
+            <div style={{ display:'flex', alignItems:'flex-end', gap:3, height:120 }}>
+              {d.mesi.map(m => {
+                const hPreno  = Math.max(4, (m.preno / d.maxPreno) * 100);
+                const hCassa  = d.maxRev > 0 ? Math.max(m.revCassa > 0 ? 4 : 0,  (m.revCassa  / d.maxRev) * 100) : 0;
+                const hPreno2 = d.maxRev > 0 ? Math.max(m.revPreno > 0 ? 4 : 0, (m.revPreno  / d.maxRev) * 100) : 0;
+                const isCurrent = m.ym === thisMonth;
+                return (
+                  <div key={m.ym} title={`${m.label}: ${m.preno} preno · €${m.revCassa} cassa · €${m.revPreno} stima`}
+                    style={{ flex:1, display:'flex', alignItems:'flex-end', gap:1, position:'relative', cursor:'default' }}>
+                    {/* colonna prenotazioni */}
+                    <div style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:2 }}>
+                      <div style={{ width:'100%', borderRadius:'2px 2px 0 0', height:`${hPreno}px`,
+                        background: isCurrent ? '#1f5d83' : 'var(--ink)',
+                        opacity: isCurrent ? 1 : 0.25+(m.preno/d.maxPreno)*0.6 }} />
+                    </div>
+                    {/* colonna revenue cassa */}
+                    <div style={{ flex:1.4, display:'flex', flexDirection:'column', alignItems:'center', gap:2 }}>
+                      <div style={{ fontSize:8, color:'var(--muted)', fontWeight:600, lineHeight:1 }}>
+                        {m.revCassa>0?`${(m.revCassa/1000).toFixed(1)}k`:''}
+                      </div>
+                      <div style={{ width:'100%', borderRadius:'2px 2px 0 0', height:`${hCassa}px`,
+                        background:'#2e6e3e', opacity: m.revCassa>0 ? 0.65+(m.revCassa/d.maxRev)*0.35 : 0.1 }} />
+                    </div>
+                    {/* colonna revenue preventivi (sottile) */}
+                    {hPreno2 > 0 && (
+                      <div style={{ width:3, alignSelf:'flex-end', borderRadius:'2px 2px 0 0',
+                        height:`${hPreno2}px`, background:'#b87333', opacity:0.4 }} />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            {/* Asse mesi */}
+            <div style={{ display:'flex', gap:3, marginTop:4 }}>
               {d.mesi.map(m => (
-                <div key={m.ym} style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:3 }}>
-                  <div style={{ fontSize:9, color:'var(--muted)', fontWeight:600 }}>{m.revCassa>0?`€${(m.revCassa/1000).toFixed(1)}k`:''}</div>
-                  <div title={`Cassa: €${m.revCassa} / Preventivi: €${m.revPreno}`} style={{
-                    width:'100%', borderRadius:'3px 3px 0 0',
-                    height:`${Math.max(4, (Math.max(m.revCassa,m.revPreno)/d.maxRev)*90)}px`,
-                    background: m.revCassa>0 ? '#2e6e3e' : 'var(--ink)',
-                    opacity: m.revCassa>0 ? 0.7+(m.revCassa/d.maxRev)*0.3 : 0.15,
-                    transition:'height .3s',
-                  }} />
-                  <div style={{ fontSize:9, color:'var(--muted)' }}>{m.label}</div>
-                </div>
+                <div key={m.ym} style={{ flex:1, textAlign:'center', fontSize:9, color: m.ym===thisMonth?'#1f5d83':'var(--muted)',
+                  fontWeight: m.ym===thisMonth ? 700 : 400 }}>{m.label}</div>
               ))}
             </div>
-            <div style={{ display:'flex', gap:16, marginTop:10, fontSize:10, color:'var(--muted)' }}>
-              <span style={{ display:'flex', alignItems:'center', gap:4 }}>
-                <span style={{ width:10, height:10, borderRadius:2, background:'#2e6e3e', display:'inline-block' }} />
-                Incassato (cassa)
-              </span>
-              <span style={{ display:'flex', alignItems:'center', gap:4 }}>
-                <span style={{ width:10, height:10, borderRadius:2, background:'var(--ink)', opacity:.3, display:'inline-block' }} />
-                Stimato (preventivi)
-              </span>
+            <div style={{ display:'flex', gap:14, marginTop:10, fontSize:10, color:'var(--muted)' }}>
+              {[['var(--ink)','Prenotazioni'],['#2e6e3e','Incassato (cassa)'],['#b87333','Stimato (preventivi)']].map(([c,l]) => (
+                <span key={l} style={{ display:'flex', alignItems:'center', gap:4 }}>
+                  <span style={{ width:10, height:10, borderRadius:2, background:c, display:'inline-block', opacity: c==='var(--ink)'?.4:1 }} />
+                  {l}
+                </span>
+              ))}
             </div>
           </div>
 
@@ -4540,6 +5058,187 @@ function ReportPage({ prenotazioni, contracts, cassa, customers, fleet, operator
                 })}
               </div>
             </div>
+          </div>
+
+          {/* Retention + upcoming */}
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:20 }}>
+            <div style={{ background:'var(--bg)', border:'1px solid var(--border)', borderRadius:8, padding:'16px 18px' }}>
+              <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', color:'var(--ink-2)', marginBottom:12 }}>
+                Retention clienti
+              </div>
+              <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+                {[
+                  { label:'Clienti totali unici', val: d.clientiTotaliUnici, color:'var(--ink)' },
+                  { label:'Clienti ritornati',    val: d.clientiRitornati,   color:'#2e6e3e' },
+                  { label:'Tasso retention',      val: `${d.tassoRetention}%`, color: d.tassoRetention>30?'#2e6e3e':d.tassoRetention>15?'#b87333':'#c85050' },
+                ].map(r => (
+                  <div key={r.label} style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                    <span style={{ fontSize:12, color:'var(--ink-2)' }}>{r.label}</span>
+                    <span style={{ fontSize:16, fontWeight:700, color:r.color, fontFamily:'var(--font-serif)' }}>{r.val}</span>
+                  </div>
+                ))}
+                <div style={{ marginTop:4 }}>
+                  <div style={{ height:8, background:'var(--surface-2)', borderRadius:4, overflow:'hidden' }}>
+                    <div style={{ height:'100%', width:`${d.tassoRetention}%`, borderRadius:4,
+                      background: d.tassoRetention>30?'#2e6e3e':d.tassoRetention>15?'#b87333':'#c85050' }} />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ background:'var(--bg)', border:'1px solid var(--border)', borderRadius:8, padding:'16px 18px' }}>
+              <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', color:'var(--ink-2)', marginBottom:12 }}>
+                Prossime prenotazioni
+              </div>
+              {d.prenoFuture.length === 0
+                ? <div style={{ fontSize:12, color:'var(--muted)', fontStyle:'italic', paddingTop:8 }}>Nessuna prenotazione futura confermata</div>
+                : (
+                  <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+                    {d.prenoFuture.slice(0,5).map((p, i) => {
+                      const nome = [p.clienteCognome, p.clienteNome].filter(Boolean).join(' ') || '—';
+                      const statoCl = p.stato === 'confermata' ? '#2e6e3e' : '#b87333';
+                      return (
+                        <div key={i} style={{ display:'flex', justifyContent:'space-between', alignItems:'center',
+                          padding:'5px 8px', borderRadius:5, background:'var(--surface-2)', fontSize:12 }}>
+                          <span style={{ fontWeight:500, color:'var(--ink)' }}>{nome}</span>
+                          <span style={{ color:'var(--muted)', fontSize:11 }}>{p.dal}</span>
+                          <span style={{ color:statoCl, fontWeight:600, fontSize:11 }}>
+                            {p.stato === 'confermata' ? '✓ conf.' : '○ bozza'}
+                          </span>
+                        </div>
+                      );
+                    })}
+                    {d.prenoFuture.length > 5 && (
+                      <div style={{ fontSize:11, color:'var(--muted)', textAlign:'center', paddingTop:4 }}>
+                        +{d.prenoFuture.length - 5} altre — vedi tab Previsione
+                      </div>
+                    )}
+                  </div>
+                )
+              }
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── PREVISIONE 🔮 ─────────────────────────────────────────── */}
+      {tab === 'previsione' && (
+        <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+
+          {/* KPI forward */}
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12 }}>
+            {card('Preno. future conf.',
+              d.prenoFuture.filter(p => p.stato === 'confermata').length,
+              'Con data futura, già confermate', '#2e6e3e')}
+            {card('Revenue confermata',
+              d.revenueFutura > 0 ? `€${d.revenueFutura.toLocaleString('it-IT')}` : '—',
+              'Da prenotazioni confermate', '#1f5d83')}
+            {card('Revenue potenziale',
+              d.revenuePotenziale > 0 ? `€${d.revenuePotenziale.toLocaleString('it-IT')}` : '—',
+              'Da bozze ancora aperte', '#b87333')}
+          </div>
+
+          {/* Barchart previsione per mese */}
+          {d.previsioneList.length === 0 ? (
+            <div style={{ background:'var(--bg)', border:'1px solid var(--border)', borderRadius:8, padding:'32px 20px',
+              textAlign:'center', color:'var(--muted)', fontSize:13, fontStyle:'italic' }}>
+              Nessuna prenotazione futura con prezzo. Aggiungi prenotazioni con data futura per vedere la previsione.
+            </div>
+          ) : (
+            <div style={{ background:'var(--bg)', border:'1px solid var(--border)', borderRadius:8, padding:'20px 22px' }}>
+              <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', color:'var(--ink-2)', marginBottom:6 }}>
+                Previsione revenue per mese (futuro)
+              </div>
+              <div style={{ fontSize:11, color:'var(--muted)', marginBottom:16 }}>
+                Verde = confermata · Ambra = potenziale (bozze)
+              </div>
+              <div style={{ display:'flex', alignItems:'flex-end', gap:8, height:140 }}>
+                {d.previsioneList.map(m => {
+                  const hConf = Math.max(m.confermata > 0 ? 6 : 0, (m.confermata / d.maxPrev) * 120);
+                  const hBozz = Math.max(m.bozza > 0 ? 6 : 0, (m.bozza / d.maxPrev) * 120);
+                  return (
+                    <div key={m.ym} title={`${m.label}: €${m.confermata} conf. + €${m.bozza} bozze · ${m.n} prenotazioni`}
+                      style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:2 }}>
+                      <div style={{ fontSize:9, color:'var(--muted)', fontWeight:600, marginBottom:2 }}>
+                        {(m.confermata + m.bozza) > 0 ? `€${((m.confermata+m.bozza)/1000).toFixed(1)}k` : ''}
+                      </div>
+                      <div style={{ width:'100%', display:'flex', gap:2, alignItems:'flex-end', height:120 }}>
+                        {m.confermata > 0 && (
+                          <div style={{ flex:1, borderRadius:'3px 3px 0 0', height:`${hConf}px`,
+                            background:'#2e6e3e', opacity:0.85 }} />
+                        )}
+                        {m.bozza > 0 && (
+                          <div style={{ flex:1, borderRadius:'3px 3px 0 0', height:`${hBozz}px`,
+                            background:'#b87333', opacity:0.7 }} />
+                        )}
+                      </div>
+                      <div style={{ fontSize:10, color:'var(--muted)', marginTop:4 }}>{m.label}</div>
+                      <div style={{ fontSize:9, color:'var(--ink-2)' }}>{m.n} preno.</div>
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={{ display:'flex', gap:14, marginTop:10, fontSize:10, color:'var(--muted)' }}>
+                <span style={{ display:'flex', alignItems:'center', gap:4 }}>
+                  <span style={{ width:10, height:10, borderRadius:2, background:'#2e6e3e', display:'inline-block' }} />
+                  Revenue confermata
+                </span>
+                <span style={{ display:'flex', alignItems:'center', gap:4 }}>
+                  <span style={{ width:10, height:10, borderRadius:2, background:'#b87333', display:'inline-block' }} />
+                  Revenue potenziale (bozze)
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Lista prenotazioni future */}
+          <div style={{ background:'var(--bg)', border:'1px solid var(--border)', borderRadius:8, padding:'20px 22px' }}>
+            <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', color:'var(--ink-2)', marginBottom:14 }}>
+              Prenotazioni future ({d.prenoFuture.length})
+            </div>
+            {d.prenoFuture.length === 0 ? (
+              <div style={{ fontSize:12, color:'var(--muted)', fontStyle:'italic' }}>Nessuna prenotazione futura</div>
+            ) : (
+              <div style={{ overflowX:'auto' }}>
+                <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+                  <thead>
+                    <tr style={{ background:'var(--surface-2)' }}>
+                      {['Data','Cliente','Mezzo','Prezzo','Stato'].map(h => (
+                        <th key={h} style={{ padding:'7px 12px', textAlign:'left', fontSize:10,
+                          fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em',
+                          color:'var(--ink-2)', borderBottom:'1px solid var(--border)' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {d.prenoFuture.slice(0,30).map((p, i) => {
+                      const nome = [p.clienteCognome, p.clienteNome].filter(Boolean).join(' ') || '—';
+                      const statoCol = p.stato === 'confermata' ? '#2e6e3e' : '#b87333';
+                      const statoLabel = p.stato === 'confermata' ? '✓ Confermata' : '○ Bozza';
+                      return (
+                        <tr key={i} style={{ borderTop:'1px solid var(--border)', background: i%2===0?'transparent':'var(--surface-2)' }}>
+                          <td style={{ padding:'8px 12px', fontWeight:500, color:'var(--ink)' }}>{p.dal}{p.al && p.al !== p.dal ? ` → ${p.al}` : ''}</td>
+                          <td style={{ padding:'8px 12px' }}>{nome}</td>
+                          <td style={{ padding:'8px 12px', color:'var(--muted)' }}>{p.vehicleLabel || p.vehicleType || '—'}</td>
+                          <td style={{ padding:'8px 12px', fontWeight:700, color:'#2e6e3e', fontFamily:'monospace' }}>
+                            {p.prezzo != null ? `€${p.prezzo.toLocaleString('it-IT')}` : '—'}
+                          </td>
+                          <td style={{ padding:'8px 12px' }}>
+                            <span style={{ fontSize:11, padding:'2px 8px', borderRadius:10,
+                              background:statoCol+'18', color:statoCol, fontWeight:600 }}>{statoLabel}</span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                {d.prenoFuture.length > 30 && (
+                  <div style={{ textAlign:'center', fontSize:11, color:'var(--muted)', padding:'8px 0' }}>
+                    Mostrate prime 30 di {d.prenoFuture.length} prenotazioni future
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -4593,37 +5292,89 @@ function ReportPage({ prenotazioni, contracts, cassa, customers, fleet, operator
         </div>
       )}
 
-      {/* ── TOP CLIENTI ───────────────────────────────────────── */}
+      {/* ── CLIENTI 👤 ─────────────────────────────────────────── */}
       {tab === 'clienti' && (
-        <div style={{ background:'var(--bg)', border:'1px solid var(--border)', borderRadius:8, padding:'20px 22px' }}>
-          <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', color:'var(--ink-2)', marginBottom:16 }}>
-            Top clienti per spesa · {year}
+        <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+
+          {/* Retention KPI */}
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12 }}>
+            {card('Clienti unici (anno)', d.clientiUnici, `su ${d.totPreno} prenotazioni totali`, '#1f5d83')}
+            {card('Clienti ritornati', d.clientiRitornati, 'hanno prenotato più di una volta', '#2e6e3e')}
+            {card('Tasso retention', `${d.tassoRetention}%`,
+              d.tassoRetention > 30 ? '🟢 Ottima fidelizzazione' : d.tassoRetention > 15 ? '🟡 Discreta' : '🔴 Da migliorare',
+              d.tassoRetention > 30 ? '#2e6e3e' : d.tassoRetention > 15 ? '#b87333' : '#c85050')}
           </div>
-          {d.topClienti.length === 0 ? (
-            <div style={{ fontSize:13, color:'var(--muted)', fontStyle:'italic', padding:'20px 0' }}>
-              Nessun movimento di cassa registrato per {year}. I dati appaiono quando si usano i pagamenti nel Registro Cassa.
+
+          {/* Grafico distribuzione spesa clienti */}
+          {d.topClienti.length > 0 && (
+            <div style={{ background:'var(--bg)', border:'1px solid var(--border)', borderRadius:8, padding:'20px 22px' }}>
+              <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', color:'var(--ink-2)', marginBottom:14 }}>
+                Distribuzione spesa per cliente · {year}
+              </div>
+              {(() => {
+                const maxSpesa = d.topClienti[0]?.spesa || 1;
+                return d.topClienti.map((c, i) => (
+                  <div key={c.id} style={{ marginBottom:9 }}>
+                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', fontSize:12, marginBottom:3 }}>
+                      <span style={{ fontWeight: i < 3 ? 700 : 500, color:'var(--ink)' }}>
+                        {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i+1}.`} {c.nome}
+                      </span>
+                      <span style={{ display:'flex', gap:10, color:'var(--muted)' }}>
+                        <span style={{ fontWeight:700, color:'#1f5d83', fontFamily:'monospace' }}>€{c.spesa.toLocaleString('it-IT')}</span>
+                        <span>{c.movimenti} mov.</span>
+                      </span>
+                    </div>
+                    <div style={{ height:7, background:'var(--surface-2)', borderRadius:3, overflow:'hidden' }}>
+                      <div style={{ height:'100%', width:`${(c.spesa/maxSpesa)*100}%`,
+                        background: i === 0 ? '#b87333' : i === 1 ? '#888' : i === 2 ? '#c87941' : '#1f5d83',
+                        borderRadius:3, opacity: 0.5 + (1 - i/d.topClienti.length)*0.5 }} />
+                    </div>
+                  </div>
+                ));
+              })()}
             </div>
-          ) : (
-            <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
-              <thead>
-                <tr>
-                  {['#','Cliente','Spesa (€)','Movimenti'].map(h => (
-                    <th key={h} style={{ padding:'8px 12px', textAlign: h==='Spesa (€)'||h==='Movimenti'||h==='#' ? 'center':'left', fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', color:'var(--muted)', borderBottom:'2px solid var(--border)' }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {d.topClienti.map((c,i) => (
-                  <tr key={c.id} style={{ borderBottom:'1px solid var(--border)' }}>
-                    <td style={{ padding:'10px 12px', textAlign:'center', color:'var(--muted)', fontSize:12 }}>{i+1}</td>
-                    <td style={{ padding:'10px 12px', fontWeight:500 }}>{c.nome}</td>
-                    <td style={{ padding:'10px 12px', textAlign:'center', fontWeight:700, color:'#1f5d83', fontFamily:'var(--font-mono,monospace)' }}>€{c.spesa.toLocaleString('it-IT')}</td>
-                    <td style={{ padding:'10px 12px', textAlign:'center', color:'var(--muted)' }}>{c.movimenti}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
           )}
+
+          {/* Tabella completa top clienti */}
+          <div style={{ background:'var(--bg)', border:'1px solid var(--border)', borderRadius:8, padding:'20px 22px' }}>
+            <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', color:'var(--ink-2)', marginBottom:14 }}>
+              Classifica clienti per spesa · {year}
+            </div>
+            {d.topClienti.length === 0 ? (
+              <div style={{ fontSize:13, color:'var(--muted)', fontStyle:'italic', padding:'12px 0' }}>
+                Nessun movimento di cassa per {year}. I dati appaiono quando si usano i pagamenti nel Registro Cassa.
+              </div>
+            ) : (
+              <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
+                <thead>
+                  <tr style={{ background:'var(--surface-2)' }}>
+                    {['#','Cliente','Spesa (€)','Movimenti','Ticket medio'].map(h => (
+                      <th key={h} style={{ padding:'8px 12px', textAlign: h==='Cliente'?'left':'center', fontSize:10,
+                        fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em',
+                        color:'var(--ink-2)', borderBottom:'1px solid var(--border)' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {d.topClienti.map((c, i) => (
+                    <tr key={c.id} style={{ borderTop:'1px solid var(--border)', background: i%2===0?'transparent':'var(--surface-2)' }}>
+                      <td style={{ padding:'10px 12px', textAlign:'center', color:'var(--muted)', fontSize:12 }}>
+                        {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i+1}
+                      </td>
+                      <td style={{ padding:'10px 12px', fontWeight:500 }}>{c.nome}</td>
+                      <td style={{ padding:'10px 12px', textAlign:'center', fontWeight:700, color:'#1f5d83', fontFamily:'monospace' }}>
+                        €{c.spesa.toLocaleString('it-IT')}
+                      </td>
+                      <td style={{ padding:'10px 12px', textAlign:'center', color:'var(--muted)' }}>{c.movimenti}</td>
+                      <td style={{ padding:'10px 12px', textAlign:'center', color:'var(--ink-2)' }}>
+                        {c.movimenti > 0 ? `€${Math.round(c.spesa/c.movimenti).toLocaleString('it-IT')}` : '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
         </div>
       )}
 
@@ -4664,6 +5415,498 @@ function ReportPage({ prenotazioni, contracts, cassa, customers, fleet, operator
               </div>
             </>
           )}
+        </div>
+      )}
+
+      {/* ── CASSA 💵 ──────────────────────────────────────────────── */}
+      {tab === 'cassa' && (
+        <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+
+          {/* Flusso mensile entrate / uscite */}
+          <div style={{ background:'var(--bg)', border:'1px solid var(--border)', borderRadius:8, padding:'20px 22px' }}>
+            <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', color:'var(--ink-2)', marginBottom:18 }}>
+              Flusso mensile · entrate e uscite · {year}
+            </div>
+            <div style={{ display:'flex', alignItems:'flex-end', gap:6, height:130, marginBottom:6 }}>
+              {d.mesi.map(m => {
+                const allKmese = (d.allK||[]).filter(k => (k.data||'').startsWith(m.ym));
+                const entrate  = allKmese.filter(k => k.tipo !== 'rimborso').reduce((s,k) => s+(k.importo||0), 0);
+                const uscite   = allKmese.filter(k => k.tipo === 'rimborso').reduce((s,k) => s+(k.importo||0), 0);
+                const maxE = Math.max(...d.mesi.map(mx => (d.allK||[]).filter(k=>(k.data||'').startsWith(mx.ym)&&k.tipo!=='rimborso').reduce((s,k)=>s+(k.importo||0),0)), 1);
+                const hE = Math.round((entrate / maxE) * 110);
+                const hU = Math.round((uscite  / maxE) * 110);
+                return (
+                  <div key={m.ym} style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:2 }}>
+                    <div style={{ fontSize:8, color:'var(--muted)', fontWeight:600 }}>
+                      {entrate >= 1000 ? `€${Math.round(entrate/1000)}k` : entrate > 0 ? `€${entrate}` : ''}
+                    </div>
+                    <div style={{ width:'100%', display:'flex', gap:2, alignItems:'flex-end', height:110 }}>
+                      <div style={{ flex:1, height:`${Math.max(hE,2)}px`, background:'#2e6e3e', borderRadius:'3px 3px 0 0', minHeight:2 }} title={`Entrate: €${entrate}`} />
+                      {uscite > 0 && <div style={{ flex:1, height:`${Math.max(hU,2)}px`, background:'#c85050', borderRadius:'3px 3px 0 0', opacity:.75, minHeight:2 }} title={`Uscite: €${uscite}`} />}
+                    </div>
+                    <div style={{ fontSize:8, color:'var(--muted)' }}>{m.label}</div>
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{ display:'flex', gap:16, fontSize:10, color:'var(--muted)', marginTop:4 }}>
+              <span style={{ display:'flex', alignItems:'center', gap:4 }}><span style={{ width:10,height:10,borderRadius:2,background:'#2e6e3e',display:'inline-block' }} /> Entrate</span>
+              <span style={{ display:'flex', alignItems:'center', gap:4 }}><span style={{ width:10,height:10,borderRadius:2,background:'#c85050',display:'inline-block',opacity:.75 }} /> Rimborsi / uscite</span>
+            </div>
+          </div>
+
+          {/* Split tipo movimento + metodi pagamento */}
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
+
+            {/* Split tipo movimento */}
+            <div style={{ background:'var(--bg)', border:'1px solid var(--border)', borderRadius:8, padding:'18px 20px' }}>
+              <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', color:'var(--ink-2)', marginBottom:14 }}>
+                Tipo movimento
+              </div>
+              {[
+                { key:'acconto',  label:'Acconti',   color:'#b87333' },
+                { key:'saldo',    label:'Saldi',     color:'#2e6e3e' },
+                { key:'deposito', label:'Depositi',  color:'#1f5d83' },
+                { key:'rimborso', label:'Rimborsi',  color:'#c85050' },
+                { key:'altro',    label:'Altro',     color:'var(--muted)' },
+              ].map(({ key, label, color }) => {
+                const importo = d.tipiCassa[key] || 0;
+                const totImporti = Object.values(d.tipiCassa).reduce((s,v) => s+v, 0) || 1;
+                return importo > 0 ? (
+                  <div key={key} style={{ marginBottom:10 }}>
+                    <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, marginBottom:3 }}>
+                      <span style={{ color:'var(--ink)', fontWeight:500 }}>{label}</span>
+                      <span style={{ fontWeight:700, color }}>{`€${importo.toLocaleString('it-IT')}`}</span>
+                    </div>
+                    <div style={{ height:6, background:'var(--surface-2)', borderRadius:3, overflow:'hidden' }}>
+                      <div style={{ height:'100%', width:`${(importo/totImporti)*100}%`, background:color, borderRadius:3 }} />
+                    </div>
+                  </div>
+                ) : null;
+              })}
+            </div>
+
+            {/* Metodi pagamento */}
+            <div style={{ background:'var(--bg)', border:'1px solid var(--border)', borderRadius:8, padding:'18px 20px' }}>
+              <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', color:'var(--ink-2)', marginBottom:14 }}>
+                Metodi di pagamento
+              </div>
+              {d.metodi.length === 0
+                ? <div style={{ fontSize:12, color:'var(--muted)', fontStyle:'italic' }}>Nessun dato cassa</div>
+                : d.metodi.map(m => {
+                  const maxM = d.metodi[0].importo || 1;
+                  const EMOJI = { contanti:'💵', carta:'💳', bonifico:'🏦', paypal:'🅿️', altro:'💶' };
+                  const COL   = { contanti:'#b87333', carta:'#1f5d83', bonifico:'#2e6e3e', altro:'#888' };
+                  const col   = COL[m.metodo] || COL.altro;
+                  return (
+                    <div key={m.metodo} style={{ marginBottom:10 }}>
+                      <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, marginBottom:3, alignItems:'center' }}>
+                        <span style={{ color:'var(--ink)', fontWeight:500 }}>{EMOJI[m.metodo]||'💶'} {m.metodo}</span>
+                        <span style={{ color:'var(--muted)', fontSize:11 }}>€{m.importo.toLocaleString('it-IT')} · {m.count} mov.</span>
+                      </div>
+                      <div style={{ height:6, background:'var(--surface-2)', borderRadius:3, overflow:'hidden' }}>
+                        <div style={{ height:'100%', width:`${(m.importo/maxM)*100}%`, background:col, borderRadius:3 }} />
+                      </div>
+                    </div>
+                  );
+                })
+              }
+            </div>
+          </div>
+
+          {/* Tabella movimenti ultimi 30 */}
+          <div style={{ background:'var(--bg)', border:'1px solid var(--border)', borderRadius:8, overflow:'hidden' }}>
+            <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', color:'var(--ink-2)', padding:'14px 18px', borderBottom:'1px solid var(--border)' }}>
+              Ultimi 30 movimenti · {year}
+            </div>
+            <div style={{ overflowX:'auto' }}>
+              <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+                <thead>
+                  <tr style={{ background:'var(--surface-2)' }}>
+                    {['Data','Cliente','Tipo','Metodo','Importo','Nota'].map(h => (
+                      <th key={h} style={{ padding:'7px 12px', textAlign:'left', fontSize:10, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', color:'var(--muted)' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...(d.allK||[])].sort((a,b) => (b.data||'').localeCompare(a.data||'')).slice(0,30).map((k,i) => {
+                    const TIPO_COL = { acconto:'#b87333', saldo:'#2e6e3e', deposito:'#1f5d83', rimborso:'#c85050' };
+                    const col = TIPO_COL[k.tipo] || 'var(--muted)';
+                    return (
+                      <tr key={k.id||i} style={{ borderTop:'1px solid var(--border)', background: i%2===0 ? 'transparent':'var(--surface-2)' }}>
+                        <td style={{ padding:'8px 12px', fontFamily:'monospace', fontSize:11, color:'var(--muted)' }}>{k.data}</td>
+                        <td style={{ padding:'8px 12px', fontWeight:500 }}>{k.clienteNome || '—'}</td>
+                        <td style={{ padding:'8px 12px' }}>
+                          <span style={{ fontSize:10, padding:'2px 8px', borderRadius:10, background:col+'18', color:col, fontWeight:600 }}>{k.tipo||'—'}</span>
+                        </td>
+                        <td style={{ padding:'8px 12px', color:'var(--ink-2)' }}>{k.metodo||'—'}</td>
+                        <td style={{ padding:'8px 12px', fontWeight:700, fontFamily:'monospace', color:k.tipo==='rimborso'?'#c85050':'#2e6e3e' }}>
+                          {k.tipo==='rimborso'?'−':'+'}{k.importo!=null?`€${Number(k.importo).toLocaleString('it-IT')}`:'—'}
+                        </td>
+                        <td style={{ padding:'8px 12px', color:'var(--muted)', fontSize:11, maxWidth:200, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{k.nota||''}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── FLOTTA 🚗 ─────────────────────────────────────────────── */}
+      {tab === 'flotta' && (
+        <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+          {d.perVeicolo.length === 0 ? (
+            <div style={{ background:'var(--bg)', border:'1px solid var(--border)', borderRadius:8, padding:'40px 24px', textAlign:'center', color:'var(--muted)', fontSize:13 }}>
+              Nessun dato veicolo per {year}. Le statistiche si popolano man mano che si creano prenotazioni con mezzo assegnato.
+            </div>
+          ) : (
+            <>
+              {/* Top veicoli per revenue */}
+              <div style={{ background:'var(--bg)', border:'1px solid var(--border)', borderRadius:8, padding:'20px 22px' }}>
+                <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', color:'var(--ink-2)', marginBottom:18 }}>
+                  Top veicoli per revenue stimata · {year}
+                </div>
+                {d.perVeicolo.slice(0,10).map((v,i) => {
+                  const TIPO_EMOJI = { auto:'🚗', scooter:'🛵', moto:'🛵', quad:'🏎', ebike:'⚡', bici:'🚲' };
+                  const pct = Math.round((v.revenue / d.maxVRevenue) * 100);
+                  return (
+                    <div key={v.id} style={{ marginBottom:12 }}>
+                      <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4 }}>
+                        <span style={{ fontSize:11, color:'var(--muted)', width:18, textAlign:'center' }}>{i+1}</span>
+                        <span style={{ fontSize:13 }}>{TIPO_EMOJI[v.tipo]||'🚗'}</span>
+                        <span style={{ fontWeight:600, fontSize:13, flex:1 }}>{v.label}</span>
+                        <span style={{ fontSize:11, color:'var(--muted)' }}>{v.giorni}gg · {v.noleggi} noleggi</span>
+                        <span style={{ fontWeight:700, color:'#2e6e3e', fontSize:13, minWidth:70, textAlign:'right' }}>
+                          {v.revenue > 0 ? `€${v.revenue.toLocaleString('it-IT')}` : '—'}
+                        </span>
+                      </div>
+                      <div style={{ height:5, background:'var(--surface-2)', borderRadius:3, overflow:'hidden', marginLeft:26 }}>
+                        <div style={{ height:'100%', width:`${pct}%`, background:'#1f5d83', borderRadius:3 }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Tabella completa */}
+              <div style={{ background:'var(--bg)', border:'1px solid var(--border)', borderRadius:8, overflow:'hidden' }}>
+                <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', color:'var(--ink-2)', padding:'14px 18px', borderBottom:'1px solid var(--border)' }}>
+                  Tabella veicoli · {year}
+                </div>
+                <div style={{ overflowX:'auto' }}>
+                  <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+                    <thead>
+                      <tr style={{ background:'var(--surface-2)' }}>
+                        {['#','Veicolo','Tipo','Noleggi','Giorni totali','Revenue stimata','Media/noleggio'].map(h => (
+                          <th key={h} style={{ padding:'8px 12px', textAlign: h==='#'||h==='Noleggi'||h==='Giorni totali'?'center':'left', fontSize:10, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', color:'var(--muted)' }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {d.perVeicolo.map((v,i) => (
+                        <tr key={v.id} style={{ borderTop:'1px solid var(--border)', background:i%2===0?'transparent':'var(--surface-2)' }}>
+                          <td style={{ padding:'8px 12px', textAlign:'center', color:'var(--muted)', fontSize:11 }}>{i+1}</td>
+                          <td style={{ padding:'8px 12px', fontWeight:500 }}>{v.label}</td>
+                          <td style={{ padding:'8px 12px', color:'var(--muted)' }}>{v.tipo}</td>
+                          <td style={{ padding:'8px 12px', textAlign:'center' }}>{v.noleggi}</td>
+                          <td style={{ padding:'8px 12px', textAlign:'center' }}>{v.giorni}</td>
+                          <td style={{ padding:'8px 12px', fontWeight:700, color:'#2e6e3e' }}>{v.revenue>0?`€${v.revenue.toLocaleString('it-IT')}`:'—'}</td>
+                          <td style={{ padding:'8px 12px', color:'#1f5d83' }}>{v.noleggi>0&&v.revenue>0?`€${Math.round(v.revenue/v.noleggi)}`:'—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ── MIX 📊 ────────────────────────────────────────────────── */}
+      {tab === 'mix' && (
+        <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
+
+            {/* Fonti prenotazione */}
+            <div style={{ background:'var(--bg)', border:'1px solid var(--border)', borderRadius:8, padding:'18px 20px' }}>
+              <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', color:'var(--ink-2)', marginBottom:14 }}>
+                Fonti prenotazione
+              </div>
+              {d.fonti.length === 0
+                ? <div style={{ fontSize:12, color:'var(--muted)', fontStyle:'italic' }}>Nessun dato disponibile</div>
+                : d.fonti.map(([fonte, n], i) => {
+                  const maxF = d.fonti[0][1] || 1;
+                  const FONTE_LABEL = { walk_in:'🚶 Walk-in', sito:'🌐 Sito web', whatsapp:'📲 WhatsApp', telefono:'📞 Telefono', email:'📧 Email', rentme:'🔗 RentMe', diretto:'📋 Diretto', referral:'👤 Referral' };
+                  const COLORS = ['#1f5d83','#2e6e3e','#b87333','#6a3d8f','#c85050','#4a8aac','#888'];
+                  return (
+                    <div key={fonte} style={{ marginBottom:10 }}>
+                      <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, marginBottom:3 }}>
+                        <span style={{ color:'var(--ink)', fontWeight:500 }}>{FONTE_LABEL[fonte]||('📌 '+fonte)}</span>
+                        <span style={{ color:'var(--muted)' }}>{n} ({Math.round((n/d.allP.length)*100)}%)</span>
+                      </div>
+                      <div style={{ height:7, background:'var(--surface-2)', borderRadius:3, overflow:'hidden' }}>
+                        <div style={{ height:'100%', width:`${(n/maxF)*100}%`, background:COLORS[i%COLORS.length], borderRadius:3 }} />
+                      </div>
+                    </div>
+                  );
+                })
+              }
+            </div>
+
+            {/* Distribuzione durate */}
+            <div style={{ background:'var(--bg)', border:'1px solid var(--border)', borderRadius:8, padding:'18px 20px' }}>
+              <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', color:'var(--ink-2)', marginBottom:14 }}>
+                Distribuzione durate noleggio
+              </div>
+              {(() => {
+                const entries = Object.entries(d.durBuckets).filter(([,n]) => n > 0);
+                const maxD = Math.max(...entries.map(([,n]) => n), 1);
+                const totD = entries.reduce((s,[,n]) => s+n, 0) || 1;
+                const DUR_COLORS = ['#4a6a30','#2e6e3e','#1f5d83','#6a3d8f','#b87333'];
+                return entries.length === 0
+                  ? <div style={{ fontSize:12, color:'var(--muted)', fontStyle:'italic' }}>Nessun dato</div>
+                  : entries.map(([label, n], i) => (
+                    <div key={label} style={{ marginBottom:12 }}>
+                      <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, marginBottom:4 }}>
+                        <span style={{ color:'var(--ink)', fontWeight:600 }}>{label}</span>
+                        <span style={{ color:'var(--muted)' }}>{n} noleggi · {Math.round((n/totD)*100)}%</span>
+                      </div>
+                      <div style={{ height:8, background:'var(--surface-2)', borderRadius:4, overflow:'hidden' }}>
+                        <div style={{ height:'100%', width:`${(n/maxD)*100}%`, background:DUR_COLORS[i%DUR_COLORS.length], borderRadius:4 }} />
+                      </div>
+                    </div>
+                  ));
+              })()}
+            </div>
+          </div>
+
+          {/* Funnel prenotazioni */}
+          <div style={{ background:'var(--bg)', border:'1px solid var(--border)', borderRadius:8, padding:'20px 22px' }}>
+            <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', color:'var(--ink-2)', marginBottom:18 }}>
+              Funnel stati · {year}
+            </div>
+            {d.allP.length === 0
+              ? <div style={{ fontSize:13, color:'var(--muted)', fontStyle:'italic' }}>Nessuna prenotazione per {year}</div>
+              : (
+                <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+                  {d.funnel.filter(f => f.n > 0).map(f => {
+                    const pct = Math.round((f.n / d.allP.length) * 100);
+                    return (
+                      <div key={f.label}>
+                        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:4 }}>
+                          <span style={{ fontSize:13, fontWeight:600, color:f.color }}>{f.label}</span>
+                          <div style={{ display:'flex', gap:10, alignItems:'center' }}>
+                            <span style={{ fontSize:11, color:'var(--muted)' }}>{pct}%</span>
+                            <span style={{ fontSize:14, fontWeight:700, color:f.color, width:32, textAlign:'right' }}>{f.n}</span>
+                          </div>
+                        </div>
+                        <div style={{ height:10, background:'var(--surface-2)', borderRadius:5, overflow:'hidden' }}>
+                          <div style={{ height:'100%', width:`${pct}%`, background:f.color, borderRadius:5, transition:'width .4s' }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                  <div style={{ marginTop:4, fontSize:11, color:'var(--muted)', borderTop:'1px solid var(--border)', paddingTop:8 }}>
+                    Tasso completamento: <strong style={{ color:'#2e6e3e' }}>
+                      {d.allP.length > 0 ? Math.round((d.funnel.find(f=>f.label==='Completate')?.n||0)/d.allP.length*100) : 0}%
+                    </strong>
+                    {' · '}
+                    Tasso annullamento: <strong style={{ color:d.tassoAnnullamento>15?'#c85050':'var(--ink)' }}>
+                      {d.tassoAnnullamento}%
+                    </strong>
+                  </div>
+                </div>
+              )
+            }
+          </div>
+
+          {/* Distribuzione per giorno della settimana + metodi pagamento */}
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
+
+            {/* Giorno settimana */}
+            <div style={{ background:'var(--bg)', border:'1px solid var(--border)', borderRadius:8, padding:'18px 20px' }}>
+              <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', color:'var(--ink-2)', marginBottom:14 }}>
+                📅 Check-in per giorno
+              </div>
+              <div style={{ display:'flex', alignItems:'flex-end', gap:6, height:80 }}>
+                {d.giorniSettimana.map((g, i) => {
+                  const h = Math.max(g.n > 0 ? 6 : 2, (g.n / d.maxDow) * 72);
+                  const isWeekend = i === 0 || i === 6;
+                  return (
+                    <div key={g.label} title={`${g.label}: ${g.n} prenotazioni`}
+                      style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:2 }}>
+                      <div style={{ fontSize:9, color:'var(--muted)', fontWeight:600 }}>{g.n||''}</div>
+                      <div style={{ width:'100%', borderRadius:'3px 3px 0 0', height:`${h}px`,
+                        background: isWeekend ? '#b87333' : '#1f5d83',
+                        opacity: isWeekend ? 0.75 : 0.6 + (g.n/d.maxDow)*0.4 }} />
+                      <div style={{ fontSize:9, color: isWeekend?'#b87333':'var(--muted)', fontWeight: isWeekend?700:400 }}>{g.label}</div>
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={{ marginTop:8, fontSize:10, color:'var(--muted)' }}>
+                Giorno di inizio noleggio · arancio = weekend
+              </div>
+            </div>
+
+            {/* Metodi pagamento */}
+            <div style={{ background:'var(--bg)', border:'1px solid var(--border)', borderRadius:8, padding:'18px 20px' }}>
+              <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', color:'var(--ink-2)', marginBottom:14 }}>
+                💳 Metodi di pagamento
+              </div>
+              {d.metodi.length === 0
+                ? <div style={{ fontSize:12, color:'var(--muted)', fontStyle:'italic' }}>Nessun dato disponibile</div>
+                : (() => {
+                  const totMetodi = d.metodi.reduce((s, m) => s + m.importo, 0);
+                  const M_COLORS = { contanti:'#2e6e3e', carta:'#1f5d83', bonifico:'#6a3d8f', altro:'#888' };
+                  const M_ICONS  = { contanti:'💵', carta:'💳', bonifico:'🏦', altro:'💶' };
+                  return d.metodi.map((m, i) => (
+                    <div key={m.metodo} style={{ marginBottom:9 }}>
+                      <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, marginBottom:3 }}>
+                        <span style={{ color:'var(--ink)', fontWeight:500 }}>
+                          {M_ICONS[m.metodo]||'💶'} {m.metodo.charAt(0).toUpperCase()+m.metodo.slice(1)}
+                        </span>
+                        <span style={{ color:'var(--muted)' }}>
+                          <strong style={{ color: M_COLORS[m.metodo]||'#888' }}>€{m.importo.toLocaleString('it-IT')}</strong>
+                          {' '}({totMetodi>0?Math.round((m.importo/totMetodi)*100):0}%)
+                        </span>
+                      </div>
+                      <div style={{ height:7, background:'var(--surface-2)', borderRadius:3, overflow:'hidden' }}>
+                        <div style={{ height:'100%', width:`${totMetodi>0?(m.importo/totMetodi)*100:0}%`,
+                          background: M_COLORS[m.metodo]||'#888', borderRadius:3 }} />
+                      </div>
+                    </div>
+                  ));
+                })()
+              }
+            </div>
+          </div>
+
+          {/* Panoramica mensile comparativa */}
+          <div style={{ background:'var(--bg)', border:'1px solid var(--border)', borderRadius:8, padding:'20px 22px' }}>
+            <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', color:'var(--ink-2)', marginBottom:18 }}>
+              Confronto prenotazioni vs incassi per mese · {year}
+            </div>
+            <div style={{ overflowX:'auto' }}>
+              <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+                <thead>
+                  <tr style={{ background:'var(--surface-2)' }}>
+                    {['Mese','Prenotazioni','Preventivi €','Cassa €','Diff. €','Conv. %'].map(h => (
+                      <th key={h} style={{ padding:'7px 12px', textAlign: h==='Mese'?'left':'center', fontSize:10, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', color:'var(--muted)' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {d.mesi.map((m,i) => {
+                    const diff = m.revCassa - m.revPreno;
+                    const conv = m.revPreno > 0 ? Math.round((m.revCassa/m.revPreno)*100) : null;
+                    return (
+                      <tr key={m.ym} style={{ borderTop:'1px solid var(--border)', background:i%2===0?'transparent':'var(--surface-2)' }}>
+                        <td style={{ padding:'8px 12px', fontWeight:500 }}>{m.label}</td>
+                        <td style={{ padding:'8px 12px', textAlign:'center' }}>{m.preno||'—'}</td>
+                        <td style={{ padding:'8px 12px', textAlign:'center', color:'var(--ink-2)' }}>{m.revPreno>0?`€${m.revPreno.toLocaleString('it-IT')}`:'—'}</td>
+                        <td style={{ padding:'8px 12px', textAlign:'center', fontWeight:600, color:m.revCassa>0?'#2e6e3e':'var(--muted)' }}>{m.revCassa>0?`€${m.revCassa.toLocaleString('it-IT')}`:'—'}</td>
+                        <td style={{ padding:'8px 12px', textAlign:'center', color:diff>=0?'#2e6e3e':diff<0?'#c85050':'var(--muted)', fontWeight:diff!==0?600:400 }}>
+                          {m.revPreno>0&&m.revCassa>0?(diff>=0?'+':'')+`€${diff.toLocaleString('it-IT')}`:'—'}
+                        </td>
+                        <td style={{ padding:'8px 12px', textAlign:'center', color:conv&&conv<70?'#c85050':conv&&conv<100?'#b87333':'#2e6e3e', fontWeight:conv?600:400 }}>
+                          {conv!=null?`${conv}%`:'—'}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── STAGIONALE ─────────────────────────────────────────── */}
+      {tab === 'stagionale' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{ background:'var(--bg)', border:'1px solid var(--border)', borderRadius:8, padding:'20px 22px' }}>
+            <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', color:'var(--ink-2)', marginBottom:16 }}>
+              Revenue mensile · {year}
+            </div>
+            {/* Barre revenue */}
+            <div style={{ display:'flex', alignItems:'flex-end', gap:6, height:120, marginBottom:8 }}>
+              {(() => {
+                const maxR = Math.max(...datiMensili.map(m => m.revenue), 1);
+                return datiMensili.map(m => {
+                  const h = Math.round((m.revenue / maxR) * 100);
+                  const isAgo = m.mese.endsWith('-08');
+                  return (
+                    <div key={m.mese} style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:3 }}>
+                      <div style={{ fontSize:9, color:'var(--muted)', fontWeight:600 }}>
+                        {m.revenue > 0 ? `€${m.revenue >= 1000 ? Math.round(m.revenue/1000)+'k' : m.revenue}` : ''}
+                      </div>
+                      <div style={{ width:'100%', height:`${Math.max(h,2)}%`, background: isAgo ? 'var(--accent)' : 'var(--sea)', borderRadius:'3px 3px 0 0', minHeight:2 }} />
+                      <div style={{ fontSize:9, color:'var(--muted)' }}>{m.label}</div>
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+          </div>
+          <div style={{ background:'var(--bg)', border:'1px solid var(--border)', borderRadius:8, padding:'20px 22px' }}>
+            <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', color:'var(--ink-2)', marginBottom:16 }}>
+              Occupazione % mensile · {year}
+            </div>
+            <div style={{ display:'flex', alignItems:'flex-end', gap:6, height:100 }}>
+              {datiMensili.map(m => {
+                const isAgo = m.mese.endsWith('-08');
+                const col = m.occupazione > 80 ? '#c83434' : m.occupazione > 50 ? '#b07820' : '#4a6a30';
+                return (
+                  <div key={m.mese} style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:3 }}>
+                    <div style={{ fontSize:9, color:'var(--muted)', fontWeight:600 }}>{m.occupazione > 0 ? `${m.occupazione}%` : ''}</div>
+                    <div style={{ width:'100%', height:`${Math.max(m.occupazione,2)}%`, background: isAgo ? col : col + '99', borderRadius:'3px 3px 0 0', minHeight:2 }} />
+                    <div style={{ fontSize:9, color:'var(--muted)' }}>{m.label}</div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          {/* Tabella riepilogo */}
+          <div style={{ background:'var(--bg)', border:'1px solid var(--border)', borderRadius:8, overflow:'hidden' }}>
+            <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+              <thead>
+                <tr style={{ background:'var(--surface-2)' }}>
+                  {['Mese','Prenotazioni','Revenue','Cassa incassata','Occupazione'].map(h => (
+                    <th key={h} style={{ padding:'8px 14px', textAlign:'left', fontSize:10, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', color:'var(--muted)' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {datiMensili.map((m,i) => (
+                  <tr key={m.mese} style={{ borderTop:'1px solid var(--border)', background: m.mese.endsWith('-08') ? 'rgba(200,52,52,.04)' : i%2===0 ? 'transparent' : 'var(--surface-2)' }}>
+                    <td style={{ padding:'8px 14px', fontWeight: m.mese.endsWith('-08') ? 700 : 400 }}>{m.label}{m.mese.endsWith('-08') && ' ☀️'}</td>
+                    <td style={{ padding:'8px 14px' }}>{m.prenotazioni || '—'}</td>
+                    <td style={{ padding:'8px 14px', fontWeight:600, color: m.revenue > 0 ? '#2e6e3e' : 'var(--muted)' }}>{m.revenue > 0 ? `€${m.revenue.toLocaleString('it-IT')}` : '—'}</td>
+                    <td style={{ padding:'8px 14px', color: m.cassa > 0 ? 'var(--ink)' : 'var(--muted)' }}>{m.cassa > 0 ? `€${m.cassa.toLocaleString('it-IT')}` : '—'}</td>
+                    <td style={{ padding:'8px 14px' }}>
+                      <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                        <div style={{ width:60, height:6, background:'var(--surface-2)', borderRadius:3, overflow:'hidden' }}>
+                          <div style={{ height:'100%', width:`${m.occupazione}%`, background: m.occupazione>80?'var(--accent)':m.occupazione>50?'#b07820':'#4a6a30', borderRadius:3 }} />
+                        </div>
+                        <span>{m.occupazione}%</span>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                <tr style={{ borderTop:'2px solid var(--border-strong)', fontWeight:700, background:'var(--surface-2)' }}>
+                  <td style={{ padding:'10px 14px' }}>Totale {year}</td>
+                  <td style={{ padding:'10px 14px' }}>{datiMensili.reduce((s,m)=>s+m.prenotazioni,0)}</td>
+                  <td style={{ padding:'10px 14px', color:'#2e6e3e' }}>€{datiMensili.reduce((s,m)=>s+m.revenue,0).toLocaleString('it-IT')}</td>
+                  <td style={{ padding:'10px 14px' }}>€{datiMensili.reduce((s,m)=>s+m.cassa,0).toLocaleString('it-IT')}</td>
+                  <td style={{ padding:'10px 14px' }}>{Math.round(datiMensili.reduce((s,m)=>s+m.occupazione,0)/12)}% media</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>
@@ -5282,8 +6525,18 @@ function exportPreventivoPDF(quote, agencyInfo, lang = 'it') {
   <div class="doc-meta">
     <strong>${i18n.docTitle}</strong>
     <span>${today}</span>
+    ${quote.codice ? `<div style="margin-top:6px;font-family:monospace;font-size:18px;font-weight:700;letter-spacing:.12em;color:#1a1815">${quote.codice}</div>` : ''}
   </div>
 </div>
+
+${quote.cliente && (quote.cliente.nome || quote.cliente.tel || quote.cliente.email) ? `
+<div class="section">
+  <h3>${lang === 'en' ? 'Customer' : lang === 'es' ? 'Cliente' : 'Cliente'}</h3>
+  ${quote.cliente.nome  ? `<div class="info-row"><span class="info-label">${lang==='en'?'Name':'Nominativo'}</span><span><strong>${quote.cliente.nome}</strong></span></div>` : ''}
+  ${quote.cliente.tel   ? `<div class="info-row"><span class="info-label">${lang==='en'?'Phone':'Telefono'}</span><span>${quote.cliente.tel}</span></div>` : ''}
+  ${quote.cliente.email ? `<div class="info-row"><span class="info-label">Email</span><span>${quote.cliente.email}</span></div>` : ''}
+  ${quote.cliente.note  ? `<div class="info-row"><span class="info-label">Note</span><span>${quote.cliente.note}</span></div>` : ''}
+</div>` : ''}
 
 <div class="section">
   <h3>${i18n.dettagliTitle}</h3>
@@ -7377,6 +8630,7 @@ function ContrattoModal({ preno, onClose }) {
 </style></head><body>
 <h1>${t.title}</h1>
 <div class="sub">${t.subtitle}</div>
+${preno.codice ? `<div style="text-align:center;margin:-16px 0 20px;"><span style="font-family:monospace;font-size:13px;font-weight:700;letter-spacing:2px;padding:3px 14px;border:1.5px solid #999;border-radius:4px;color:#333;">${preno.codice}</span></div>` : ''}
 
 <div class="sec">${s.renter}</div>
 <div class="g2">
@@ -7424,7 +8678,7 @@ function ContrattoModal({ preno, onClose }) {
     <div class="sspace"></div>
   </div>
 </div>
-<div class="footer">Edonoleggio · Lampedusa (AG) · Italy · gius.dibella@gmail.com</div>
+<div class="footer">Edonoleggio · Lampedusa (AG) · Italy · gius.dibella@gmail.com${preno.codice ? ` · <span style="font-family:monospace;font-weight:700;">${preno.codice}</span>` : ''}</div>
 </body></html>`);
     w.document.close();
     w.focus();
@@ -7695,6 +8949,23 @@ function OggiPage({ prenotazioni, fleet, scadenze, customers, setPage, rentmeVeh
     p.dal < today && p.al >= today && (p.stato === 'confermata' || p.stato === 'in_corso')
   );
 
+  // Promemoria documenti clienti (consegne oggi con doc scaduto o in scadenza entro 30 gg)
+  const docAlert30 = new Date(today);
+  docAlert30.setDate(docAlert30.getDate() + 30);
+  const docAlert30Str = docAlert30.toISOString().slice(0, 10);
+  const docAlerts = [];
+  partenze.forEach(p => {
+    const c = (customers || []).find(c =>
+      c.cognome?.toLowerCase() === p.clienteCognome?.toLowerCase() &&
+      c.nome?.toLowerCase()    === p.clienteNome?.toLowerCase()    &&
+      p.clienteCognome
+    );
+    if (!c || !c.docScadenza) return;
+    const scad = c.docScadenza;
+    const stato = scad < today ? 'scaduto' : scad <= docAlert30Str ? 'in_scadenza' : null;
+    if (stato) docAlerts.push({ preno: p, cliente: c, scad, stato });
+  });
+
   // Veicoli occupati oggi (dal <= today <= al, stato attivo)
   const occupatiIds = new Set(
     prenoList
@@ -7722,6 +8993,61 @@ function OggiPage({ prenotazioni, fleet, scadenze, customers, setPage, rentmeVeh
 
   // Prenotazioni domani (anticipo)
   const domani = prenoList.filter(p => p.dal === tomorrow && p.stato !== 'annullata');
+
+  // Export ICS — scarica tutte le prenotazioni attive come calendario .ics
+  function exportICS() {
+    function icsDate(iso) {
+      // YYYYMMDD (all-day event — no time needed)
+      return iso ? iso.replace(/-/g, '') : '';
+    }
+    function icsEsc(s) {
+      return (s || '').replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\n/g, '\\n');
+    }
+    const attive = prenoList.filter(p => p.stato !== 'annullata');
+    const events = attive.map(p => {
+      const uid    = `edo-${p.id}@edonoleggio.it`;
+      const dal    = icsDate(p.dal);
+      // ICS DTEND for all-day = day after last day
+      const alDate = p.al ? new Date(p.al + 'T12:00:00') : new Date();
+      alDate.setDate(alDate.getDate() + 1);
+      const al     = alDate.toISOString().slice(0,10).replace(/-/g,'');
+      const nome   = icsEsc([p.clienteCognome, p.clienteNome].filter(Boolean).join(' ') || 'Cliente');
+      const mezzo  = icsEsc(p.vehicleLabel || p.vehicleType || '');
+      const codice = p.codice ? ` [${p.codice}]` : '';
+      const note   = icsEsc([p.note, p.noteCliente, p.noteInterne].filter(Boolean).join(' · '));
+      const prezzo = p.prezzo != null ? ` €${p.prezzo}` : '';
+      return [
+        'BEGIN:VEVENT',
+        `UID:${uid}`,
+        `DTSTART;VALUE=DATE:${dal}`,
+        `DTEND;VALUE=DATE:${al}`,
+        `SUMMARY:${nome} — ${mezzo}${codice}${prezzo}`,
+        `DESCRIPTION:${note || mezzo}`,
+        `STATUS:CONFIRMED`,
+        'END:VEVENT',
+      ].join('\r\n');
+    });
+    const ics = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'PRODID:-//Edonoleggio Lampedusa//Pratica//IT',
+      'CALSCALE:GREGORIAN',
+      'METHOD:PUBLISH',
+      `X-WR-CALNAME:Edonoleggio ${today}`,
+      'X-WR-TIMEZONE:Europe/Rome',
+      ...events,
+      'END:VCALENDAR',
+    ].join('\r\n');
+    const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `edonoleggio-${today}.ics`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
 
   // Export CSV movimenti del giorno — partenze + rientri
   function exportMovimenti() {
@@ -7800,6 +9126,11 @@ function OggiPage({ prenotazioni, fleet, scadenze, customers, setPage, rentmeVeh
             <div style={{ fontSize: 12, color: 'var(--ink-2)' }}>
               {p.vehicleLabel || 'Mezzo da assegnare'}
               {p.vehicleTarga && <span style={{ fontFamily: 'monospace', fontSize: 11, marginLeft: 6, color: 'var(--muted)' }}>{p.vehicleTarga}</span>}
+              {p.codice && (
+                <span style={{ fontFamily: 'monospace', fontSize: 10, marginLeft: 8, padding: '1px 6px', borderRadius: 4, background: 'var(--surface-2)', color: 'var(--accent)', fontWeight: 700, letterSpacing: '0.08em', border: '1px solid var(--border)' }}>
+                  {p.codice}
+                </span>
+              )}
             </div>
             <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
               {formatDate(p.dal)} → {formatDate(p.al)}
@@ -7814,13 +9145,23 @@ function OggiPage({ prenotazioni, fleet, scadenze, customers, setPage, rentmeVeh
               </div>
             )}
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flexShrink: 0 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flexShrink: 0, alignItems: 'flex-end' }}>
             <span style={{
               fontSize: 10, padding: '2px 8px', borderRadius: 10, fontWeight: 600,
               background: STATO_COLOR[p.stato] ? STATO_COLOR[p.stato] + '22' : 'var(--surface-2)',
               color: STATO_COLOR[p.stato] || 'var(--muted)',
             }}>{p.stato || '—'}</span>
-            {p.firma && <span style={{ fontSize: 10, color: '#2e6e3e', fontWeight: 600 }}>✍️ firmato</span>}
+            {(() => {
+              const sp = statoPagamento(p);
+              if (sp.totale == null) return null;
+              return (
+                <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 10, fontWeight: 600,
+                  background: sp.colore + '18', color: sp.colore }}>
+                  {sp.completato ? '✓ Saldato' : sp.pagato > 0 ? `€${sp.residuo} res.` : '⚠ Da pagare'}
+                </span>
+              );
+            })()}
+            {p.firma && <span style={{ fontSize: 10, color: '#2e6e3e', fontWeight: 600 }}>✍️</span>}
           </div>
         </div>
       </Card>
@@ -7874,6 +9215,13 @@ function OggiPage({ prenotazioni, fleet, scadenze, customers, setPage, rentmeVeh
               <Download style={{ width: 11, height: 11 }} /> CSV movimenti
             </button>
           )}
+          <button type="button" onClick={exportICS}
+            title="Scarica tutte le prenotazioni come calendario .ics"
+            style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 5,
+              border: '1px solid var(--border)', background: 'transparent', color: 'var(--muted)',
+              fontSize: 11, cursor: 'pointer' }}>
+            <Download style={{ width: 11, height: 11 }} /> .ics calendario
+          </button>
         </div>
       </div>
 
@@ -8008,6 +9356,7 @@ function OggiPage({ prenotazioni, fleet, scadenze, customers, setPage, rentmeVeh
             const { sendToRentme, ...cleanData } = data;
             const rec = {
               id: `p${Date.now().toString(36)}`,
+              codice: generateBookingCode(),
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
               operatorId: operator?.id || '',
@@ -8049,24 +9398,95 @@ function OggiPage({ prenotazioni, fleet, scadenze, customers, setPage, rentmeVeh
         ))}
       </div>
 
-      {/* ── PARTENZE ────────────────────────────────────────────────── */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, marginTop: 20 }}>
-        <SectionTitle icon="📤" label="Consegne oggi" count={partenze.length} color="#2e6e3e" noMargin />
-        {partenze.length > 0 && (
-          <button type="button" onClick={() => printConsegne(partenze, 'Consegne oggi')}
-            style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, padding: '4px 10px',
-              borderRadius: 6, border: '1px solid #2e6e3e', background: 'transparent', color: '#2e6e3e',
-              cursor: 'pointer', fontWeight: 500 }}>
-            🖨 Stampa / PDF
-          </button>
-        )}
-      </div>
-      {partenze.length === 0
-        ? <div style={{ fontSize: 13, color: 'var(--muted)', padding: '10px 0' }}>Nessuna partenza oggi</div>
-        : <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {partenze.map(p => <PrenoRow key={p.id} p={p} accentColor="#2e6e3e" />)}
+      {/* ── PROMEMORIA DOCUMENTI ─────────────────────────────────────── */}
+      {docAlerts.length > 0 && (
+        <div style={{ marginTop: 8, marginBottom: 8 }}>
+          {docAlerts.map(({ preno, cliente, scad, stato }) => (
+            <div key={preno.id} style={{
+              display: 'flex', alignItems: 'center', gap: 10,
+              background: stato === 'scaduto' ? '#fff0f0' : '#fff8e6',
+              border: `1.5px solid ${stato === 'scaduto' ? '#c85050' : '#d09830'}`,
+              borderRadius: 8, padding: '10px 14px', marginBottom: 6, fontSize: 12,
+            }}>
+              <span style={{ fontSize: 16 }}>{stato === 'scaduto' ? '🚨' : '⚠️'}</span>
+              <div style={{ flex: 1 }}>
+                <span style={{ fontWeight: 700, color: stato === 'scaduto' ? '#c85050' : '#b87333', marginRight: 6 }}>
+                  {stato === 'scaduto' ? 'DOCUMENTO SCADUTO' : 'Documento in scadenza'}
+                </span>
+                <span style={{ color: 'var(--ink)', fontWeight: 600 }}>
+                  {cliente.cognome} {cliente.nome}
+                </span>
+                {' · '}
+                <span style={{ fontFamily: 'monospace', color: 'var(--ink-2)' }}>{scad}</span>
+                {' · '}
+                <span style={{ color: 'var(--muted)' }}>{preno.vehicleLabel || preno.vehicleType}</span>
+              </div>
+              {cliente.tel && (
+                <a href={`https://wa.me/${(cliente.tel || '').replace(/\D/g,'')}`}
+                  target="_blank" rel="noreferrer"
+                  style={{ fontSize: 11, padding: '3px 8px', borderRadius: 5,
+                    background: '#25d36622', color: '#25d366', fontWeight: 700, textDecoration: 'none' }}>
+                  WA
+                </a>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── DUE RIQUADRI: CONSEGNE OGGI + CONSEGNE DOMANI ──────────── */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginTop: 8 }}>
+
+        {/* Riquadro CONSEGNE OGGI */}
+        <div style={{ border: '2px solid #2e6e3e', borderRadius: 10, overflow: 'hidden' }}>
+          <div style={{ background: '#2e6e3e', padding: '10px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+              <span style={{ fontSize: 15 }}>📤</span>
+              <span style={{ fontFamily: 'var(--font-serif)', fontWeight: 600, fontSize: 14, color: '#fff' }}>Consegne oggi</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: '#fff', background: 'rgba(255,255,255,.25)', borderRadius: 12, padding: '1px 8px' }}>{partenze.length}</span>
+            </div>
+            {partenze.length > 0 && (
+              <button type="button" onClick={() => printConsegne(partenze, 'Consegne oggi')}
+                style={{ fontSize: 10, padding: '3px 8px', borderRadius: 5, border: '1px solid rgba(255,255,255,.5)', background: 'transparent', color: '#fff', cursor: 'pointer' }}>
+                🖨 PDF
+              </button>
+            )}
           </div>
-      }
+          <div style={{ padding: '10px 12px', background: 'var(--bg)', minHeight: 60 }}>
+            {partenze.length === 0
+              ? <div style={{ fontSize: 12, color: 'var(--muted)', padding: '8px 0' }}>Nessuna consegna oggi</div>
+              : <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                  {partenze.map(p => <PrenoRow key={p.id} p={p} accentColor="#2e6e3e" />)}
+                </div>
+            }
+          </div>
+        </div>
+
+        {/* Riquadro CONSEGNE DOMANI */}
+        <div style={{ border: '2px solid #b87333', borderRadius: 10, overflow: 'hidden' }}>
+          <div style={{ background: '#b87333', padding: '10px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+              <span style={{ fontSize: 15 }}>📅</span>
+              <span style={{ fontFamily: 'var(--font-serif)', fontWeight: 600, fontSize: 14, color: '#fff' }}>Consegne domani</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: '#fff', background: 'rgba(255,255,255,.25)', borderRadius: 12, padding: '1px 8px' }}>{domani.length}</span>
+            </div>
+            {domani.length > 0 && (
+              <button type="button" onClick={() => printConsegne(domani, 'Consegne domani')}
+                style={{ fontSize: 10, padding: '3px 8px', borderRadius: 5, border: '1px solid rgba(255,255,255,.5)', background: 'transparent', color: '#fff', cursor: 'pointer' }}>
+                🖨 PDF
+              </button>
+            )}
+          </div>
+          <div style={{ padding: '10px 12px', background: 'var(--bg)', minHeight: 60 }}>
+            {domani.length === 0
+              ? <div style={{ fontSize: 12, color: 'var(--muted)', padding: '8px 0' }}>Nessuna consegna domani</div>
+              : <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                  {domani.map(p => <PrenoRow key={p.id} p={p} accentColor="#b87333" />)}
+                </div>
+            }
+          </div>
+        </div>
+      </div>
 
       {/* ── RIENTRI ─────────────────────────────────────────────────── */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, marginTop: 20 }}>
@@ -8135,16 +9555,6 @@ function OggiPage({ prenotazioni, fleet, scadenze, customers, setPage, rentmeVeh
           </div>
         </>
       )}
-
-      {/* ── DOMANI IN ANTICIPO ───────────────────────────────────────── */}
-      {domani.length > 0 && (
-        <>
-          <SectionTitle icon="📅" label="Consegne domani" count={domani.length} color="#b87333" />
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {domani.map(p => <PrenoRow key={p.id} p={p} accentColor="#b87333" />)}
-          </div>
-        </>
-      )}
       {/* Footer con link rapidi */}
       <div style={{ marginTop: 32, paddingTop: 20, borderTop: '1px solid var(--border)', display: 'flex', gap: 10, flexWrap: 'wrap' }}>
         {[
@@ -8184,12 +9594,20 @@ function GlobalSearchModal({ prenotazioni, customers, contracts, fleet, onClose,
   }, []);
 
   const lower = q.trim().toLowerCase();
+  // Riconosce codici prenotazione: 6 char alfanumerici uppercase (es. A987SA)
+  const isCodiceSearch = /^[A-Z0-9]{5,6}$/i.test(q.trim());
 
   const results = useMemo(() => {
-    if (lower.length < 2) return { prenotazioni: [], customers: [], contracts: [], fleet: [] };
+    if (lower.length < 2) return { prenotazioni: [], customers: [], contracts: [], fleet: [], codiceMatch: null };
+
+    // Ricerca diretta per codice univoco
+    if (isCodiceSearch) {
+      const codiceMatch = (prenotazioni || []).find(p => p.codice && p.codice.toLowerCase() === lower);
+      if (codiceMatch) return { prenotazioni: [], prenoTotal: 0, customers: [], contracts: [], fleet: [], codiceMatch };
+    }
 
     const prenoAll = (prenotazioni || []).filter(p => {
-      const hay = `${p.clienteNome} ${p.clienteCognome} ${p.clienteTel} ${p.vehicleLabel} ${p.note} ${p.noteCliente} ${p.noteInterne}`.toLowerCase();
+      const hay = `${p.clienteNome} ${p.clienteCognome} ${p.clienteTel} ${p.vehicleLabel} ${p.note} ${p.noteCliente} ${p.noteInterne} ${p.codice || ''}`.toLowerCase();
       return hay.includes(lower);
     });
     const preno = prenoAll.slice(0, 20);
@@ -8210,10 +9628,10 @@ function GlobalSearchModal({ prenotazioni, customers, contracts, fleet, onClose,
       return hay.includes(lower);
     }).slice(0, 5);
 
-    return { prenotazioni: preno, prenoTotal, customers: cust, contracts: contr, fleet: veh };
-  }, [lower, prenotazioni, customers, contracts, fleet]);
+    return { prenotazioni: preno, prenoTotal, customers: cust, contracts: contr, fleet: veh, codiceMatch: null };
+  }, [lower, isCodiceSearch, prenotazioni, customers, contracts, fleet]);
 
-  const totalCount = Object.values(results).reduce((n, arr) => n + arr.length, 0);
+  const totalCount = results.codiceMatch ? 1 : Object.values(results).reduce((n, arr) => Array.isArray(arr) ? n + arr.length : n, 0);
 
   const STATO_COLOR = { confermata: '#2e6e3e', in_corso: '#1f5d83', attesa: '#b87333', completata: '#888', annullata: '#c85050' };
 
@@ -8277,7 +9695,36 @@ function GlobalSearchModal({ prenotazioni, customers, contracts, fleet, onClose,
             </div>
           )}
 
-          {results.prenotazioni.length > 0 && (
+          {/* Match diretto per codice */}
+          {results.codiceMatch && (() => {
+            const p = results.codiceMatch;
+            return (
+              <>
+                <div style={{ padding: '6px 12px 2px', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--accent)' }}>
+                  🎯 Codice trovato
+                </div>
+                <button type="button"
+                  onClick={() => { setPrenotazioniPrefill && setPrenotazioniPrefill({ focusId: p.id }); setPage('prenotazioni'); onClose(); }}
+                  style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', border: 'none', background: 'var(--accent)11', cursor: 'pointer', textAlign: 'left' }}>
+                  <span style={{ fontSize: 16 }}>📅</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)' }}>
+                      <span style={{ fontFamily: 'monospace', background: 'var(--accent)', color: '#fff', padding: '1px 7px', borderRadius: 4, marginRight: 8, fontSize: 12 }}>{p.codice}</span>
+                      {`${p.clienteCognome || ''} ${p.clienteNome || ''}`.trim() || 'Cliente'}
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
+                      {p.vehicleLabel || '—'} · {formatDate(p.dal)} → {formatDate(p.al)}
+                    </div>
+                  </div>
+                  <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 10, background: (STATO_COLOR[p.stato] || '#888') + '22', color: STATO_COLOR[p.stato] || '#888', fontWeight: 600, flexShrink: 0 }}>
+                    {p.stato}
+                  </span>
+                </button>
+              </>
+            );
+          })()}
+
+          {!results.codiceMatch && results.prenotazioni.length > 0 && (
             <>
               <SectionHead
                 label="Prenotazioni"
@@ -8373,6 +9820,7 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
   const [tipoFilter, setTipoFilter] = useState('');         // filtro tipo mezzo
   const [selectedCell, setSelectedCell] = useState(null);  // {preno, vehicleId, day}
   const [selectedVehicle, setSelectedVehicle] = useState(null); // veicolo cliccato sulla label
+  const [highlightCliente, setHighlightCliente] = useState(null); // chiave cliente evidenziata
   const COLS = 28; // 4 settimane
   const today = todayISO();
 
@@ -8481,7 +9929,7 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
   const sel = selectedCell?.preno || null;
 
   return (
-    <div style={{ padding: '20px 24px', maxWidth: '100%' }} onClick={() => setSelectedCell(null)}>
+    <div style={{ padding: '20px 24px', maxWidth: '100%' }} onClick={() => { setSelectedCell(null); setSelectedVehicle(null); }}>
 
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
@@ -8612,8 +10060,10 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
                 const isEnd   = preno && (segAl  ? segAl  === d : preno.al  === d);
                 const isSegTransStart = preno && segDal && segDal === d && !preno._isFirstSeg;
                 const isSegTransEnd   = preno && segAl  && segAl  === d && !preno._isLastSeg;
-                const color   = preno ? (STATO_COLOR[preno.stato] || '#888') : null;
+                const color   = preno ? clienteColorHash(preno.clienteId || preno.clienteCognome || preno.clienteNome || preno.id) : null;
                 const isSel   = preno && selectedCell?.preno?.id === preno.id;
+                const prenoClienteKey = preno ? (preno.clienteId || preno.clienteCognome || preno.clienteNome || preno.id) : null;
+                const isDimmed = preno && highlightCliente && prenoClienteKey !== highlightCliente;
                 const dt      = new Date(d + 'T12:00:00');
                 const isWeekend = [0, 6].includes(dt.getDay());
 
@@ -8657,8 +10107,9 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
                         borderLeft:  isStart       ? `3px solid ${color}`  : 'none',
                         borderRight: isSegTransEnd ? `3px dashed ${color}` : 'none',
                         display: 'flex', alignItems: 'center', overflow: 'hidden',
-                        transition: 'background .12s',
+                        transition: 'background .12s, opacity .15s',
                         boxShadow: isSel ? `0 0 0 1.5px ${color}` : 'none',
+                        opacity: isDimmed ? 0.15 : 1,
                       }}>
                         {/* Transizione in arrivo (non è il primo segmento) */}
                         {isSegTransStart && (
@@ -8695,19 +10146,236 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
         </div>
       </div>
 
-      {/* Legenda */}
-      <div style={{ display: 'flex', gap: 16, marginTop: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-        {Object.entries({ confermata: 'Confermata', in_corso: 'In corso', attesa: 'In attesa' }).map(([k, l]) => (
-          <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--muted)' }}>
-            <div style={{ width: 16, height: 10, borderRadius: 2, background: STATO_COLOR[k] + '88',
-              borderLeft: `3px solid ${STATO_COLOR[k]}` }} />
-            {l}
+      {/* Legenda + filtro cliente */}
+      {(() => {
+        // Clienti attivi nella finestra visualizzata
+        const clientiAttivi = [...new Map(
+          prenoList
+            .filter(p => days.some(d => p.dal <= d && p.al >= d))
+            .map(p => {
+              const key = p.clienteId || p.clienteCognome || p.clienteNome || p.id;
+              return [key, { key, label: `${p.clienteCognome || ''} ${p.clienteNome || ''}`.trim() || 'Cliente', color: clienteColorHash(key) }];
+            })
+        ).values()].slice(0, 12);
+        return (
+          <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+              {highlightCliente && (
+                <button type="button" onClick={() => setHighlightCliente(null)}
+                  style={{ fontSize: 11, padding: '2px 8px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--muted)', cursor: 'pointer', fontWeight: 600 }}>
+                  ✕ Tutti
+                </button>
+              )}
+              {clientiAttivi.map(({ key, label, color }) => (
+                <button key={key} type="button"
+                  onClick={() => setHighlightCliente(h => h === key ? null : key)}
+                  style={{
+                    fontSize: 11, padding: '2px 10px', borderRadius: 10, cursor: 'pointer', fontWeight: 600,
+                    border: `1.5px solid ${color}`,
+                    background: highlightCliente === key ? color : color + '18',
+                    color:      highlightCliente === key ? '#fff' : color,
+                    transition: 'all .12s',
+                  }}>
+                  {label}
+                </button>
+              ))}
+              <div style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--muted)' }}>
+                Clicca su <span style={{ color: 'var(--accent)', fontWeight: 600 }}>slot libero</span> → nuova prenotazione &nbsp;·&nbsp; su <span style={{ fontWeight: 600 }}>blocco colorato</span> → azioni rapide
+              </div>
+            </div>
           </div>
-        ))}
-        <div style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--muted)' }}>
-          Clicca su <span style={{ color: 'var(--accent)', fontWeight: 600 }}>slot libero</span> → nuova prenotazione &nbsp;·&nbsp; su <span style={{ fontWeight: 600 }}>blocco colorato</span> → azioni rapide
-        </div>
-      </div>
+        );
+      })()}
+
+      {/* ── Pannello veicolo — click su label ─────────────────────── */}
+      {selectedVehicle && (() => {
+        const sv = selectedVehicle;
+        // Cerca dati completi in fleet locale (ha stato, colore, note, scadenze...)
+        const fleetRecord = (fleet || []).find(f =>
+          f.id === sv.id || f.targa === sv.targa || f.targa === sv.id
+        );
+        const tipoLabel  = (VEHICLE_TYPES[sv.tipo] || VEHICLE_TYPES[canonicalTipo(sv)])?.label || sv.tipo || '—';
+        const stato      = fleetRecord?.stato || 'available';
+        const statoInfo  = VEHICLE_STATUS[stato] || VEHICLE_STATUS.available;
+        const today      = todayISO();
+        // Prenotazioni di questo veicolo — passate, attive, future
+        const vPreno = prenoList
+          .filter(p => p.vehicleId === sv.id || p.vehicleId === sv.targa)
+          .sort((a, b) => b.dal.localeCompare(a.dal));
+        const future  = vPreno.filter(p => p.dal >= today);
+        const active  = vPreno.filter(p => p.dal <= today && p.al >= today);
+        const past    = vPreno.filter(p => p.al < today).slice(0, 5);
+
+        const STATO_BADGE = {
+          available:   { bg: '#e8f5e9', color: '#2e6e3e', label: 'Disponibile' },
+          fermo:       { bg: '#fff8e6', color: '#b87333', label: 'Fermo' },
+          incidentato: { bg: '#fff0f0', color: '#c85050', label: 'Incidentato' },
+          venduto:     { bg: '#f0f0f0', color: '#888',    label: 'Venduto' },
+        };
+        const badge = STATO_BADGE[stato] || STATO_BADGE.available;
+
+        return (
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              position: 'fixed', top: 64, right: 0, bottom: 0, zIndex: 310,
+              width: 340, background: 'var(--bg)',
+              borderLeft: '1px solid var(--border)',
+              boxShadow: '-8px 0 32px rgba(0,0,0,.12)',
+              display: 'flex', flexDirection: 'column',
+              overflow: 'hidden',
+            }}
+          >
+            {/* Header pannello */}
+            <div style={{ padding: '18px 20px 14px', borderBottom: '1px solid var(--border)', background: 'var(--surface-2)' }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <VehicleIcon type={canonicalTipo(sv)} className="w-8 h-8" style={{ width: 32, height: 32, color: '#7c4dff' }} />
+                  <div>
+                    <div style={{ fontSize: 16, fontWeight: 700, fontFamily: 'var(--font-serif)', color: 'var(--ink)', lineHeight: 1.2 }}>
+                      {fleetRecord?.marca ? `${fleetRecord.marca} ${fleetRecord.modello || ''}`.trim() : sv.modello || sv.tipo || '—'}
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'monospace', marginTop: 2, letterSpacing: '.06em' }}>
+                      {sv.targa || sv.id || '—'}
+                    </div>
+                  </div>
+                </div>
+                <button type="button" onClick={() => setSelectedVehicle(null)}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', fontSize: 20, lineHeight: 1, padding: 4 }}>×</button>
+              </div>
+              {/* Badge stato + tipo */}
+              <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 10px', borderRadius: 20, textTransform: 'uppercase', letterSpacing: '.06em', background: badge.bg, color: badge.color }}>
+                  {badge.label}
+                </span>
+                <span style={{ fontSize: 10, fontWeight: 600, padding: '3px 10px', borderRadius: 20, textTransform: 'capitalize', background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--ink-2)' }}>
+                  {tipoLabel}
+                </span>
+                {fleetRecord?.anno && (
+                  <span style={{ fontSize: 10, padding: '3px 10px', borderRadius: 20, background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--muted)' }}>
+                    {fleetRecord.anno}
+                  </span>
+                )}
+                {fleetRecord?.colore && (
+                  <span style={{ fontSize: 10, padding: '3px 10px', borderRadius: 20, background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--muted)', textTransform: 'capitalize' }}>
+                    {fleetRecord.colore}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Corpo scrollabile */}
+            <div style={{ flex: 1, overflowY: 'auto', padding: '14px 20px' }}>
+
+              {/* Statistiche rapide */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 18 }}>
+                {[
+                  { label: 'Attive', value: active.length, color: '#1f5d83' },
+                  { label: 'Future', value: future.length, color: '#2e6e3e' },
+                  { label: 'Tot. archivio', value: vPreno.length, color: 'var(--muted)' },
+                ].map(s => (
+                  <div key={s.label} style={{ textAlign: 'center', padding: '10px 6px', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
+                    <div style={{ fontSize: 20, fontWeight: 700, fontFamily: 'var(--font-serif)', color: s.value > 0 ? s.color : 'var(--muted)', lineHeight: 1 }}>{s.value}</div>
+                    <div style={{ fontSize: 9, color: 'var(--muted)', marginTop: 3, textTransform: 'uppercase', letterSpacing: '.05em' }}>{s.label}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Note veicolo */}
+              {fleetRecord?.note && (
+                <div style={{ marginBottom: 16, padding: '10px 12px', borderRadius: 8, background: '#fffde7', border: '1px solid #f0d060', fontSize: 12, color: '#6b5a00' }}>
+                  📝 {fleetRecord.note}
+                </div>
+              )}
+
+              {/* Prenotazioni attive */}
+              {active.length > 0 && (
+                <>
+                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: '#1f5d83', marginBottom: 6 }}>In corso</div>
+                  {active.map(p => <PrenoMiniRow key={p.id} p={p} color="#1f5d83" onOpen={() => { setPrenotazioniPrefill?.({ focusId: p.id }); setSelectedVehicle(null); setPage?.('prenotazioni'); }} />)}
+                  <div style={{ marginBottom: 12 }} />
+                </>
+              )}
+
+              {/* Prenotazioni future */}
+              {future.length > 0 && (
+                <>
+                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: '#2e6e3e', marginBottom: 6 }}>Prossime prenotazioni</div>
+                  {future.slice(0, 8).map(p => <PrenoMiniRow key={p.id} p={p} color="#2e6e3e" onOpen={() => { setPrenotazioniPrefill?.({ focusId: p.id }); setSelectedVehicle(null); setPage?.('prenotazioni'); }} />)}
+                  {future.length > 8 && <div style={{ fontSize: 11, color: 'var(--muted)', textAlign: 'center', marginTop: 4 }}>+ altri {future.length - 8}</div>}
+                  <div style={{ marginBottom: 12 }} />
+                </>
+              )}
+
+              {/* Ultime prenotazioni passate */}
+              {past.length > 0 && (
+                <>
+                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--muted)', marginBottom: 6 }}>Storico recente</div>
+                  {past.map(p => <PrenoMiniRow key={p.id} p={p} color="var(--muted)" onOpen={() => { setPrenotazioniPrefill?.({ focusId: p.id }); setSelectedVehicle(null); setPage?.('prenotazioni'); }} />)}
+                </>
+              )}
+
+              {vPreno.length === 0 && (
+                <div style={{ fontSize: 13, color: 'var(--muted)', textAlign: 'center', padding: '24px 0' }}>
+                  Nessuna prenotazione trovata per questo veicolo
+                </div>
+              )}
+            </div>
+
+            {/* Footer azioni */}
+            <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 8, background: 'var(--surface-2)' }}>
+              <button type="button"
+                onClick={() => {
+                  setPrenotazioniPrefill?.({
+                    vehicleId:    sv.id,
+                    vehicleLabel: fleetRecord?.marca ? `${fleetRecord.marca} ${fleetRecord.modello || ''}`.trim() : sv.modello || sv.tipo,
+                    vehicleType:  canonicalTipo(sv),
+                    dal: today, al: today,
+                    fonte: 'calendario',
+                  });
+                  setSelectedVehicle(null);
+                  setPage?.('prenotazioni');
+                }}
+                style={{ padding: '9px 14px', borderRadius: 7, border: 'none', background: '#7c4dff', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: 12, textAlign: 'center' }}>
+                + Nuova prenotazione
+              </button>
+              <button type="button"
+                onClick={() => { setSelectedVehicle(null); setPage?.('fleet'); }}
+                style={{ padding: '8px 14px', borderRadius: 7, border: '1px solid var(--border)', background: 'transparent', color: 'var(--ink-2)', cursor: 'pointer', fontSize: 12, textAlign: 'center' }}>
+                ⚙️ Impostazioni veicolo
+              </button>
+            </div>
+          </div>
+        );
+
+        function PrenoMiniRow({ p, color, onOpen }) {
+          return (
+            <div onClick={onOpen} style={{
+              display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderRadius: 7,
+              border: '1px solid var(--border)', marginBottom: 5, cursor: 'pointer',
+              background: 'var(--bg)', transition: 'background 0.1s',
+            }}
+              onMouseEnter={e => e.currentTarget.style.background = 'var(--surface-2)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'var(--bg)'}
+            >
+              <div style={{ width: 3, alignSelf: 'stretch', borderRadius: 2, background: color, flexShrink: 0 }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {[p.clienteCognome, p.clienteNome].filter(Boolean).join(' ') || 'Cliente'}
+                </div>
+                <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 1 }}>
+                  {formatDate(p.dal)} → {formatDate(p.al)}
+                  {p.prezzo != null && <span style={{ marginLeft: 6, fontWeight: 600, color: 'var(--ink-2)' }}>€{p.prezzo}</span>}
+                </div>
+              </div>
+              <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 7px', borderRadius: 10,
+                background: color + '22', color: color, textTransform: 'uppercase', letterSpacing: '.05em', flexShrink: 0 }}>
+                {p.stato}
+              </span>
+            </div>
+          );
+        }
+      })()}
 
       {/* Pannello azione — click su cella */}
       {sel && (
@@ -9072,8 +10740,67 @@ function DepositoModal({ preno, operator, mode, onSave, onClose }) {
 
 
 
+// ═══════════════════════════════════════════════════════════════════
+// KIOSK VIEW — modalità banco semplificata (tablet/touch)
+// ═══════════════════════════════════════════════════════════════════
+function KioskView({ prenotazioni, setPrenotazioni, fleet, rentmeVehicles, scadenze, customers, pushToast, operator, fermiFlotta, rentmePush, rentmeConnected, setPrenotazioniPrefill, setPage, onExit }) {
+  const today = todayISO();
+  const prenoList = prenotazioni || [];
+
+  // KPI essenziali
+  const consegneOggi  = prenoList.filter(p => p.dal === today && p.stato !== 'annullata');
+  const rientri       = prenoList.filter(p => p.al  === today && p.stato !== 'annullata');
+  const inCorso       = prenoList.filter(p => p.stato === 'in_corso').length;
+
+  return (
+    <div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', flexDirection: 'column' }}>
+      {/* Header kiosk */}
+      <div style={{ background: 'var(--ink)', color: '#f9f5ec', padding: '18px 28px', display: 'flex', alignItems: 'center', gap: 16 }}>
+        <span style={{ fontFamily: 'Georgia, serif', fontSize: 22, fontWeight: 700, letterSpacing: 1 }}>Edonoleggio</span>
+        <span style={{ fontSize: 13, opacity: 0.6, marginLeft: 4 }}>· Banco</span>
+        <div style={{ flex: 1 }} />
+        <div style={{ display: 'flex', gap: 20, fontSize: 13 }}>
+          <span>📤 <strong>{consegneOggi.length}</strong> consegne</span>
+          <span>📥 <strong>{rientri.length}</strong> rientri</span>
+          <span>🔑 <strong>{inCorso}</strong> in corso</span>
+        </div>
+        <button type="button" onClick={onExit}
+          style={{ marginLeft: 16, fontSize: 12, padding: '6px 14px', border: '1px solid rgba(255,255,255,.3)', borderRadius: 6, background: 'transparent', color: '#f9f5ec', cursor: 'pointer' }}>
+          ✕ Esci
+        </button>
+      </div>
+
+      {/* Contenuto: OggiPage in stile più grande */}
+      <div style={{ flex: 1, padding: '20px 24px', fontSize: 15, overflowY: 'auto' }}>
+        <OggiPage
+          prenotazioni={prenotazioni}
+          setPrenotazioni={setPrenotazioni}
+          fleet={fleet}
+          scadenze={scadenze}
+          customers={customers}
+          setPage={(p) => { onExit(); setPage(p); }}
+          rentmeVehicles={rentmeVehicles}
+          setPrenotazioniPrefill={setPrenotazioniPrefill}
+          pushToast={pushToast}
+          operator={operator}
+          fermiFlotta={fermiFlotta}
+          rentmePush={rentmePush}
+          rentmeConnected={rentmeConnected}
+        />
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
-  const [page, setPage] = useState('dashboard');
+  // Se URL ha ?preventivo=... → apri direttamente la pagina preventivi
+  const [page, setPage] = useState(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('preventivo')) return 'preventivi';
+    } catch {}
+    return 'dashboard';
+  });
   const [wizardOpen, setWizardOpen] = useState(false);
 
   // URL del backend (locale al tablet, NON sincronizzato via backend stesso — sarebbe circolare).
@@ -9235,6 +10962,9 @@ export default function App() {
   const [operatorIdx, setOperatorIdx]     = useState(0);
   const [modal, setModal]                 = useState(null);
   const [showGlobalSearch, setShowGlobalSearch] = useState(false);
+  const [darkMode, setDarkMode]           = useState(() => { try { return localStorage.getItem('edo:darkMode') === '1'; } catch { return false; } });
+  const [kioskMode, setKioskMode]         = useState(false);
+  useEffect(() => { try { localStorage.setItem('edo:darkMode', darkMode ? '1' : '0'); } catch {} }, [darkMode]);
   const [prefillCustomer, setPrefillCustomer] = useState(null);
   // Bridge condiviso: usato da Preventivi, BancoRapido e PrenotazioniPage
   const [prenotazioniPrefill, setPrenotazioniPrefill] = useState(null);
@@ -9693,11 +11423,27 @@ export default function App() {
     );
   }
 
+  if (kioskMode) return (
+    <div className={`pratica-app${darkMode ? ' dark-mode' : ''}`}>
+      <Styles />
+      <KioskView
+        prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni}
+        fleet={fleet} rentmeVehicles={rentmeVehicles} scadenze={scadenze}
+        customers={customers} pushToast={pushToast} operator={operator}
+        fermiFlotta={fermiFlotta} rentmePush={rentmeSync.pushBooking}
+        rentmeConnected={rentmeSync.status === 'ok'}
+        setPrenotazioniPrefill={setPrenotazioniPrefill}
+        setPage={setPage}
+        onExit={() => setKioskMode(false)}
+      />
+    </div>
+  );
+
   return (
     <>
       <Styles />
-      <div className="pratica-app flex">
-        <Sidebar page={page} setPage={setPage} onNew={() => openWizard()} online={online && cargosConfig.enabled} agency={agency} rentmeSyncStatus={rentmeSync.status} rentmeAlertCount={rentmeSync.status === 'ok' ? calcAvailability(new Date().toISOString().slice(0,10), new Date().toISOString().slice(0,10), rentmeVehicles, prenotazioni, fleet).filter(c => c.alert).length : 0} />
+      <div className={`pratica-app flex${darkMode ? ' dark-mode' : ''}`}>
+        {!kioskMode && <Sidebar page={page} setPage={setPage} onNew={() => openWizard()} online={online && cargosConfig.enabled} agency={agency} rentmeSyncStatus={rentmeSync.status} rentmeAlertCount={rentmeSync.status === 'ok' ? calcAvailability(new Date().toISOString().slice(0,10), new Date().toISOString().slice(0,10), rentmeVehicles, prenotazioni, fleet).filter(c => c.alert).length : 0} />}
         <main className="flex-1 min-h-screen" id="main-content">
           <Topbar
             online={online} setOnline={setOnline} pendingQueue={pendingQueue}
@@ -9708,6 +11454,8 @@ export default function App() {
             onOpenSearch={() => setShowGlobalSearch(true)}
             sessionUser={sessionUser}
             onLogout={handleLogout}
+            darkMode={darkMode} setDarkMode={setDarkMode}
+            kioskMode={kioskMode} setKioskMode={setKioskMode}
           />
           <div className="px-8 py-6 max-w-[1280px] mx-auto">
             {/* ErrorBoundary con key={page}: se una pagina crasha, cambiando pagina
@@ -9723,7 +11471,7 @@ export default function App() {
               {page === 'prenotazioni' && <PrenotazioniPage prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} setCassa={setCassa} fleet={fleet} rentmeVehicles={rentmeVehicles} customers={customers} operator={operator} onOpenWizard={openWizard} pushToast={pushToast} prefill={prenotazioniPrefill} onClearPrefill={() => setPrenotazioniPrefill(null)} fermiFlotta={fermiFlotta} rentmePush={rentmeSync.pushBooking} rentmeConnected={rentmeSync.status === 'ok'} />}
               {page === 'contracts'  && <ContractsList contracts={localContracts} operators={operators} onRetry={retryContract} onMarkReturned={markContractReturned} online={online} />}
               {page === 'fleet'      && <FleetPage fleet={fleet} prenotazioni={prenotazioni} admin={admin} onAddVehicle={() => setModal('newVehicle')} onEditVehicle={(v) => setModal({ type: 'editVehicle', vehicle: v })} onDeleteVehicle={requestDeleteVehicle} onImportCSV={() => setShowCsvImport(true)} scadenze={scadenze} setScadenze={setScadenze} fermiFlotta={fermiFlotta} setFermiFlotta={setFermiFlotta} />}
-              {page === 'customers'  && <CustomersPage customers={customers} admin={admin} onShowQR={(c) => setModal({ type: 'qr', customer: c })} onNewWithCustomer={openWizard} onAddCustomer={() => setModal('newCustomer')} onEditCustomer={(c) => setModal({ type: 'editCustomer', customer: c })} onDeleteCustomer={deleteCustomer} onShowStorico={(c) => setStorioClienteId(c.id)} />}
+              {page === 'customers'  && <CustomersPage customers={customers} setCustomers={setCustomers} prenotazioni={prenotazioni} admin={admin} onShowQR={(c) => setModal({ type: 'qr', customer: c })} onNewWithCustomer={openWizard} onAddCustomer={() => setModal('newCustomer')} onEditCustomer={(c) => setModal({ type: 'editCustomer', customer: c })} onDeleteCustomer={deleteCustomer} onShowStorico={(c) => setStorioClienteId(c.id)} />}
               {page === 'partners'   && <PartnersPage partners={partners} admin={admin} onAddPartner={() => setModal('newPartner')} onEditPartner={(p) => setModal({ type: 'editPartner', partner: p })} onDeletePartner={requestDeletePartner} />}
               {page === 'listino'    && <div style={{padding:'28px 32px',maxWidth:900,margin:'0 auto'}}>
                 <h1 style={{margin:'0 0 6px',fontSize:22,fontFamily:'var(--font-serif)',fontWeight:600}}>Gestione prezzi</h1>
@@ -9953,6 +11701,15 @@ function Styles() {
         --border: #e6dfd2; --border-strong: #d4ccba;
         --radius: 5px;
       }
+      .dark-mode {
+        --bg: #13120f; --surface: #1e1c18; --surface-2: #2a2822;
+        --ink: #f0ebe2; --ink-2: #c8c0b4; --muted: #7a7268;
+        --accent: #e05050; --accent-deep: #c83434; --accent-soft: #3a1e1e;
+        --success: #6a9a50; --success-soft: #1e2e18;
+        --warning: #d09830; --warning-soft: #2e2010;
+        --sea: #4d8cac; --sea-soft: #152030;
+        --border: #302e28; --border-strong: #464238;
+      }
       .pratica-app, .pratica-app * { font-family: 'IBM Plex Sans', system-ui, sans-serif; box-sizing: border-box; }
       .pratica-app .serif { font-family: 'Newsreader', Georgia, serif; font-feature-settings: 'liga', 'dlig'; }
       .pratica-app .mono  { font-family: 'JetBrains Mono', ui-monospace, monospace; }
@@ -10148,7 +11905,7 @@ function Sidebar({ page, setPage, onNew, online, agency, rentmeSyncStatus, rentm
 // ═══════════════════════════════════════════════════════════════════
 // TOPBAR
 // ═══════════════════════════════════════════════════════════════════
-function Topbar({ online, setOnline, pendingQueue, operator, admin, setAdmin, onScanPlate, onShiftChange, agency, onOpenSearch, sessionUser, onLogout }) {
+function Topbar({ online, setOnline, pendingQueue, operator, admin, setAdmin, onScanPlate, onShiftChange, agency, onOpenSearch, sessionUser, onLogout, darkMode, setDarkMode, kioskMode, setKioskMode }) {
   return (
     <header className="border-b px-8 py-3 flex items-center gap-3" style={{ borderColor: 'var(--border)', background: 'var(--bg)' }}>
       <div className="flex items-center gap-2 text-sm" style={{ color: 'var(--ink-2)' }}>
@@ -10236,6 +11993,30 @@ function Topbar({ online, setOnline, pendingQueue, operator, admin, setAdmin, on
           <div className="text-[10px]" style={{ color: 'var(--muted)' }}>{operator.ruolo}</div>
         </div>
         <ChevronDown className="w-3.5 h-3.5" style={{ color: 'var(--muted)' }} aria-hidden="true" />
+      </button>
+
+      {/* Dark mode toggle */}
+      <button
+        type="button"
+        onClick={() => setDarkMode && setDarkMode(d => !d)}
+        className="btn-ghost px-2 py-1.5 rounded text-xs border"
+        style={{ borderColor: 'var(--border)', color: 'var(--muted)' }}
+        title={darkMode ? 'Passa a tema chiaro' : 'Passa a tema scuro'}
+        aria-label="Cambia tema"
+      >
+        {darkMode ? '☀️' : '🌙'}
+      </button>
+
+      {/* Kiosk mode */}
+      <button
+        type="button"
+        onClick={() => setKioskMode && setKioskMode(k => !k)}
+        className="btn-ghost px-2 py-1.5 rounded text-xs border"
+        style={{ borderColor: kioskMode ? 'var(--accent)' : 'var(--border)', color: kioskMode ? 'var(--accent)' : 'var(--muted)', background: kioskMode ? 'var(--accent-soft)' : 'transparent' }}
+        title={kioskMode ? 'Esci da modalità banco' : 'Modalità banco (tablet)'}
+        aria-label="Modalità banco"
+      >
+        📟
       </button>
 
       {/* Logout */}
@@ -11208,82 +12989,188 @@ function FermiFlottaSection({ fleet, fermiFlotta, setFermiFlotta }) {
 // ═══════════════════════════════════════════════════════════════════
 // CUSTOMERS
 // ═══════════════════════════════════════════════════════════════════
-function CustomersPage({ customers, admin, onShowQR, onNewWithCustomer, onAddCustomer, onEditCustomer, onDeleteCustomer, onShowStorico }) {
+function CustomersPage({ customers, setCustomers, prenotazioni, admin, onShowQR, onNewWithCustomer, onAddCustomer, onEditCustomer, onDeleteCustomer, onShowStorico }) {
+  const [search, setSearch]     = useState('');
+  const [schedaId, setSchedaId] = useState(null);
+
+  const filtered = useMemo(() => {
+    if (!search.trim()) return customers;
+    const q = search.toLowerCase();
+    return customers.filter(c => `${c.nome} ${c.cognome} ${c.tel || ''} ${c.email || ''} ${c.docNum || ''}`.toLowerCase().includes(q));
+  }, [customers, search]);
+
+  // Scheda cliente pannello
+  const schedaCliente = schedaId ? customers.find(c => c.id === schedaId) : null;
+  const schedaPreno   = schedaCliente
+    ? (prenotazioni || []).filter(p => p.clienteId === schedaCliente.id || (p.clienteCognome?.toLowerCase() === schedaCliente.cognome?.toLowerCase() && p.clienteNome?.toLowerCase() === schedaCliente.nome?.toLowerCase()))
+    : [];
+  const schedaSpesa   = schedaPreno.filter(p => p.stato !== 'annullata').reduce((s, p) => s + (p.prezzo || 0), 0);
+
+  const toggleBlacklist = (c) => {
+    if (!setCustomers) return;
+    setCustomers(prev => prev.map(x => x.id === c.id ? { ...x, blacklist: !x.blacklist, blacklistNote: x.blacklist ? '' : (x.blacklistNote || '') } : x));
+  };
+
   return (
     <div>
-      <div className="flex items-end justify-between mb-6">
+      <div className="flex items-end justify-between mb-4">
         <div>
           <h2 className="serif text-3xl font-medium mb-1">Clienti</h2>
           <p className="text-sm" style={{ color: 'var(--muted)' }}>
-            {customers.length} clienti in rubrica · GDPR compliant · QR personali generabili
+            {customers.length} clienti · {customers.filter(c => c.blacklist).length > 0 && <span style={{ color: 'var(--accent)' }}>⛔ {customers.filter(c => c.blacklist).length} blacklist · </span>}GDPR compliant
           </p>
         </div>
-        {admin && (
-          <button type="button" onClick={onAddCustomer} className="btn-primary px-4 py-2 rounded text-sm font-semibold flex items-center gap-2">
-            <Plus className="w-4 h-4" aria-hidden="true" /> Nuovo cliente
-          </button>
-        )}
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <input
+            value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Cerca…" className="input"
+            style={{ width: 200, fontSize: 13, padding: '7px 10px' }}
+          />
+          {admin && (
+            <button type="button" onClick={onAddCustomer} className="btn-primary px-4 py-2 rounded text-sm font-semibold flex items-center gap-2">
+              <Plus className="w-4 h-4" /> Nuovo
+            </button>
+          )}
+        </div>
       </div>
 
-      {!admin && (
-        <ReadonlyBanner message={<>Modalità sola lettura · attiva <strong>Admin</strong> per aggiungere clienti dalla rubrica. (I clienti possono comunque essere creati direttamente da una nuova pratica.)</>} />
-      )}
+      {!admin && <ReadonlyBanner message={<>Modalità sola lettura · attiva <strong>Admin</strong> per aggiungere clienti.</>} />}
 
-      <div className="card-paper" role="list" aria-label="Rubrica clienti">
-        {customers.map(c => (
-          <div key={c.id} className="px-5 py-4 border-b flex items-center gap-5 hover:bg-[var(--surface-2)] last:border-b-0" style={{ borderColor: 'var(--border)' }} role="listitem">
-            <div className="w-10 h-10 rounded-full flex items-center justify-center serif font-medium relative flex-shrink-0" style={{ background: 'var(--surface-2)', color: 'var(--ink-2)' }} aria-hidden="true">
-              {getInitials(c.nome, c.cognome)}
-              {c.vip && <Star className="w-3.5 h-3.5 absolute -top-1 -right-1 fill-current" style={{ color: 'var(--warning)' }} />}
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="font-medium flex items-center gap-2 flex-wrap">
-                {c.cognome} {c.nome}
-                {c.vip && <span className="pill pill-warn">VIP · {c.visite} visite</span>}
-                {!c.vip && c.visite > 1 && <span className="pill pill-neutral">{c.visite} visite</span>}
-                {c.fatturazione && (
-                  <span className="pill pill-sea" title={c.fatturazione.tipo === 'azienda' ? 'Fatturazione azienda configurata' : 'Fatturazione privato configurata'}>
-                    <FileText className="w-3 h-3" aria-hidden="true" /> Fattura {c.fatturazione.tipo === 'azienda' ? 'azienda' : 'privato'}
-                  </span>
+      <div style={{ display: 'flex', gap: 16 }}>
+        <div className="card-paper" style={{ flex: 1 }} role="list">
+          {filtered.length === 0 && <div style={{ padding: '32px 24px', textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>Nessun cliente trovato</div>}
+          {filtered.map(c => (
+            <div key={c.id}
+              onClick={() => setSchedaId(id => id === c.id ? null : c.id)}
+              className="px-5 py-4 border-b flex items-center gap-5 last:border-b-0"
+              style={{ borderColor: 'var(--border)', cursor: 'pointer', background: schedaId === c.id ? 'var(--surface-2)' : undefined,
+                borderLeft: c.blacklist ? '3px solid var(--accent)' : '3px solid transparent' }}>
+              <div className="w-10 h-10 rounded-full flex items-center justify-center serif font-medium relative flex-shrink-0"
+                style={{ background: c.blacklist ? 'var(--accent-soft)' : 'var(--surface-2)', color: c.blacklist ? 'var(--accent-deep)' : 'var(--ink-2)' }}>
+                {getInitials(c.nome, c.cognome)}
+                {c.vip && <Star className="w-3.5 h-3.5 absolute -top-1 -right-1 fill-current" style={{ color: 'var(--warning)' }} />}
+                {c.blacklist && <span style={{ position: 'absolute', top: -4, right: -4, fontSize: 11 }}>⛔</span>}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="font-medium flex items-center gap-2 flex-wrap">
+                  {c.cognome} {c.nome}
+                  {c.blacklist && <span className="pill pill-err">Blacklist</span>}
+                  {c.vip && <span className="pill pill-warn">VIP</span>}
+                  {!c.vip && (c.visite || 0) > 1 && <span className="pill pill-neutral">{c.visite} visite</span>}
+                </div>
+                <div className="text-xs flex flex-wrap gap-x-4 gap-y-0.5 mt-1" style={{ color: 'var(--muted)' }}>
+                  <span>{c.cittadinanza}</span>
+                  {c.tel && <span>📞 {c.tel}</span>}
+                  {c.email && <span>{c.email}</span>}
+                </div>
+                {c.blacklist && c.blacklistNote && (
+                  <div style={{ fontSize: 11, color: 'var(--accent)', marginTop: 2, fontStyle: 'italic' }}>⚠ {c.blacklistNote}</div>
                 )}
               </div>
-              <div className="text-xs flex flex-wrap gap-x-4 gap-y-0.5 mt-1" style={{ color: 'var(--muted)' }}>
-                <span>{c.cittadinanza}</span>
-                <span className="mono">{TIPO_DOC[c.docTipo]}: {c.docNum}</span>
-                {c.tel   && <span className="flex items-center gap-1"><Phone className="w-3 h-3" aria-hidden="true" /> <span className="mono">{c.tel}</span></span>}
-                {c.email && <span className="flex items-center gap-1"><Mail className="w-3 h-3"  aria-hidden="true" /> {c.email}</span>}
+              <div style={{ display: 'flex', gap: 6, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+                {admin && (
+                  <button type="button" onClick={() => toggleBlacklist(c)}
+                    className="btn-ghost p-2 rounded border"
+                    style={{ borderColor: c.blacklist ? 'var(--accent)' : 'var(--border)', color: c.blacklist ? 'var(--accent)' : 'var(--muted)', fontSize: 12 }}
+                    title={c.blacklist ? 'Rimuovi da blacklist' : 'Aggiungi a blacklist'}>
+                    ⛔
+                  </button>
+                )}
+                <button type="button" onClick={() => onShowQR(c)} className="btn-ghost p-2 rounded border" style={{ borderColor: 'var(--border)' }}><QrCode className="w-4 h-4" /></button>
+                {admin && <button type="button" onClick={() => onEditCustomer(c)} className="btn-ghost p-2 rounded border" style={{ borderColor: 'var(--border)' }}><Pencil className="w-4 h-4" /></button>}
+                {admin && onDeleteCustomer && <button type="button" onClick={() => onDeleteCustomer(c)} className="btn-ghost p-2 rounded border" style={{ borderColor: 'var(--border)', color: 'var(--accent)' }}><Trash2 className="w-4 h-4" /></button>}
+                <button type="button" onClick={() => onNewWithCustomer(c)} className="btn-primary px-3 py-1.5 rounded text-xs font-semibold flex items-center gap-1.5">
+                  <Plus className="w-3 h-3" /> Pratica
+                </button>
               </div>
-              {c.fatturazione?.tipo === 'azienda' && c.fatturazione.ragioneSociale && (
-                <div className="text-[11px] mt-1" style={{ color: 'var(--muted)' }}>
-                  <Building2 className="w-3 h-3 inline mr-1" aria-hidden="true" />
-                  {c.fatturazione.ragioneSociale} · P.IVA <span className="mono">{c.fatturazione.piva}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Scheda dettaglio cliente */}
+        {schedaCliente && (
+          <div className="card" style={{ width: 340, flexShrink: 0, alignSelf: 'flex-start', position: 'sticky', top: 16 }}>
+            <div style={{ padding: '16px 18px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 16 }}>{schedaCliente.cognome} {schedaCliente.nome}</div>
+                <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{schedaCliente.cittadinanza}</div>
+              </div>
+              <button type="button" onClick={() => setSchedaId(null)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--muted)', fontSize: 18 }}>×</button>
+            </div>
+            <div style={{ padding: '12px 18px' }}>
+              {/* Contatti */}
+              {(schedaCliente.tel || schedaCliente.email) && (
+                <div style={{ marginBottom: 12, fontSize: 12, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {schedaCliente.tel && <a href={`tel:${schedaCliente.tel}`} style={{ color: 'var(--sea)', textDecoration: 'none' }}>📞 {schedaCliente.tel}</a>}
+                  {schedaCliente.email && <a href={`mailto:${schedaCliente.email}`} style={{ color: 'var(--sea)', textDecoration: 'none' }}>✉ {schedaCliente.email}</a>}
                 </div>
               )}
+              {/* Documento */}
+              <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 10 }}>
+                {TIPO_DOC[schedaCliente.docTipo] || schedaCliente.docTipo}: <span style={{ fontFamily: 'monospace', color: 'var(--ink)' }}>{schedaCliente.docNum}</span>
+                {schedaCliente.docScadenza && <span> · scad. {formatDate(schedaCliente.docScadenza)}</span>}
+              </div>
+              {/* KPI */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 14 }}>
+                {[
+                  { label: 'Noleggi', value: schedaPreno.length },
+                  { label: 'Fatturato', value: `€${schedaSpesa}` },
+                  { label: 'Visite', value: schedaCliente.visite || schedaPreno.length },
+                ].map(({ label, value }) => (
+                  <div key={label} style={{ background: 'var(--surface-2)', borderRadius: 6, padding: '8px 10px', textAlign: 'center' }}>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ink)' }}>{value}</div>
+                    <div style={{ fontSize: 10, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{label}</div>
+                  </div>
+                ))}
+              </div>
+              {/* Blacklist */}
+              {schedaCliente.blacklist && (
+                <div style={{ background: 'var(--accent-soft)', border: '1px solid var(--accent)', borderRadius: 6, padding: '8px 12px', marginBottom: 12, fontSize: 12, color: 'var(--accent-deep)' }}>
+                  ⛔ <strong>Blacklist</strong>{schedaCliente.blacklistNote ? ` — ${schedaCliente.blacklistNote}` : ''}
+                  {admin && (
+                    <div style={{ marginTop: 6 }}>
+                      <input
+                        defaultValue={schedaCliente.blacklistNote || ''}
+                        placeholder="Motivo…"
+                        style={{ width: '100%', fontSize: 11, padding: '4px 8px', borderRadius: 4, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--ink)' }}
+                        onBlur={e => setCustomers && setCustomers(prev => prev.map(x => x.id === schedaCliente.id ? { ...x, blacklistNote: e.target.value } : x))}
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+              {/* Prenotazioni recenti */}
+              {schedaPreno.length > 0 && (
+                <div>
+                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--muted)', marginBottom: 6 }}>Storico noleggi</div>
+                  {schedaPreno.slice().sort((a, b) => b.dal.localeCompare(a.dal)).slice(0, 6).map(p => (
+                    <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 11, padding: '5px 0', borderBottom: '1px solid var(--border)' }}>
+                      <div>
+                        <span style={{ fontWeight: 600 }}>{p.vehicleLabel || '—'}</span>
+                        {p.codice && <span style={{ fontFamily: 'monospace', fontSize: 10, marginLeft: 6, color: 'var(--accent)' }}>{p.codice}</span>}
+                        <div style={{ color: 'var(--muted)', fontSize: 10 }}>{formatDate(p.dal)} → {formatDate(p.al)}</div>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        {p.prezzo != null && <div style={{ fontWeight: 700 }}>€{p.prezzo}</div>}
+                        <div style={{ fontSize: 10, color: 'var(--muted)' }}>{p.stato}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {schedaPreno.length === 0 && <div style={{ fontSize: 12, color: 'var(--muted)', fontStyle: 'italic', marginTop: 4 }}>Nessun noleggio registrato</div>}
             </div>
-            <button type="button" onClick={() => onShowStorico && onShowStorico(c)}
-              className="btn-ghost px-3 py-1.5 rounded border text-xs font-semibold flex items-center gap-1.5"
-              style={{ borderColor: 'var(--border)', color: 'var(--ink-2)' }}
-              aria-label={`Storico di ${c.nome} ${c.cognome}`}>
-              <History className="w-3.5 h-3.5" /> Storico
-            </button>
-            <button type="button" onClick={() => onShowQR(c)} className="btn-ghost p-2 rounded border" style={{ borderColor: 'var(--border)' }} aria-label={`Mostra QR di ${c.nome} ${c.cognome}`}>
-              <QrCode className="w-4 h-4" aria-hidden="true" />
-            </button>
-            {admin && (
-              <button type="button" onClick={() => onEditCustomer(c)} className="btn-ghost p-2 rounded border" style={{ borderColor: 'var(--border)' }} aria-label={`Modifica ${c.nome} ${c.cognome}`}>
-                <Pencil className="w-4 h-4" aria-hidden="true" />
+            {/* Footer azioni */}
+            <div style={{ padding: '10px 18px', borderTop: '1px solid var(--border)', display: 'flex', gap: 8 }}>
+              <button type="button" onClick={() => onShowStorico && onShowStorico(schedaCliente)} className="btn-ghost px-3 py-1.5 rounded border text-xs font-semibold flex items-center gap-1.5" style={{ borderColor: 'var(--border)' }}>
+                <History className="w-3.5 h-3.5" /> Storico completo
               </button>
-            )}
-            {admin && onDeleteCustomer && (
-              <button type="button" onClick={() => onDeleteCustomer(c)} className="btn-ghost p-2 rounded border" style={{ borderColor: 'var(--border)', color: 'var(--accent)' }} aria-label={`Elimina ${c.nome} ${c.cognome}`}>
-                <Trash2 className="w-4 h-4" aria-hidden="true" />
+              <button type="button" onClick={() => onNewWithCustomer(schedaCliente)} className="btn-primary px-3 py-1.5 rounded text-xs font-semibold flex items-center gap-1.5">
+                <Plus className="w-3 h-3" /> Nuova pratica
               </button>
-            )}
-            <button type="button" onClick={() => onNewWithCustomer(c)} className="btn-primary px-3 py-1.5 rounded text-xs font-semibold flex items-center gap-1.5" aria-label={`Nuova pratica per ${c.nome} ${c.cognome}`}>
-              <Plus className="w-3 h-3" aria-hidden="true" /> Nuova pratica
-            </button>
+            </div>
           </div>
-        ))}
+        )}
       </div>
     </div>
   );
