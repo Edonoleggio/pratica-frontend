@@ -20,10 +20,16 @@ import { CalendarDays, Receipt, BarChart2,
 // Convenzione: x.y.z dove x = major rewrite, y = feature, z = fix.
 // La data accanto aiuta a verificare al volo che il deploy sia andato a buon fine.
 const APP_VERSION = {
-  number: '0.27.0',
-  codename: 'Report espanso — Insight · Previsione · Retention · Mix avanzato',
+  number: '0.28.0',
+  codename: 'Targhe reali — lookup render-time, nessuna mutazione stato',
   date: '2026-05-21',
   changelog: [
+    // v0.28.0 — 2026-05-21
+    'Fix targhe: resolveVehicleDisplay() mappa al volo i codici RentMe → targhe reali senza mutare lo stato',
+    'Fix Gantt: colonna mezzo mostra targa e modello reale da RENTME_TARGA_MAP',
+    'Fix FleetPage: card veicolo mostra targa reale e modello pulito',
+    'Fix makeVehicleLabel: usa resolveVehicleDisplay per label uniformi ovunque',
+    'Rimossa migrazione v0.28 (useEffect) — causava race condition con usePersistentState',
     // v0.27.0 — 2026-05-21
     'Report Panoramica: insight automatici generati dai dati (miglior mese, retention, ticket medio, fonte top, mezzo top)',
     'Report Panoramica: nuovo grafico combinato prenotazioni + revenue incassata + stimata su unico asse',
@@ -379,9 +385,46 @@ const MOCK_OPERATORS = [
 // ─────────────────────────────────────────────────────────────────────
 const makeVehicleLabel = (v) => {
   if (!v) return '';
-  const parts = [v.modello || v.marca, v.targa, v.rentmeId].filter(Boolean);
+  const vr = resolveVehicleDisplay(v);
+  const parts = [vr.modello || vr.marca, vr.targa, vr.rentmeId].filter(Boolean);
   return parts.join(' · ');
 };
+
+// ─────────────────────────────────────────────────────────────────────
+// HELPER — risolve targa e modello reali al momento del render.
+// Nessuna mutazione di stato: lookup diretto da RENTME_TARGA_MAP.
+// Necessario perché usePersistentState sovrascrive sempre lo stato
+// locale con i dati del backend al mount, rendendo le migrazioni
+// di stato inutili (race condition).
+// ─────────────────────────────────────────────────────────────────────
+function resolveVehicleDisplay(v) {
+  if (!v) return v;
+  // Chiavi candidate: rentmeId, id del veicolo, targa (potrebbero essere codici RentMe)
+  const candidates = [
+    (v.rentmeId || '').toLowerCase().trim(),
+    (v.id || '').toLowerCase().trim(),
+    (v.targa || '').toLowerCase().trim(),
+  ].filter(Boolean);
+  let entry = null;
+  for (const k of candidates) {
+    entry = RENTME_TARGA_MAP[k];
+    if (entry) break;
+    // Prova anche solo la parte numerica ("panda 81" → "81")
+    const num = k.split(' ').pop();
+    if (num && num !== k) {
+      entry = RENTME_TARGA_MAP[num];
+      if (entry) break;
+    }
+  }
+  if (!entry) return v;
+  // Pulizia modello: rimuovi prefisso tipo se presente
+  const modelloPulito = entry.modello || v.modello || '';
+  return {
+    ...v,
+    targa:   entry.targa,
+    modello: modelloPulito,
+  };
+}
 
 // ═══════════════════════════════════════════════════════════════════
 // AUTH — accesso con username e password
@@ -10215,7 +10258,9 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
             <div style={{ padding: '48px', textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>
               Nessun mezzo attivo{tipoFilter ? ` di tipo "${tipoFilter}"` : ' in flotta'}
             </div>
-          ) : fleetFiltered.map((v, vi) => (
+          ) : fleetFiltered.map((v, vi) => {
+            const vr = resolveVehicleDisplay(v);
+            return (
             <div key={v.id} style={{ display: 'flex', alignItems: 'stretch',
               borderTop: vi === 0 ? 'none' : '1px solid var(--border)',
               background: vi % 2 === 1 ? 'var(--surface-2)' : 'var(--bg)' }}>
@@ -10223,7 +10268,7 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
               {/* Label mezzo — sticky + cliccabile */}
               <div
                 onClick={e => { e.stopPropagation(); setSelectedVehicle(v); setSelectedCell(null); }}
-                title={`${v.modello || v.tipo || '—'} · ${v.targa || '—'} · clicca per info`}
+                title={`${vr.modello || vr.tipo || '—'} · ${vr.targa || '—'} · clicca per info`}
                 style={{ width: LABEL_W, flexShrink: 0, padding: '8px 12px',
                   borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column',
                   justifyContent: 'center', position: 'sticky', left: 0, zIndex: 1,
@@ -10239,12 +10284,12 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
               >
                 <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--ink)',
                   whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {v.modello || v.marca || v.tipo || '—'}
+                  {vr.modello || vr.marca || vr.tipo || '—'}
                 </div>
                 <div style={{ fontSize: 10, color: 'var(--muted)', fontFamily: 'monospace', marginTop: 1, letterSpacing: '.05em' }}>
-                  {v.targa || '—'}
+                  {vr.targa || '—'}
                 </div>
-                {v.colore && <div style={{ fontSize: 9, color: 'var(--muted)', marginTop: 1, textTransform: 'capitalize' }}>{v.colore.toLowerCase()}</div>}
+                {vr.colore && <div style={{ fontSize: 9, color: 'var(--muted)', marginTop: 1, textTransform: 'capitalize' }}>{vr.colore.toLowerCase()}</div>}
               </div>
 
               {/* Celle giorni */}
@@ -10338,7 +10383,8 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
                 );
               })}
             </div>
-          ))}
+          );
+          })}
 
         </div>
       </div>
@@ -12964,17 +13010,18 @@ function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, on
             const status = VEHICLE_STATUS[v.stato] || VEHICLE_STATUS.available;
             const StatusIcon = status.icon;
             const dimmed = v.stato === 'venduto';
-            const realTarga  = v.targa || null;
+            const vr = resolveVehicleDisplay(v);
+            const realTarga  = vr.targa || null;
             const rmCode     = v.rentmeId || null;
             return (
               <div key={v.id} className="card-paper p-5 group relative" style={{ opacity: dimmed ? 0.55 : 1 }}>
                 <div className="flex items-start justify-between mb-3">
                   <div>
                     <div className="serif text-lg font-medium leading-tight">
-                      {v.marca || v.modello || v.tipo || '—'}
+                      {vr.marca || vr.modello || vr.tipo || '—'}
                     </div>
-                    {v.marca && (
-                      <div className="text-sm" style={{ color: 'var(--ink-2)' }}>{v.modello}</div>
+                    {vr.marca && (
+                      <div className="text-sm" style={{ color: 'var(--ink-2)' }}>{vr.modello}</div>
                     )}
                   </div>
                   <VehicleIcon type={v.tipo} className="w-5 h-5" />
