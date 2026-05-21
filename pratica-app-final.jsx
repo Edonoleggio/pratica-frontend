@@ -20,10 +20,20 @@ import { CalendarDays, Receipt, BarChart2,
 // Convenzione: x.y.z dove x = major rewrite, y = feature, z = fix.
 // La data accanto aiuta a verificare al volo che il deploy sia andato a buon fine.
 const APP_VERSION = {
-  number: '0.29.0',
-  codename: 'Filtri categoria — Base · Superior · Cabrio · 5/6/7 Posti · Aperta · …',
+  number: '0.31.0',
+  codename: 'Fix 413 + CORS proxy configurabile',
   date: '2026-05-21',
   changelog: [
+    // v0.31.0 — 2026-05-21
+    'Fix 413: sanitize prenotazioni esclude fonte=rentme e rentme_storico — payload ridotto ~90%',
+    'Safety valve 400KB: se il payload supera la soglia, mantiene solo le 300 prenotazioni più recenti',
+    'Proxy URL configurabile in Impostazioni → RentMe Bridge — risolve errori CORS su pushBooking',
+    'pushBooking: errori CORS/rete ora mostrano messaggio diagnostico chiaro invece di crash silenzioso',
+    // v0.30.0 — 2026-05-21
+    'Auto-sync EDOX configurabile: 1 · 2 · 5 · 10 · 30 min · 1 ora — default 5 min',
+    'Widget "Prossimo sync" in Impostazioni — mostra l\'orario del prossimo pull automatico',
+    'Intervallo salvato in rentmeConfig (persistente) — si azzera e riparte al cambio',
+    'Categorie veicolo rilevate dal nome live EDOX (es. "superior") via rentmeCategoriaMap',
     // v0.29.0 — 2026-05-21
     'Filtro categoria Auto: BASE · 5POSTI · APERTA · SUPERIOR · CABRIO · 6POSTI · 7POSTI · SERIE2 · AUTOMATICA',
     'Filtro categoria Scooter 125: STANDARD · SUPERIOR — stesse categorie di EDOX/RentMe',
@@ -6406,12 +6416,13 @@ const RENTME_TARGA_MAP = {
 // Le prenotazioni RentMe vengono mergiate con quelle locali:
 //   - ID prefissato 'rm_' per riconoscerle
 //   - fonte: 'rentme' — non editabili dall'operatore
-function useRentMeSync({ fleet, rentmeVehicles, setRentmeVehicles, setPrenotazioni, pushToast, enabled = true }) {
-  const [status,   setStatus]   = useState('idle'); // idle|syncing|ok|error
-  const [lastSync, setLastSync] = useState(() => {
+function useRentMeSync({ fleet, rentmeVehicles, setRentmeVehicles, setPrenotazioni, pushToast, enabled = true, intervalMins = 5, proxyUrl = '' }) {
+  const [status,      setStatus]      = useState('idle'); // idle|syncing|ok|error
+  const [lastSync,    setLastSync]    = useState(() => {
     try { return localStorage.getItem('edo:rentme:lastSync') || null; } catch { return null; }
   });
-  const [errorMsg, setErrorMsg] = useState(null);
+  const [nextSyncAt,  setNextSyncAt]  = useState(null);
+  const [errorMsg,    setErrorMsg]    = useState(null);
   const timerRef = useRef(null);
 
   const sync = useCallback(async () => {
@@ -6516,26 +6527,29 @@ function useRentMeSync({ fleet, rentmeVehicles, setRentmeVehicles, setPrenotazio
     }
   }, [setRentmeVehicles, setPrenotazioni, pushToast]);
 
-  // Auto-sync al mount + ogni 5 minuti — solo se enabled
+  // Auto-sync al mount + ogni N minuti — si riavvia se enabled o intervalMins cambiano
   useEffect(() => {
     if (!enabled) {
       setStatus('idle');
+      setNextSyncAt(null);
       return;
     }
-    sync();
-    timerRef.current = setInterval(sync, 5 * 60 * 1000);
-    return () => clearInterval(timerRef.current);
+    const ms = Math.max(1, intervalMins) * 60 * 1000;
+    const scheduleNext = () => setNextSyncAt(new Date(Date.now() + ms).toISOString());
+    sync().then(scheduleNext);
+    timerRef.current = setInterval(() => { sync().then(scheduleNext); }, ms);
+    return () => { clearInterval(timerRef.current); setNextSyncAt(null); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled]);
+  }, [enabled, intervalMins]);
 
   // Manda prenotazione a RentMe (PUSH — solo aggiunte, mai modifiche)
+  // proxyUrl configurable: usa quello in rentmeConfig se disponibile,
+  // altrimenti fallback al PHP proxy su Altervista.
   const pushBooking = useCallback(async (booking, slug) => {
     const veicoli = rentmeVehicles || [];
     const catVehs = veicoli.filter(v => v.slug === slug);
     if (!catVehs.length) throw new Error('Nessun mezzo RentMe per questa categoria');
-    // Trova il primo mezzo libero
     const busy = new Set();
-    // (prenotazioni già filtrate in calcAvailability; qui usiamo l'ultimo stato)
     const freeVeh = catVehs.find(v => !busy.has(v.targa)) || catVehs[0];
     const payload = {
       uuidDittaAssociata: freeVeh.uuidDittaAssociata || RENTME_USER_ID,
@@ -6548,16 +6562,32 @@ function useRentMeSync({ fleet, rentmeVehicles, setRentmeVehicles, setPrenotazio
       note:               (booking.note || '').replace(/\|/g,' '),
       bloccata:           'false',
     };
-    const r = await fetch(`${RENTME_PROXY}?path=veicoli/add/reservetion`, {
-      method:  'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify(payload),
-    });
+    // Usa proxy configurato (Node.js su Render) o fallback al PHP proxy Altervista
+    const effectiveProxy = (proxyUrl || '').trim() || RENTME_PROXY;
+    let r;
+    try {
+      r = await fetch(`${effectiveProxy}?path=veicoli/add/reservetion`, {
+        method:  'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify(payload),
+      });
+    } catch (networkErr) {
+      // CORS o rete: distingui il tipo di errore per dare istruzioni utili
+      const msg = networkErr?.message || String(networkErr);
+      if (msg.includes('CORS') || msg.includes('Failed to fetch') || msg.includes('NetworkError')) {
+        throw new Error(
+          `CORS bloccato: il proxy RentMe non risponde da questa origine.\n` +
+          `Verifica che "${effectiveProxy}" risponda correttamente con Access-Control-Allow-Origin: *\n` +
+          `Oppure configura un proxy alternativo in Impostazioni → RentMe Bridge.`
+        );
+      }
+      throw networkErr;
+    }
     if (!r.ok) throw new Error(`RentMe API: ${r.status}`);
     return r.json();
-  }, [rentmeVehicles]);
+  }, [rentmeVehicles, proxyUrl]);
 
-  return { status, lastSync, errorMsg, sync, pushBooking };
+  return { status, lastSync, nextSyncAt, errorMsg, sync, pushBooking };
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -11121,9 +11151,21 @@ export default function App() {
       cutoff.setMonth(cutoff.getMonth() - 6);
       const cutoffStr = cutoff.toISOString().slice(0, 10);
       const STATI_ATTIVI = new Set(['bozza', 'confermata', 'in_corso', 'prorogata']);
-      return arr
+      const filtered = arr
+        // Le prenotazioni RentMe sono effimere: ri-sincronizzate ogni N min.
+        // Non vanno inviate al backend → riduce il payload di ~90% (280 veicoli × booking).
+        .filter(p => p.fonte !== 'rentme' && p.fonte !== 'rentme_storico')
         .filter(p => STATI_ATTIVI.has(p.stato) || (p.al || p.dal || '') >= cutoffStr)
         .map(({ foto, firmaDigitale, ...rest }) => rest);
+      // Safety valve: se il payload supera 400KB, mantieni solo le 300 più recenti.
+      // Evita 413 indipendentemente da quante prenotazioni storiche si accumulano.
+      const approxBytes = JSON.stringify(filtered).length;
+      if (approxBytes > 400_000) {
+        return filtered
+          .sort((a, b) => (b.dal || b.createdAt || '').localeCompare(a.dal || a.createdAt || ''))
+          .slice(0, 300);
+      }
+      return filtered;
     },
   });
   const [rentmeVehicles, setRentmeVehicles] = usePersistentState('edo:v1:rentme_vehicles', [], { skipRemote: true });
@@ -11263,14 +11305,16 @@ export default function App() {
   const [showCsvImport, setShowCsvImport] = useState(false);
   const [storioClienteId, setStorioClienteId] = useState(null);
 
-  // RentMe sync hook — auto-sync al mount + ogni 5 min (se abilitato)
+  // RentMe sync hook — auto-sync al mount + ogni N min (intervallo da rentmeConfig)
   const rentmeSync = useRentMeSync({
     fleet,
     rentmeVehicles,
     setRentmeVehicles,
     setPrenotazioni,
     pushToast,
-    enabled: rentmeConfig.enabled !== false,
+    enabled:      rentmeConfig.enabled !== false,
+    intervalMins: rentmeConfig.autoIntervalMins || 5,
+    proxyUrl:     rentmeConfig.proxyUrl || '',
   });
 
   // API client — memoizzato sul baseUrl così le chiamate sono consistenti
@@ -11604,8 +11648,9 @@ export default function App() {
       const nomeClean = tipoStr && nomeRaw.toLowerCase().startsWith(tipoStr + ' ')
         ? nomeRaw.slice(tipoStr.length + 1).trim() : nomeRaw;
       const modelloVal = mapEntry?.modello || nomeClean || v.slug || '';
-      // Estrai categoria dalla mappa (es. 'superior' → 'SUPERIOR')
-      const catText = `${modelloVal} ${nomeRaw}`.toLowerCase();
+      // Estrai categoria dal nome originale RentMe (es. "auto fiat newpanda superior" → 'SUPERIOR')
+      // Usa v.nome (nome grezzo completo) prima di qualsiasi pulizia
+      const catText = `${v.nome || ''} ${modelloVal} ${nomeRaw}`.toLowerCase();
       let categoriaVal = null;
       for (const [cat, kws] of Object.entries(CATEGORIA_KEYWORDS)) {
         if (kws.some(kw => catText.includes(kw))) { categoriaVal = cat; break; }
@@ -11784,7 +11829,7 @@ export default function App() {
               {page === 'preventivi'    && <PreventiviPage setPage={setPage} setPrenotazioniPrefill={setPrenotazioniPrefill} listino={listino} />}
               {page === 'prenotazioni' && <PrenotazioniPage prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} setCassa={setCassa} fleet={fleet} rentmeVehicles={rentmeVehicles} customers={customers} operator={operator} onOpenWizard={openWizard} pushToast={pushToast} prefill={prenotazioniPrefill} onClearPrefill={() => setPrenotazioniPrefill(null)} fermiFlotta={fermiFlotta} rentmePush={rentmeSync.pushBooking} rentmeConnected={rentmeSync.status === 'ok'} />}
               {page === 'contracts'  && <ContractsList contracts={localContracts} operators={operators} onRetry={retryContract} onMarkReturned={markContractReturned} online={online} />}
-              {page === 'fleet'      && <FleetPage fleet={fleet} prenotazioni={prenotazioni} admin={admin} onAddVehicle={() => setModal('newVehicle')} onEditVehicle={(v) => setModal({ type: 'editVehicle', vehicle: v })} onDeleteVehicle={requestDeleteVehicle} onImportCSV={() => setShowCsvImport(true)} scadenze={scadenze} setScadenze={setScadenze} fermiFlotta={fermiFlotta} setFermiFlotta={setFermiFlotta} />}
+              {page === 'fleet'      && <FleetPage fleet={fleet} prenotazioni={prenotazioni} admin={admin} onAddVehicle={() => setModal('newVehicle')} onEditVehicle={(v) => setModal({ type: 'editVehicle', vehicle: v })} onDeleteVehicle={requestDeleteVehicle} onImportCSV={() => setShowCsvImport(true)} scadenze={scadenze} setScadenze={setScadenze} fermiFlotta={fermiFlotta} setFermiFlotta={setFermiFlotta} rentmeVehicles={rentmeVehicles} />}
               {page === 'customers'  && <CustomersPage customers={customers} setCustomers={setCustomers} prenotazioni={prenotazioni} admin={admin} onShowQR={(c) => setModal({ type: 'qr', customer: c })} onNewWithCustomer={openWizard} onAddCustomer={() => setModal('newCustomer')} onEditCustomer={(c) => setModal({ type: 'editCustomer', customer: c })} onDeleteCustomer={deleteCustomer} onShowStorico={(c) => setStorioClienteId(c.id)} />}
               {page === 'partners'   && <PartnersPage partners={partners} admin={admin} onAddPartner={() => setModal('newPartner')} onEditPartner={(p) => setModal({ type: 'editPartner', partner: p })} onDeletePartner={requestDeletePartner} />}
               {page === 'listino'    && <div style={{padding:'28px 32px',maxWidth:900,margin:'0 auto'}}>
@@ -12916,11 +12961,26 @@ function ContractsList({ contracts, operators, onRetry, onMarkReturned, online }
 // ═══════════════════════════════════════════════════════════════════
 // FLEET
 // ═══════════════════════════════════════════════════════════════════
-function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, onDeleteVehicle, onImportCSV, scadenze, setScadenze, fermiFlotta, setFermiFlotta }) {
+function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, onDeleteVehicle, onImportCSV, scadenze, setScadenze, fermiFlotta, setFermiFlotta, rentmeVehicles }) {
   const [typeFilter, setTypeFilter] = useState('all');
   const [categoriaFilter, setCategoriaFilter] = useState(null);
   const [statusFilter, setStatusFilter] = useState('all');
   const [query, setQuery] = useState('');
+
+  // Lookup rentmeId → categoria dal nome live EDOX/RentMe (es. "auto fiat newpanda superior")
+  // Questa è la fonte di verità per le categorie; sovrascrive il campo v.categoria salvato
+  const rentmeCategoriaMap = useMemo(() => {
+    const map = {};
+    (rentmeVehicles || []).forEach(rv => {
+      const rmCode = (rv.rentmeCode || rv.targa || rv.id || '').trim().toLowerCase();
+      if (!rmCode) return;
+      const nome = (rv.nome || rv.slug || '').toLowerCase();
+      for (const [cat, kws] of Object.entries(CATEGORIA_KEYWORDS)) {
+        if (kws.some(kw => nome.includes(kw))) { map[rmCode] = cat; break; }
+      }
+    });
+    return map;
+  }, [rentmeVehicles]);
   const [scadenzeModalVeh, setScadenzeModalVeh] = useState(null);
   const counts = useFleetCounts(fleet);
 
@@ -12943,12 +13003,24 @@ function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, on
     return c;
   }, [fleet]);
 
+  // getCat: funzione locale che usa il lookup RentMe-live come fonte principale,
+  // poi v.categoria salvato, poi keyword sul modello.
+  const getCat = useCallback((v) => {
+    const rmKey = (v.rentmeId || v.id || '').toLowerCase().trim();
+    if (rmKey && rentmeCategoriaMap[rmKey]) return rentmeCategoriaMap[rmKey];
+    // Prova anche solo la parte numerica: "panda 81" → "81"
+    const num = rmKey.split(' ').pop();
+    if (num && num !== rmKey && rentmeCategoriaMap[num]) return rentmeCategoriaMap[num];
+    // Fallback: campo salvato o keyword sul modello
+    return getVehicleCategoria(v);
+  }, [rentmeCategoriaMap]);
+
   const filtered = useMemo(() => {
     // 'all' esclude le bici muscolari (non sono veicoli da noleggio)
     let f = typeFilter === 'all'
       ? fleet.filter(v => canonicalTipo(v) !== 'bici')
       : fleet.filter(v => canonicalTipo(v) === typeFilter);
-    if (categoriaFilter) f = f.filter(v => getVehicleCategoria(v) === categoriaFilter);
+    if (categoriaFilter) f = f.filter(v => getCat(v) === categoriaFilter);
     if (statusFilter !== 'all') f = f.filter(v => (v.stato || 'available') === statusFilter);
     if (query.trim()) {
       const q = query.toLowerCase();
@@ -12957,11 +13029,11 @@ function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, on
         (v.marca || '').toLowerCase().includes(q) ||
         (v.modello || '').toLowerCase().includes(q) ||
         (v.colore || '').toLowerCase().includes(q) ||
-        (getVehicleCategoria(v) || '').toLowerCase().includes(q)
+        (getCat(v) || '').toLowerCase().includes(q)
       );
     }
     return f;
-  }, [fleet, typeFilter, categoriaFilter, statusFilter, query]);
+  }, [fleet, typeFilter, categoriaFilter, statusFilter, query, getCat]);
 
   // Categorie disponibili nel tipo selezionato (solo quelle con almeno 1 veicolo)
   const categorieDisponibili = useMemo(() => {
@@ -12971,9 +13043,9 @@ function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, on
     return cats.map(cat => ({
       id: cat,
       label: CATEGORIA_LABEL[cat] || cat,
-      n: inTipo.filter(v => getVehicleCategoria(v) === cat).length,
+      n: inTipo.filter(v => getCat(v) === cat).length,
     })).filter(c => c.n > 0);
-  }, [fleet, typeFilter]);
+  }, [fleet, typeFilter, getCat]);
 
   const noBiciCount = fleet.filter(v => canonicalTipo(v) !== 'bici').length;
   const filters = [
@@ -13142,7 +13214,7 @@ function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, on
                 </div>
                 <div className="flex flex-wrap gap-1.5 mt-3 text-[11px] items-center">
                   {(() => {
-                    const cat = getVehicleCategoria(v);
+                    const cat = getCat(v);
                     return cat ? (
                       <span className="pill pill-neutral" title="Categoria EDOX" style={{ letterSpacing: '.04em', fontWeight: 700 }}>
                         {CATEGORIA_LABEL[cat] || cat}
@@ -14312,7 +14384,7 @@ function SettingsPage({ operator, operators, cargosConfig, admin, backendStatus,
         </div>
 
         {/* Stato sync */}
-        <div className="grid grid-cols-3 gap-3 mb-4 text-sm">
+        <div className="grid grid-cols-4 gap-3 mb-4 text-sm">
           <div style={{ padding: '10px 12px', background: 'var(--surface-2)', borderRadius: 6 }}>
             <div className="text-xs uppercase tracking-wider mb-1" style={{ color: 'var(--muted)', fontWeight: 700 }}>Stato sync</div>
             <div className="flex items-center gap-2">
@@ -14335,7 +14407,76 @@ function SettingsPage({ operator, operators, cargosConfig, admin, backendStatus,
               {rentmeSync?.lastSync ? new Date(rentmeSync.lastSync).toLocaleString('it-IT', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' }) : '—'}
             </div>
           </div>
+          <div style={{ padding: '10px 12px', background: 'var(--surface-2)', borderRadius: 6 }}>
+            <div className="text-xs uppercase tracking-wider mb-1" style={{ color: 'var(--muted)', fontWeight: 700 }}>Prossimo sync</div>
+            <div style={{ fontWeight: 600, fontSize: 11, fontFamily: 'monospace' }}>
+              {rentmeConfig?.enabled === false || !rentmeSync?.nextSyncAt ? '—'
+                : new Date(rentmeSync.nextSyncAt).toLocaleString('it-IT', { hour: '2-digit', minute: '2-digit' })}
+            </div>
+          </div>
         </div>
+
+        {/* Intervallo auto-sync */}
+        {rentmeConfig?.enabled !== false && admin && (
+          <div className="mb-4">
+            <div className="text-xs uppercase tracking-wider mb-2" style={{ color: 'var(--muted)', fontWeight: 700 }}>
+              Intervallo sincronizzazione automatica
+            </div>
+            <div className="flex gap-2 flex-wrap">
+              {[
+                { mins: 1,  label: '1 min' },
+                { mins: 2,  label: '2 min' },
+                { mins: 5,  label: '5 min' },
+                { mins: 10, label: '10 min' },
+                { mins: 30, label: '30 min' },
+                { mins: 60, label: '1 ora' },
+              ].map(({ mins, label }) => {
+                const active = (rentmeConfig?.autoIntervalMins || 5) === mins;
+                return (
+                  <button
+                    key={mins}
+                    type="button"
+                    onClick={() => {
+                      setRentmeConfig(prev => ({ ...prev, autoIntervalMins: mins }));
+                      pushToast({ tone: 'success', title: 'Intervallo aggiornato', message: `Sync automatico ogni ${label}` });
+                    }}
+                    className={`px-3 py-1.5 rounded text-xs font-semibold border transition-all ${active ? 'btn-primary border-transparent' : 'btn-ghost'}`}
+                    style={{ borderColor: active ? 'transparent' : 'var(--border)' }}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="text-xs mt-1.5" style={{ color: 'var(--muted)' }}>
+              Selezionato: ogni <strong>{rentmeConfig?.autoIntervalMins || 5} min</strong> · il timer si azzera ad ogni cambio
+            </div>
+          </div>
+        )}
+
+        {/* Proxy URL — per il push prenotazioni verso RentMe */}
+        {rentmeConfig?.enabled !== false && admin && (
+          <div className="mb-4">
+            <div className="text-xs uppercase tracking-wider mb-2" style={{ color: 'var(--muted)', fontWeight: 700 }}>
+              Proxy URL per push prenotazioni
+            </div>
+            <input
+              type="text"
+              placeholder={RENTME_PROXY}
+              value={rentmeConfig?.proxyUrl || ''}
+              onChange={e => setRentmeConfig(prev => ({ ...prev, proxyUrl: e.target.value }))}
+              style={{
+                width: '100%', padding: '7px 10px', borderRadius: 6, border: '1px solid var(--border)',
+                fontFamily: 'monospace', fontSize: 12, background: 'var(--surface-2)', color: 'var(--ink)',
+              }}
+            />
+            <div className="text-xs mt-1.5" style={{ color: 'var(--muted)', lineHeight: 1.5 }}>
+              Lascia vuoto per usare il PHP proxy di default (<code>rentme.altervista.org</code>).
+              Per evitare errori CORS, usa il proxy Node.js su Render (es. <code>https://edox-proxy.onrender.com</code>)
+              se è disponibile. Il proxy deve rispondere a <code>/?path=veicoli/add/reservetion</code>.
+            </div>
+          </div>
+        )}
 
         {rentmeConfig?.enabled !== false && (
           <button
