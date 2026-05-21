@@ -6115,6 +6115,202 @@ function calcAvailability(dal, al, rentmeVehicles, prenotazioni, fleet) {
 // │  Quando enabled = false, questa funzione non chiama nulla.     │
 // │  Tutti i dati vivono già in edo:v1:* su Render.                │
 // └─────────────────────────────────────────────────────────────────┘
+// ── Mappa statica RentMe ID → targa reale (da censimento flotta) ─────────────
+// Chiave = codice RentMe intero (es. "panda 81") O solo numero ("81")
+const RENTME_TARGA_MAP = {
+  'c3 119': { targa: 'DZ063EP', modello: 'C3' },
+  '119': { targa: 'DZ063EP', modello: 'C3' },
+  'mehari 130': { targa: 'SV256194', modello: 'MEHARI' },
+  '130': { targa: 'SV256194', modello: 'MEHARI' },
+  'mehari 131': { targa: 'PR292027', modello: 'MEHARI' },
+  '131': { targa: 'PR292027', modello: 'MEHARI' },
+  'mehari 132': { targa: 'VI3397198', modello: 'MEHARI' },
+  '132': { targa: 'VI3397198', modello: 'MEHARI' },
+  'mehari 133': { targa: 'PC210411', modello: 'MEHARI' },
+  '133': { targa: 'PC210411', modello: 'MEHARI' },
+  'mehari 134': { targa: 'TS1922630', modello: 'MEHARI' },
+  '134': { targa: 'TS1922630', modello: 'MEHARI' },
+  'mehari 135': { targa: 'AG253022', modello: 'MEHARI' },
+  '135': { targa: 'AG253022', modello: 'MEHARI' },
+  'mehari 136': { targa: 'AG253021', modello: 'MEHARI' },
+  '136': { targa: 'AG253021', modello: 'MEHARI' },
+  'mehari 137': { targa: 'TOM28765', modello: 'MEHARI' },
+  '137': { targa: 'TOM28765', modello: 'MEHARI' },
+  'mehari 138': { targa: 'FH854KY', modello: 'MEHARI' },
+  '138': { targa: 'FH854KY', modello: 'MEHARI' },
+  'mehari 139': { targa: 'MI35777G', modello: 'MEHARI' },
+  '139': { targa: 'MI35777G', modello: 'MEHARI' },
+  'mehari 140': { targa: 'UD514492', modello: 'MEHARI' },
+  '140': { targa: 'UD514492', modello: 'MEHARI' },
+  'mehari 141': { targa: 'TP342201', modello: 'MEHARI' },
+  '141': { targa: 'TP342201', modello: 'MEHARI' },
+  'mehari 142': { targa: 'AG279352', modello: 'MEHARI' },
+  '142': { targa: 'AG279352', modello: 'MEHARI' },
+  'mehari 143': { targa: 'PV407892', modello: 'DIANE' },
+  '143': { targa: 'PV407892', modello: 'DIANE' },
+  'mehari 144': { targa: 'ROMA10123H', modello: 'MEHARI' },
+  '144': { targa: 'ROMA10123H', modello: 'MEHARI' },
+  'mehari 145': { targa: 'MO484122', modello: 'MEHARI' },
+  '145': { targa: 'MO484122', modello: 'MEHARI' },
+  'mehari 146': { targa: 'BL113579', modello: 'MEHARI' },
+  '146': { targa: 'BL113579', modello: 'MEHARI' },
+  'mehari 147': { targa: 'AX391EK', modello: 'MEHARI' },
+  '147': { targa: 'AX391EK', modello: 'MEHARI' },
+  'mehari 148': { targa: 'LT421661', modello: 'MEHARI' },
+  '148': { targa: 'LT421661', modello: 'MEHARI' },
+  'mehari 149': { targa: 'NAP41156', modello: 'MEHARI' },
+  '149': { targa: 'NAP41156', modello: 'MEHARI' },
+  'mehari 256': { targa: 'TOM97379', modello: 'MEHARI' },
+  '256': { targa: 'TOM97379', modello: 'MEHARI' },
+  'mehari 257': { targa: 'VC567189', modello: 'MEHARI' },
+  '257': { targa: 'VC567189', modello: 'MEHARI' },
+  'mehari 258': { targa: 'MI00033R', modello: 'MEHARI' },
+  '258': { targa: 'MI00033R', modello: 'MEHARI' },
+  'mehari 283': { targa: 'AG214750', modello: 'MEHARI' },
+  '283': { targa: 'AG214750', modello: 'MEHARI' },
+  'mehari 284': { targa: 'CM506JG', modello: 'MEHARI' },
+  '284': { targa: 'CM506JG', modello: 'MEHARI' },
+  'mehari 285': { targa: 'AG340818', modello: 'MEHARI' },
+  '285': { targa: 'AG340818', modello: 'MEHARI' },
+  'mehari 286': { targa: 'CR267214', modello: 'MEHARI' },
+  '286': { targa: 'CR267214', modello: 'MEHARI' },
+  'mehari 287': { targa: 'RML01307', modello: 'MEHARI' },
+  '287': { targa: 'RML01307', modello: 'MEHARI' },
+  'mehari 288': { targa: 'VI272757', modello: 'MEHARI' },
+  '288': { targa: 'VI272757', modello: 'MEHARI' },
+  'mehari 313': { targa: 'PI267354', modello: 'MEHARI' },
+  '313': { targa: 'PI267354', modello: 'MEHARI' },
+  'stepway 279': { targa: 'EM056GE', modello: 'SANDERO' },
+  '279': { targa: 'EM056GE', modello: 'SANDERO' },
+  'panda 100': { targa: 'GA413YP', modello: 'PANDA' },
+  '100': { targa: 'GA413YP', modello: 'PANDA' },
+  'panda 101': { targa: 'CR042MZ', modello: 'PANDA' },
+  '101': { targa: 'CR042MZ', modello: 'PANDA' },
+  'panda 102': { targa: 'DP428KM', modello: 'PANDA' },
+  '102': { targa: 'DP428KM', modello: 'PANDA' },
+  'panda 103': { targa: 'CX124KZ', modello: 'PANDA' },
+  '103': { targa: 'CX124KZ', modello: 'PANDA' },
+  'panda 104': { targa: 'FV485FB', modello: 'PANDA' },
+  '104': { targa: 'FV485FB', modello: 'PANDA' },
+  'panda 105': { targa: 'DG894VJ', modello: 'PANDA' },
+  '105': { targa: 'DG894VJ', modello: 'PANDA' },
+  'panda 106': { targa: 'CX312NY', modello: 'PANDA' },
+  '106': { targa: 'CX312NY', modello: 'PANDA' },
+  'panda 107': { targa: 'DP331AA', modello: 'PANDA' },
+  '107': { targa: 'DP331AA', modello: 'PANDA' },
+  'panda 108': { targa: 'DB391VR', modello: 'PANDA' },
+  '108': { targa: 'DB391VR', modello: 'PANDA' },
+  'panda 109': { targa: 'ED949RX', modello: 'PANDA' },
+  '109': { targa: 'ED949RX', modello: 'PANDA' },
+  'panda 110': { targa: 'DS248VG', modello: 'PANDA' },
+  '110': { targa: 'DS248VG', modello: 'PANDA' },
+  'panda 111': { targa: 'CV464EH', modello: 'PANDA' },
+  '111': { targa: 'CV464EH', modello: 'PANDA' },
+  'panda 112': { targa: 'DE371MM', modello: 'PANDA' },
+  '112': { targa: 'DE371MM', modello: 'PANDA' },
+  'gpunto 113': { targa: 'DT796CM', modello: 'GRANDE PUNTO' },
+  '113': { targa: 'DT796CM', modello: 'GRANDE PUNTO' },
+  'gpunto 114': { targa: 'DF197JW', modello: 'GRANDE PUNTO' },
+  '114': { targa: 'DF197JW', modello: 'GRANDE PUNTO' },
+  '500 116': { targa: 'DY441HX', modello: 'FIAT 500' },
+  '116': { targa: 'DY441HX', modello: 'FIAT 500' },
+  'newpanda 123': { targa: 'EM416AA', modello: 'NEW PANDA' },
+  '123': { targa: 'EM416AA', modello: 'NEW PANDA' },
+  'newpanda 124': { targa: 'FB599WD', modello: 'NEW PANDA' },
+  '124': { targa: 'FB599WD', modello: 'NEW PANDA' },
+  'newpanda 125': { targa: 'EP804YM', modello: 'NEW PANDA' },
+  '125': { targa: 'EP804YM', modello: 'NEW PANDA' },
+  'newpanda 126': { targa: 'EV888PB', modello: 'NEW PANDA' },
+  '126': { targa: 'EV888PB', modello: 'NEW PANDA' },
+  'newpanda 127': { targa: 'FS944BA', modello: 'NEW PANDA' },
+  '127': { targa: 'FS944BA', modello: 'NEW PANDA' },
+  '500 151': { targa: 'GH649LD', modello: '500 CABRIO' },
+  '151': { targa: 'GH649LD', modello: '500 CABRIO' },
+  'multipla 153': { targa: 'BG345SV', modello: 'MULTIPLA' },
+  '153': { targa: 'BG345SV', modello: 'MULTIPLA' },
+  'ulisse 154': { targa: 'CZ241RA', modello: 'ULISSE' },
+  '154': { targa: 'CZ241RA', modello: 'ULISSE' },
+  'panda 277': { targa: 'DZ500KR', modello: 'PANDA AUTO' },
+  '277': { targa: 'DZ500KR', modello: 'PANDA AUTO' },
+  'new panda 278': { targa: 'FM873GS', modello: 'NEW PANDA' },
+  '278': { targa: 'FM873GS', modello: 'NEW PANDA' },
+  'newpanda 280': { targa: 'EM461AA', modello: 'NEW PANDA' },
+  '280': { targa: 'EM461AA', modello: 'NEW PANDA' },
+  'newpanda 281': { targa: 'FY821LW', modello: 'NEW PANDA' },
+  '281': { targa: 'FY821LW', modello: 'NEW PANDA' },
+  'newpanda 282': { targa: 'EX856DA', modello: 'NEW PANDA' },
+  '282': { targa: 'EX856DA', modello: 'NEW PANDA' },
+  'doblo 306': { targa: 'DL923YK', modello: 'DOBLO' },
+  'doblò 306': { targa: 'DL923YK', modello: 'DOBLO' },
+  '306': { targa: 'DL923YK', modello: 'DOBLO' },
+  'panda 81': { targa: 'CY937XX', modello: 'PANDA' },
+  '81': { targa: 'CY937XX', modello: 'PANDA' },
+  'panda 82': { targa: 'DS995DN', modello: 'PANDA' },
+  '82': { targa: 'DS995DN', modello: 'PANDA' },
+  'panda 83': { targa: 'CL890CZ', modello: 'PANDA' },
+  '83': { targa: 'CL890CZ', modello: 'PANDA' },
+  'panda 84': { targa: 'DA014MD', modello: 'PANDA' },
+  '84': { targa: 'DA014MD', modello: 'PANDA' },
+  'panda 85': { targa: 'CN308TV', modello: 'PANDA' },
+  '85': { targa: 'CN308TV', modello: 'PANDA' },
+  'panda 86': { targa: 'CR452BP', modello: 'PANDA' },
+  '86': { targa: 'CR452BP', modello: 'PANDA' },
+  'panda 87': { targa: 'DY669GW', modello: 'PANDA' },
+  '87': { targa: 'DY669GW', modello: 'PANDA' },
+  'panda 88': { targa: 'CP969XS', modello: 'PANDA' },
+  '88': { targa: 'CP969XS', modello: 'PANDA' },
+  'panda 89': { targa: 'CF847GS', modello: 'PANDA' },
+  '89': { targa: 'CF847GS', modello: 'PANDA' },
+  'panda 90': { targa: 'DV274MC', modello: 'PANDA' },
+  '90': { targa: 'DV274MC', modello: 'PANDA' },
+  'panda 91': { targa: 'GH869KA', modello: 'PANDA' },
+  '91': { targa: 'GH869KA', modello: 'PANDA' },
+  'panda 92': { targa: 'DB506ZV', modello: 'PANDA' },
+  '92': { targa: 'DB506ZV', modello: 'PANDA' },
+  'panda 93': { targa: 'CX824KS', modello: 'PANDA' },
+  '93': { targa: 'CX824KS', modello: 'PANDA' },
+  'panda 94': { targa: 'FG705MC', modello: 'PANDA' },
+  '94': { targa: 'FG705MC', modello: 'PANDA' },
+  'panda 95': { targa: 'CW417RM', modello: 'PANDA' },
+  '95': { targa: 'CW417RM', modello: 'PANDA' },
+  'panda 96': { targa: 'DP417KM', modello: 'PANDA' },
+  '96': { targa: 'DP417KM', modello: 'PANDA' },
+  'panda 97': { targa: 'DE474WL', modello: 'PANDA' },
+  '97': { targa: 'DE474WL', modello: 'PANDA' },
+  'panda 98': { targa: 'CV403WW', modello: 'PANDA' },
+  '98': { targa: 'CV403WW', modello: 'PANDA' },
+  'panda 99': { targa: 'DH407YR', modello: 'PANDA' },
+  '99': { targa: 'DH407YR', modello: 'PANDA' },
+  'fiesta 122': { targa: 'CX891TB', modello: 'PANDA' },
+  '122': { targa: 'CX891TB', modello: 'PANDA' },
+  'micra 118': { targa: 'DR856NT', modello: 'MICRA' },
+  '118': { targa: 'DR856NT', modello: 'MICRA' },
+  'corsa 120': { targa: 'DJ507XH', modello: 'CORSA' },
+  '120': { targa: 'DJ507XH', modello: 'CORSA' },
+  'corsa 121': { targa: 'DE530WF', modello: 'CORSA' },
+  '121': { targa: 'DE530WF', modello: 'CORSA' },
+  'smart 129': { targa: 'FL409XV', modello: 'SMART' },
+  '129': { targa: 'FL409XV', modello: 'SMART' },
+  'samurai 150': { targa: 'BZ085ZB', modello: 'SAMURAI' },
+  '150': { targa: 'BZ085ZB', modello: 'SAMURAI' },
+  'rav4 128': { targa: 'CP875NR', modello: 'RAV4' },
+  '128': { targa: 'CP875NR', modello: 'RAV4' },
+  'aygo 315': { targa: 'EJ001VV', modello: 'LANCIA Y' },
+  '315': { targa: 'EJ001VV', modello: 'LANCIA Y' },
+  'golf 115': { targa: 'EH739XT', modello: 'GOLF' },
+  '115': { targa: 'EH739XT', modello: 'GOLF' },
+  'newbeetle 152': { targa: 'CK710JG', modello: 'NEW BEETLE' },
+  '152': { targa: 'CK710JG', modello: 'NEW BEETLE' },
+  'mxu 168': { targa: 'EF82687', modello: 'QUAD' },
+  '168': { targa: 'EF82687', modello: 'QUAD' },
+  'mxu 169': { targa: 'DC06822', modello: 'QUAD' },
+  '169': { targa: 'DC06822', modello: 'QUAD' },
+  'mxu 312': { targa: 'DW08528', modello: 'QUAD' },
+  '312': { targa: 'DW08528', modello: 'QUAD' },
+  'xwolf 311': { targa: 'FS23036', modello: 'QUAD' },
+  '311': { targa: 'FS23036', modello: 'QUAD' },
+};
+
 //
 // Le prenotazioni RentMe vengono mergiate con quelle locali:
 //   - ID prefissato 'rm_' per riconoscerle
@@ -6136,13 +6332,15 @@ function useRentMeSync({ fleet, rentmeVehicles, setRentmeVehicles, setPrenotazio
       const data = await r.json();
       const veicoli = data.listObject || [];
 
-      // Mappa codice RentMe → targa reale (da fleet locale sincronizzata)
-      // RentMe restituisce v.targa = codice interno es. "mehari 130" non la targa reale
+      // Mappa codice RentMe → targa reale
+      // Priorità: 1) mappa statica censimento  2) fleet locale (edit manuale ha precedenza)
       const rentmeToTarga = {};
+      // Seed dalla mappa statica
+      Object.entries(RENTME_TARGA_MAP).forEach(([k, v]) => { rentmeToTarga[k] = v.targa; });
+      // Override con dati flotta locale (modifiche manuali prevalgono)
       (fleet || []).forEach(v => {
         if (v.rentmeId && v.targa) {
           rentmeToTarga[v.rentmeId.toLowerCase().trim()] = v.targa.toUpperCase();
-          // anche solo la parte numerica come fallback: "mehari 130" → "130"
           const num = v.rentmeId.trim().split(' ').pop();
           if (num && !rentmeToTarga[num]) rentmeToTarga[num.toLowerCase()] = v.targa.toUpperCase();
         }
@@ -11298,19 +11496,35 @@ export default function App() {
       pushToast({ tone: 'warning', title: 'EDOX non sincronizzato', message: 'Vai su Impostazioni → sincronizza EDOX prima di importare la flotta' });
       return;
     }
-    const converted = rentmeVehicles.map((v, i) => ({
-      id:          (v.targa || '').trim().toUpperCase() || `rm-${i}`, // targa = vehicleId univoco
-      tipo:        v.tipo || 'auto',
-      marca:       '',
-      modello:     v.nome || v.slug || '',
-      targa:       v.targa || '',
-      colore:      '',
-      stato:       'available',
-      cilindrata:  '',
-      anno:        '',
-      gps:         0,
-      blocco:      0,
-    }));
+    const converted = rentmeVehicles.map((v, i) => {
+      const rmCode = (v.rentmeCode || v.targa || '').trim();
+      const key1   = rmCode.toLowerCase();
+      const key2   = rmCode.split(' ').pop()?.toLowerCase() || '';
+      // Cerca nella mappa statica (chiave intera o solo numero)
+      const mapEntry = RENTME_TARGA_MAP[key1] || RENTME_TARGA_MAP[key2];
+      // Targa: dalla mappa → poi da v.targa se già risolto dal sync → altrimenti vuoto
+      const targaVal  = (mapEntry?.targa || v.targa || '').toUpperCase();
+      // Modello: dalla mappa → altrimenti dal nome RentMe senza prefisso tipo
+      const nomeRaw   = (v.nome || '').trim();
+      const tipoStr   = (v.tipo || '').toLowerCase().trim();
+      const nomeClean = tipoStr && nomeRaw.toLowerCase().startsWith(tipoStr + ' ')
+        ? nomeRaw.slice(tipoStr.length + 1).trim() : nomeRaw;
+      const modelloVal = mapEntry?.modello || nomeClean || v.slug || '';
+      return {
+        id:         (targaVal || rmCode.toUpperCase()) || `rm-${i}`,
+        tipo:       v.tipo || 'auto',
+        marca:      '',
+        modello:    modelloVal,
+        targa:      targaVal,
+        rentmeId:   rmCode,   // codice EDOX originale (es. "panda 81") sempre salvato
+        colore:     '',
+        stato:      'available',
+        cilindrata: '',
+        anno:       '',
+        gps:        0,
+        blocco:     0,
+      };
+    });
     setFleet(converted);
     pushToast({ tone: 'success', title: 'Flotta importata da EDOX', message: `${converted.length} veicoli caricati · flotta precedente sostituita` });
   }, [rentmeVehicles, setFleet, pushToast]);
@@ -12756,8 +12970,12 @@ function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, on
               <div key={v.id} className="card-paper p-5 group relative" style={{ opacity: dimmed ? 0.55 : 1 }}>
                 <div className="flex items-start justify-between mb-3">
                   <div>
-                    <div className="serif text-lg font-medium leading-tight">{v.marca}</div>
-                    <div className="text-sm" style={{ color: 'var(--ink-2)' }}>{v.modello}</div>
+                    <div className="serif text-lg font-medium leading-tight">
+                      {v.marca || v.modello || v.tipo || '—'}
+                    </div>
+                    {v.marca && (
+                      <div className="text-sm" style={{ color: 'var(--ink-2)' }}>{v.modello}</div>
+                    )}
                   </div>
                   <VehicleIcon type={v.tipo} className="w-5 h-5" />
                 </div>
