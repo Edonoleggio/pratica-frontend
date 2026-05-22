@@ -20,10 +20,12 @@ import { CalendarDays, Receipt, BarChart2,
 // Convenzione: x.y.z dove x = major rewrite, y = feature, z = fix.
 // La data accanto aiuta a verificare al volo che il deploy sia andato a buon fine.
 const APP_VERSION = {
-  number: '0.32.1',
-  codename: '8 nuove funzionalità · formula preventivi · admin pw · import clienti',
-  date: '2026-05-21',
+  number: '0.32.2',
+  codename: 'Preventivo → scelta mezzo → RentMe',
+  date: '2026-05-22',
   changelog: [
+    // v0.32.2 — 2026-05-22
+    'Preventivi: click "Prenota" apre modal selezione mezzo specifico (libero/occupato) — poi form prenotazione con vehicleId reale e checkbox RentMe attiva',
     // v0.32.1 — 2026-05-21
     'Conteggio giorni inclusivo: dal 18 al 24 = 7 giorni (non 6) — vale per preventivi, form, report e banco rapido',
     // v0.32.0 — 2026-05-21
@@ -4332,11 +4334,57 @@ function ListinoTable({ filter }) {
 }
 
 // ── PreventiviPage ───────────────────────────────────────────────────
-function PreventiviPage({ setPage, setPrenotazioniPrefill, listino: listinoProps }) {
+function PreventiviPage({ setPage, setPrenotazioniPrefill, listino: listinoProps, fleet, rentmeVehicles, prenotazioni, pushToast }) {
   const listinoCats = listinoProps || LISTINO;
   const today = new Date().toISOString().slice(0, 10);
   const [dal, setDal] = useState(today);
   const [al, setAl]   = useState('');
+  const [vehicleModal, setVehicleModal] = useState(null); // null | { cat, vehicles, totale }
+
+  // Stessa logica di BancoRapido: raccoglie i veicoli di una categoria con stato libero/occupato
+  function getVehiclesForCat(cat) {
+    const allVehicles = [
+      ...(fleet || []).filter(v => v.tipo === cat.tipo || v.targa),
+      ...(rentmeVehicles || []).filter(v => v.nome?.toLowerCase().includes(cat.nome?.toLowerCase().split(' ')[0]?.toLowerCase() || '')),
+    ];
+    const seen = new Set();
+    const merged = [];
+    for (const v of allVehicles) {
+      const id = v.id || v.targa;
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      merged.push(v);
+    }
+    const byTipo = merged.filter(v => {
+      const t = (v.tipo || '').toLowerCase();
+      const ct = (cat.tipo || '').toLowerCase();
+      return t === ct || (t === 'moto' && ct === 'scooter') || (t === 'scooter' && ct === 'moto');
+    });
+    const occupati = new Set(
+      (prenotazioni || [])
+        .filter(p => dal && al && p.dal <= al && p.al >= dal && p.stato !== 'annullata' && p.stato !== 'completata')
+        .map(p => p.vehicleId)
+        .filter(Boolean)
+    );
+    return byTipo.map(v => ({ ...v, libero: !occupati.has(v.id) }));
+  }
+
+  function handleVehicleBook(cat, v, totale) {
+    setVehicleModal(null);
+    if (setPrenotazioniPrefill) {
+      setPrenotazioniPrefill({
+        vehicleId:    v.id,
+        vehicleLabel: v.label || v.targa || v.nome || cat.nome,
+        vehicleTarga: v.targa || v.plate || '',
+        vehicleType:  cat.tipo,
+        dal, al,
+        prezzo: totale,
+        fonte: 'preventivo',
+      });
+    }
+    setPage('prenotazioni');
+    pushToast && pushToast({ tone: 'success', title: '📋 Preventivo → Prenotazione', message: `${v.label || v.targa || cat.nome} · ${dal} → ${al}` });
+  }
   const [filterTipo, setFilterTipo] = useState('tutti');
   const [view, setView] = useState('preventivo'); // 'preventivo' | 'listino'
   const [linkCopiato, setLinkCopiato] = useState(false);
@@ -4379,11 +4427,9 @@ function PreventiviPage({ setPage, setPrenotazioniPrefill, listino: listinoProps
   );
 
   function handlePrenota({ cat, dal, al, totale, giorni }) {
-    // Passa i dati alla pagina Prenotazioni con il form precompilato
-    if (setPrenotazioniPrefill) {
-      setPrenotazioniPrefill({ vehicleLabel: cat.nome, dal, al, prezzo: totale });
-    }
-    setPage('prenotazioni');
+    // Mostra modal selezione veicolo (come BancoRapido) → poi naviga con vehicleId specifico
+    const vehicles = getVehiclesForCat(cat);
+    setVehicleModal({ cat, vehicles, totale });
   }
 
   const btnTipo = (id, label) => (
@@ -4404,6 +4450,7 @@ function PreventiviPage({ setPage, setPrenotazioniPrefill, listino: listinoProps
   );
 
   return (
+    <>
     <div style={{ padding: '28px 32px', maxWidth: 860, margin: '0 auto' }}>
 
       {/* Header */}
@@ -4541,6 +4588,106 @@ function PreventiviPage({ setPage, setPrenotazioniPrefill, listino: listinoProps
         </div>
       )}
     </div>
+
+    {/* Modal selezione veicolo — identico a BancoRapido */}
+    {vehicleModal && (
+      <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.55)', zIndex:1000,
+        display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}
+        onClick={() => setVehicleModal(null)}>
+        <div style={{ background:'var(--bg)', borderRadius:14, width:'100%', maxWidth:480,
+          maxHeight:'80vh', display:'flex', flexDirection:'column', boxShadow:'0 24px 60px rgba(0,0,0,.35)' }}
+          onClick={e => e.stopPropagation()}>
+          {/* Header */}
+          <div style={{ padding:'18px 22px', borderBottom:'1px solid var(--border)', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+            <div>
+              <div style={{ fontFamily:'var(--font-serif)', fontWeight:600, fontSize:17, color:'var(--ink)' }}>
+                {vehicleModal.cat.nome}
+              </div>
+              <div style={{ fontSize:12, color:'var(--muted)', marginTop:2 }}>
+                Scegli il mezzo per la prenotazione · {dal} → {al}
+              </div>
+            </div>
+            <button type="button" onClick={() => setVehicleModal(null)}
+              style={{ background:'none', border:'none', cursor:'pointer', color:'var(--muted)', fontSize:22, lineHeight:1 }}>×</button>
+          </div>
+          {/* Lista veicoli */}
+          <div style={{ overflowY:'auto', flex:1, padding:'10px 14px' }}>
+            {vehicleModal.vehicles.length === 0 && (
+              <div style={{ padding:'32px 20px', textAlign:'center', color:'var(--muted)', fontSize:13 }}>
+                Nessun veicolo trovato in questa categoria.<br/>
+                <button type="button" onClick={() => {
+                  setVehicleModal(null);
+                  if (setPrenotazioniPrefill) setPrenotazioniPrefill({ vehicleType: vehicleModal.cat.tipo, vehicleLabel: vehicleModal.cat.nome, dal, al, prezzo: vehicleModal.totale, fonte: 'preventivo' });
+                  setPage('prenotazioni');
+                }} style={{ marginTop:12, padding:'8px 18px', background:'var(--ink)', color:'var(--paper)', border:'none', borderRadius:6, fontSize:13, cursor:'pointer', fontWeight:600 }}>
+                  Prenota senza mezzo specifico →
+                </button>
+              </div>
+            )}
+            {vehicleModal.vehicles.map(v => {
+              const TIPO_EMOJI = { auto:'🚗', scooter:'🛵', moto:'🛵', quad:'🏎', ebike:'⚡', bici:'🚲' };
+              const emoji = TIPO_EMOJI[v.tipo] || '🚗';
+              const label = v.label || v.nome || v.targa || v.id;
+              const targa = v.targa || v.plate || '';
+              return (
+                <button key={v.id || label} type="button"
+                  onClick={() => v.libero ? handleVehicleBook(vehicleModal.cat, v, vehicleModal.totale) : null}
+                  disabled={!v.libero}
+                  style={{
+                    width:'100%', display:'flex', alignItems:'center', gap:12,
+                    padding:'12px 14px', borderRadius:8, border:'1.5px solid var(--border)',
+                    marginBottom:8, textAlign:'left', cursor: v.libero ? 'pointer' : 'not-allowed',
+                    background: v.libero ? 'var(--bg)' : 'var(--surface-2)',
+                    opacity: v.libero ? 1 : 0.55,
+                    transition: 'border-color 0.15s, box-shadow 0.15s',
+                  }}
+                  onMouseEnter={e => { if (v.libero) { e.currentTarget.style.borderColor='var(--accent)'; e.currentTarget.style.boxShadow='0 2px 10px rgba(0,0,0,.1)'; }}}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor='var(--border)'; e.currentTarget.style.boxShadow=''; }}
+                >
+                  <span style={{ fontSize:24 }}>{emoji}</span>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontWeight:600, fontSize:14, color:'var(--ink)', display:'flex', alignItems:'center', gap:6 }}>
+                      {label}
+                      {targa && targa !== label && (
+                        <span style={{ fontFamily:'monospace', fontSize:11, padding:'1px 6px', background:'var(--surface-2)', borderRadius:4, border:'1px solid var(--border)', color:'var(--ink-2)' }}>
+                          {targa}
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ fontSize:12, color:'var(--muted)', marginTop:2 }}>
+                      {v.tipo ? v.tipo.charAt(0).toUpperCase() + v.tipo.slice(1) : ''}
+                      {v.anno && ` · ${v.anno}`}
+                      {v.colore && ` · ${v.colore}`}
+                    </div>
+                  </div>
+                  <div style={{
+                    fontSize:11, fontWeight:700, padding:'3px 10px', borderRadius:10,
+                    background: v.libero ? '#eafaf1' : '#fdecea',
+                    color: v.libero ? '#1e8449' : '#c0392b',
+                    flexShrink: 0,
+                  }}>
+                    {v.libero ? 'Libero' : 'Occupato'}
+                  </div>
+                  {v.libero && <span style={{ color:'var(--accent)', fontWeight:700, fontSize:16, flexShrink:0 }}>→</span>}
+                </button>
+              );
+            })}
+          </div>
+          {/* Footer */}
+          <div style={{ padding:'12px 22px', borderTop:'1px solid var(--border)' }}>
+            <button type="button" onClick={() => {
+              setVehicleModal(null);
+              if (setPrenotazioniPrefill) setPrenotazioniPrefill({ vehicleType: vehicleModal.cat.tipo, vehicleLabel: vehicleModal.cat.nome, dal, al, prezzo: vehicleModal.totale, fonte: 'preventivo' });
+              setPage('prenotazioni');
+            }} style={{ width:'100%', padding:'9px', borderRadius:7, border:'1px solid var(--border)',
+              background:'transparent', color:'var(--ink-2)', cursor:'pointer', fontSize:13 }}>
+              Prenota senza mezzo specifico
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }
 
@@ -12159,7 +12306,7 @@ export default function App() {
               {page === 'cassa'      && <RegistroCassaPage cassa={cassa} setCassa={setCassa} prenotazioni={prenotazioni} customers={customers} operator={operator} pushToast={pushToast} />}
               {page === 'banco'      && <BancoRapidoPage rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} fleet={fleet} setPage={setPage} setPrenotazioniPrefill={setPrenotazioniPrefill} listino={listino} pushToast={pushToast} rentmeSyncStatus={rentmeSync.status} onRentmeSync={rentmeSync.sync} rentmeLastSync={rentmeSync.lastSync} />}
               {page === 'report'        && <ReportPage prenotazioni={prenotazioni} contracts={localContracts} cassa={cassa} customers={customers} fleet={fleet} operators={operators} pushToast={pushToast} />}
-              {page === 'preventivi'    && <PreventiviPage setPage={setPage} setPrenotazioniPrefill={setPrenotazioniPrefill} listino={listino} />}
+              {page === 'preventivi'    && <PreventiviPage setPage={setPage} setPrenotazioniPrefill={setPrenotazioniPrefill} listino={listino} fleet={fleet} rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} pushToast={pushToast} />}
               {page === 'prenotazioni' && <PrenotazioniPage prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} setCassa={setCassa} fleet={fleet} rentmeVehicles={rentmeVehicles} customers={customers} operator={operator} onOpenWizard={openWizard} pushToast={pushToast} prefill={prenotazioniPrefill} onClearPrefill={() => setPrenotazioniPrefill(null)} fermiFlotta={fermiFlotta} rentmePush={rentmeSync.pushBooking} rentmeConnected={rentmeSync.status === 'ok'} />}
               {page === 'contracts'  && <ContractsList contracts={localContracts} operators={operators} onRetry={retryContract} onMarkReturned={markContractReturned} online={online} />}
               {page === 'fleet'      && <FleetPage fleet={fleet} prenotazioni={prenotazioni} admin={admin} onAddVehicle={() => setModal('newVehicle')} onEditVehicle={(v) => setModal({ type: 'editVehicle', vehicle: v })} onDeleteVehicle={requestDeleteVehicle} onImportCSV={() => setShowCsvImport(true)} scadenze={scadenze} setScadenze={setScadenze} fermiFlotta={fermiFlotta} setFermiFlotta={setFermiFlotta} rentmeVehicles={rentmeVehicles} />}
