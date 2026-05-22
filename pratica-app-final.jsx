@@ -3047,7 +3047,7 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rent
           prefillValues={form?.id === '__new__' ? form : null}
           fermiFlotta={fermiFlotta}
           rentmeConnected={rentmeConnected}
-              savePendingBooking={savePendingBooking}
+              savePendingBooking={rentmePush ? undefined : undefined}
           onSave={form === 'new' || form?.id === '__new__' ? createPreno : updatePreno}
           onClose={() => setForm(null)}
         />
