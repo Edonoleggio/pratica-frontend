@@ -1837,6 +1837,18 @@ function PrenoCard({ p, onEdit, onConvert, onDelete, onFoto, onContratto, onFirm
             📱 WA Conferma
           </button>
         )}
+        {p.stato === 'confermata' && rentmePush && (
+          <button type="button" onClick={() => {
+            const rmVeh = (rentmeVehicles || []).find(v => v.targa === p.vehicleId);
+            rentmePush(p, rmVeh?.slug || p.vehicleType || 'auto')
+              .then(() => pushToast && pushToast({ tone: 'success', title: '✅ Inviato a RentMe' }))
+              .catch(err => pushToast && pushToast({ tone: 'warning', title: 'RentMe fallito', message: err.message }));
+          }}
+            style={{ fontSize: 11, padding: '4px 10px', borderRadius: 4, border: '1px solid #6a3d8f',
+              background: 'transparent', color: '#6a3d8f', cursor: 'pointer', fontWeight: 600 }}>
+            🔄 Invia a RentMe
+          </button>
+        )}
         
         {(p.stato === 'completata' || p.stato === 'annullata') && onRicrea && (
           <button type="button" onClick={() => onRicrea(p)}
