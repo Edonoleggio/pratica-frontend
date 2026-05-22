@@ -1596,7 +1596,7 @@ function PrenoStatPill({ stato }) {
 }
 
 // ── PrenoCard ────────────────────────────────────────────────────────
-function PrenoCard({ p, onEdit, onConvert, onDelete, onFoto, onContratto, onFirma, onSaldo, onDeposito, onRientro, onRiconsegna, onProroga, onSostituzione, onConsegna, onRicrea, onWaConferma, onSaldoRapido }) {
+function PrenoCard({ p, onEdit, onConvert, onDelete, onFoto, onContratto, onFirma, onSaldo, onDeposito, onRientro, onRiconsegna, onProroga, onSostituzione, onConsegna, onRicrea, onWaConferma, rentmePush, rentmeVehicles, pushToast }) {
   const giorni = daysDiff(p.dal, p.al);
   const [saldoRapidoOpen, setSaldoRapidoOpen] = useState(false);
   const sp = statoPagamento(p);
