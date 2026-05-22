@@ -3047,6 +3047,7 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rent
           prefillValues={form?.id === '__new__' ? form : null}
           fermiFlotta={fermiFlotta}
           rentmeConnected={rentmeConnected}
+              savePendingBooking={savePendingBooking}
           onSave={form === 'new' || form?.id === '__new__' ? createPreno : updatePreno}
           onClose={() => setForm(null)}
         />
@@ -6912,7 +6913,36 @@ function useRentMeSync({ fleet, rentmeVehicles, setRentmeVehicles, setPrenotazio
     return r.json();
   }, [rentmeVehicles, proxyUrl]);
 
-  return { status, lastSync, nextSyncAt, errorMsg, sync, pushBooking };
+  // ─── Coda retry prenotazioni fallite ───
+  const RETRY_KEY = 'rentme_pending_queue';
+
+  const savePendingBooking = (booking, slug) => {
+    const queue = JSON.parse(localStorage.getItem(RETRY_KEY) || '[]');
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    queue.push({ id, booking, slug, attempts: 0, savedAt: new Date().toISOString() });
+    localStorage.setItem(RETRY_KEY, JSON.stringify(queue));
+  };
+
+  const retryPendingBookings = useCallback(async () => {
+    const queue = JSON.parse(localStorage.getItem(RETRY_KEY) || '[]');
+    if (!queue.length) return;
+    const remaining = [];
+    for (const item of queue) {
+      try {
+        await pushBooking(item.booking, item.slug);
+      } catch {
+        if (item.attempts < 5) remaining.push({ ...item, attempts: item.attempts + 1 });
+      }
+    }
+    localStorage.setItem(RETRY_KEY, JSON.stringify(remaining));
+  }, [pushBooking]);
+
+  // Riprova al mount e ogni sync
+  useEffect(() => {
+    retryPendingBookings();
+  }, [retryPendingBookings]);
+
+  return { status, lastSync, nextSyncAt, errorMsg, sync, pushBooking, savePendingBooking, retryPendingBookings };
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -9672,7 +9702,7 @@ function FirmaModal({ preno, onSave, onClose }) {
 
 function OggiPage({ prenotazioni, fleet, scadenze, customers, setPage, rentmeVehicles, setPrenotazioniPrefill, pushToast,
   // Walk-in inline: se passati, il form si apre direttamente nella pagina
-  setPrenotazioni, operator, fermiFlotta, rentmePush, rentmeConnected }) {
+  otazioni, operator, fermiFlotta, rentmePush, rentmeConnected, savePendingBooking }) {
   const [now, setNow] = useState(() => new Date());
 
   // Orologio live — aggiorna ogni minuto
@@ -11587,7 +11617,7 @@ function KioskView({ prenotazioni, setPrenotazioni, fleet, rentmeVehicles, scade
           fermiFlotta={fermiFlotta}
           rentmePush={rentmePush}
           rentmeConnected={rentmeConnected}
-        />
+savePendingBooking={undefined}        />
       </div>
     </div>
   );
