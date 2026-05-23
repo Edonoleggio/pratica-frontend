@@ -12,6 +12,7 @@ import { CalendarDays, Receipt, BarChart2,
   Upload, Image as ImageIcon, RefreshCw, Key, Eye as EyeIcon, EyeOff,
   CircleDot, Power, Shield, Briefcase, Zap, Package
 } from 'lucide-react';
+import Tesseract from 'tesseract.js';
 
 // ═══════════════════════════════════════════════════════════════════
 // APP VERSION — visualizzata in Impostazioni
@@ -17288,12 +17289,34 @@ function PlateScanModal({ fleet, onClose }) {
       setStage('notfound');
     }
   };
+const [ocrRunning, setOcrRunning] = useState(false);
+
+  const runOcr = async (dataUrl) => {
+    setOcrRunning(true);
+    try {
+      const result = await Tesseract.recognize(dataUrl, 'eng', {
+        tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789',
+      });
+      const text = result.data.text
+        .toUpperCase()
+        .replace(/[^A-Z0-9]/g, '')
+        .trim();
+      if (text.length >= 5) {
+        setPlateInput(text.slice(0, 8));
+      }
+    } catch (e) {
+      // OCR fallito, inserimento manuale
+    } finally {
+      setOcrRunning(false);
+    }
+  };
 
   const handleCapture = () => {
     const dataUrl = capture();
     if (dataUrl) {
       setSnapshot(dataUrl);
       setStage('review');
+      runOcr(dataUrl);
     }
   };
 
@@ -17301,10 +17324,13 @@ function PlateScanModal({ fleet, onClose }) {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = (e) => {
-      setSnapshot(e.target?.result);
+      const dataUrl = e.target?.result;
+      setSnapshot(dataUrl);
       setStage('review');
+      runOcr(dataUrl);
     };
     reader.readAsDataURL(file);
+  };
   };
 
   return (
@@ -17396,7 +17422,7 @@ function PlateScanModal({ fleet, onClose }) {
           <img src={snapshot} alt="Foto targa" className="w-full rounded mb-3" style={{ maxHeight: 280, objectFit: 'contain', background: '#000' }} />
           <div className="text-xs mb-2" style={{ color: 'var(--muted)' }}>
             <Info className="w-3 h-3 inline mr-1" />
-            In produzione: OCR locale (Tesseract.js o ML Kit) leggerà la targa. Per ora inserisci la targa manualmente:
+            {ocrRunning ? '🔍 Lettura targa in corso...' : 'Verifica o correggi la targa:'}
           </div>
           <input
             type="text"
