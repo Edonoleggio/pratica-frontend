@@ -17331,8 +17331,6 @@ const [ocrRunning, setOcrRunning] = useState(false);
     };
     reader.readAsDataURL(file);
   };
-  };
-
   return (
     <ModalShell
       id="plate-scan-title"
