@@ -17511,7 +17511,6 @@ const [ocrRunning, setOcrRunning] = useState(false);
       )}
     </ModalShell>
   );
-}
 
 // ═══════════════════════════════════════════════════════════════════
 // MODAL: SHIFT CHANGE
