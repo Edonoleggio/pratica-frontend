@@ -11,7 +11,7 @@ import { CalendarDays, Receipt, BarChart2,
   Hotel, Anchor, Plane, Wallet, Printer, Save, Mail, Home, Compass,
   Upload, Image as ImageIcon, RefreshCw, Key, Eye as EyeIcon, EyeOff,
   CircleDot, Power, Shield, Briefcase, Zap, Package
-} from 'lucide-react';
+} from 'lucide-react'; import Tesseract from 'tesseract.js';
 import Tesseract from 'tesseract.js';
 
 // ═══════════════════════════════════════════════════════════════════
