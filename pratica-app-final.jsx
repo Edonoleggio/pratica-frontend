@@ -21,10 +21,24 @@ import Tesseract from 'tesseract.js';
 // Convenzione: x.y.z dove x = major rewrite, y = feature, z = fix.
 // La data accanto aiuta a verificare al volo che il deploy sia andato a buon fine.
 const APP_VERSION = {
-  number: '0.38.0',
+  number: '0.39.1',
   codename: 'Pagamenti, notifiche push, statistiche veicolo, manutenzioni, YoY, Drive',
-  date: '2026-05-24',
+  date: '2026-05-25',
   changelog: [
+    // v0.39.1 — 2026-05-25
+    'Fix preventivi: rincaro +€5/g ora si applica SOLO per soggiorni < 7 giorni — per 7+ giorni si usa tariffa settimanale/7 senza maggiorazione (bici/ebike e agosto sempre esclusi)',
+    // v0.39.0 — 2026-05-25
+    'Oggi: nuova sezione "Rientrano domani 📲" con bottone WhatsApp per ogni prenotazione in scadenza — messaggio pre-compilato con nome cliente, mezzo e data rientro',
+    'Oggi: KPI strip aggiornata da 4 a 5 card — aggiunta "Rientri dom." in verde accanto alle consegne domani',
+    'Oggi: dashboard operativa "Situazione flotta ora 🚦" — card per tipo veicolo con contatori liberi/in noleggio/in manutenzione e barra disponibilità colorata',
+    'Fluidità: transizioni CSS universali su tutti i bottoni dell\'app (background, transform, opacity) — nessun bottone è più istantaneo',
+    'Fluidità: animazione fadeIn al cambio pagina — navigazione tra sezioni più naturale',
+    'Fluidità: animazione fadeIn+slideUp a tutti i 19 modal overlay — apertura modale fluida',
+    'Fluidità: hover walk-in da JS a CSS puro — più performante, nessun re-render',
+    'Fluidità: scroll-to-top automatico ad ogni cambio pagina',
+    'Fluidità: selezione testo coerente con il brand (accent-soft), tap-highlight rimosso su mobile',
+    'Preventivi: badge disponibilità per categoria (liberi/totali) con colore semaforo nelle schede preventivo',
+    'Calendario: nome prenotazione mostrato una volta sola sulla prima cella visibile, si estende sulle celle seguenti senza ripetersi',
     // v0.38.0 — 2026-05-24
     'Pagamento bonifico + PayPal: IBAN/BIC/PayPal.me configurabili in Anagrafica agenzia → sezione Pagamenti',
     'Pagamento: bottone "💳 Paga" nella PrenoCard genera messaggio WA con dati bancari/link PayPal — visibile solo se IBAN o PayPal configurati e residuo > 0',
@@ -2507,8 +2521,8 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
   const lbl = { display: 'block', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--ink-2)', marginBottom: 4 };
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 9000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-      <div style={{ background: 'var(--bg)', borderRadius: 10, width: '100%', maxWidth: 520, maxHeight: '90vh', overflowY: 'auto', padding: 24 }}>
+    <div className="modal-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 9000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+      <div className="modal-box" style={{ background: 'var(--bg)', borderRadius: 10, width: '100%', maxWidth: 520, maxHeight: '90vh', overflowY: 'auto', padding: 24 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
           <h2 style={{ margin: 0, fontSize: 18, fontFamily: 'var(--font-serif)', fontWeight: 600 }}>
             {initial ? 'Modifica prenotazione' : 'Nuova prenotazione'}
@@ -3108,34 +3122,41 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rent
     return `${base}?text=${encodeURIComponent(testo)}`;
   }
 
-  // Filtri e ordinamento
+  // Filtri e ordinamento — memoizzati per evitare ricalcolo ad ogni render
   const today = todayISO();
-  const filtered = (prenotazioni || [])
-    .filter(p => {
-      if (filterStato !== 'tutti' && p.stato !== filterStato) return false;
-      if (search) {
-        const q = search.toLowerCase();
-        const hay = `${p.clienteNome} ${p.clienteCognome} ${p.clienteTel} ${p.vehicleLabel} ${p.note}`.toLowerCase();
-        if (!hay.includes(q)) return false;
-      }
-      if (filterDal && p.dal && p.dal < filterDal) return false;
-      if (filterAl  && p.al  && p.al  > filterAl)  return false;
-      if (filterTipo && p.vehicleType !== filterTipo) return false;
-      return true;
-    })
-    .sort((a, b) => {
-      const da = a.dal || '9999', db = b.dal || '9999';
-      return sortDir === 'asc' ? da.localeCompare(db) : db.localeCompare(da);
-    });
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return (prenotazioni || [])
+      .filter(p => {
+        if (filterStato !== 'tutti' && p.stato !== filterStato) return false;
+        if (q) {
+          const hay = `${p.clienteNome} ${p.clienteCognome} ${p.clienteTel} ${p.vehicleLabel} ${p.note} ${p.codice || ''}`.toLowerCase();
+          if (!hay.includes(q)) return false;
+        }
+        if (filterDal && p.dal && p.dal < filterDal) return false;
+        if (filterAl  && p.al  && p.al  > filterAl)  return false;
+        if (filterTipo && p.vehicleType !== filterTipo) return false;
+        return true;
+      })
+      .sort((a, b) => {
+        const da = a.dal || '9999', db = b.dal || '9999';
+        return sortDir === 'asc' ? da.localeCompare(db) : db.localeCompare(da);
+      });
+  }, [prenotazioni, filterStato, search, filterDal, filterAl, filterTipo, sortDir]);
 
   // Paginazione — reset pagina quando cambiano i filtri
   useEffect(() => { setPrePage(1); }, [search, filterStato, filterDal, filterAl, filterTipo]);
-  const paginated = filtered.slice((prePage - 1) * PAGE_SIZE, prePage * PAGE_SIZE);
+  const paginated = useMemo(
+    () => filtered.slice((prePage - 1) * PAGE_SIZE, prePage * PAGE_SIZE),
+    [filtered, prePage]
+  );
 
-  // KPI veloci
-  const attive = (prenotazioni || []).filter(p => p.stato === 'confermata' || p.stato === 'in_corso').length;
-  const inAttesa = (prenotazioni || []).filter(p => p.stato === 'attesa').length;
-  const oggi = (prenotazioni || []).filter(p => p.dal === today || p.al === today).length;
+  // KPI veloci — memoizzati separatamente (dipendono solo da prenotazioni + today)
+  const { attive, inAttesa, oggi } = useMemo(() => ({
+    attive:    (prenotazioni || []).filter(p => p.stato === 'confermata' || p.stato === 'in_corso').length,
+    inAttesa:  (prenotazioni || []).filter(p => p.stato === 'attesa').length,
+    oggi:      (prenotazioni || []).filter(p => p.dal === today || p.al === today).length,
+  }), [prenotazioni, today]);
 
   const btnFilter = (stato, label) => (
     <button type="button"
@@ -3610,9 +3631,9 @@ function SostituzioneModal({ preno, prenotazioni, fleet, rentmeVehicles, onConfi
     : 0;
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 700,
+    <div className="modal-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 700,
       display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-      <div style={{ background: 'var(--bg)', borderRadius: 12, padding: '24px 28px',
+      <div className="modal-box" style={{ background: 'var(--bg)', borderRadius: 12, padding: '24px 28px',
         maxWidth: 500, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,.3)',
         border: '2px solid #c85050', maxHeight: '90vh', overflowY: 'auto' }}>
 
@@ -3881,10 +3902,10 @@ function ConsegnaModal({ preno, prenotazioni, fleet, rentmeVehicles, onConfirm, 
   }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 700,
+    <div className="modal-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 700,
       display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}
       onClick={onClose}>
-      <div style={{ background: 'var(--bg)', borderRadius: 12, width: '100%', maxWidth: 640,
+      <div className="modal-box" style={{ background: 'var(--bg)', borderRadius: 12, width: '100%', maxWidth: 640,
         maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 24px 72px rgba(0,0,0,.3)' }}
         onClick={e => e.stopPropagation()}>
 
@@ -4150,8 +4171,8 @@ function RiconsegnaModal({ preno, onConfirm, onClose }) {
   };
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }}>
-      <div style={{ background: 'var(--surface)', borderRadius: 12, padding: 28, width: '100%', maxWidth: 520, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 8px 40px rgba(0,0,0,.18)' }}>
+    <div className="modal-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }}>
+      <div className="modal-box" style={{ background: 'var(--surface)', borderRadius: 12, padding: 28, width: '100%', maxWidth: 520, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 8px 40px rgba(0,0,0,.18)' }}>
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20 }}>
           <div>
@@ -4270,7 +4291,7 @@ function ProrogaModal({ preno, onConfirm, onClose }) {
   nuovaFine.setDate(nuovaFine.getDate() + giorni);
   const nuovaFineISO = nuovaFine.toISOString().slice(0, 10);
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 600,
+    <div className="modal-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 600,
       display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div style={{ background: 'var(--bg)', borderRadius: 10, padding: '28px 32px',
         width: 380, boxShadow: '0 20px 60px rgba(0,0,0,.25)' }}>
@@ -4408,24 +4429,46 @@ function calcPreventivo(cat, dal, al) {
     totale = Math.round(giorni * effectiveDailyAgo);
     righe.push({ desc: `${giorni} giorno${giorni > 1 ? 'i' : ''} × €${effectiveDailyAgo.toFixed(2)}/g`, sub: totale });
   } else {
-    // Formula fuori agosto: (tariffa settimanale / 7 + 5) × giorni  [bici: senza +5]
-    const effectiveDaily = isBici ? Math.ceil(rates.weekly / 7) : Math.ceil(rates.weekly / 7 + 5);
+    // Rincaro +€5/g solo per soggiorni < 7 giorni (esclusi bici/ebike e agosto)
+    const conRincaro = !isBici && giorni < 7;
+    const effectiveDaily = conRincaro
+      ? Math.ceil(rates.weekly / 7 + 5)
+      : Math.ceil(rates.weekly / 7);
     totale = giorni * effectiveDaily;
     righe.push({ desc: `${giorni} giorno${giorni > 1 ? 'i' : ''} × €${effectiveDaily}/g`, sub: totale });
   }
 
+  const conRincaroFinal = !isBici && !agosto && giorni < 7;
   const effectiveDailyReturn = agosto
     ? Math.round(rates.weekly / 7 * 100) / 100
-    : (isBici ? Math.ceil(rates.weekly / 7) : Math.ceil(rates.weekly / 7 + 5));
-  return { totale, righe, risparmio, giorni, season, agosto, rates, effectiveDaily: effectiveDailyReturn, isBici };
+    : conRincaroFinal ? Math.ceil(rates.weekly / 7 + 5) : Math.ceil(rates.weekly / 7);
+  return { totale, righe, risparmio, giorni, season, agosto, rates, effectiveDaily: effectiveDailyReturn, isBici, conRincaro: conRincaroFinal };
 }
 
 // ── QuoteCard — singola categoria con prezzo calcolato ───────────────
-function QuoteCard({ cat, dal, al, onPrenota }) {
+function QuoteCard({ cat, dal, al, onPrenota, fleet, prenotazioni }) {
   const [open, setOpen] = useState(false);
   const [lang, setLang] = useState('it');
   // Codice univoco generato una volta per questo preventivo — segue fino alla prenotazione
   const [bookingCode] = useState(() => generateBookingCode());
+
+  // Mini disponibilità per le date selezionate
+  const disponibilita = useMemo(() => {
+    if (!dal || !al || !fleet || !fleet.length) return null;
+    const stessoTipo = fleet.filter(v => {
+      const t = (v.tipo || '').toLowerCase();
+      const ct = (cat.tipo || '').toLowerCase();
+      return t === ct || (t === 'moto' && ct === 'scooter') || (t === 'scooter' && ct === 'moto');
+    });
+    if (!stessoTipo.length) return null;
+    const occupati = new Set(
+      (prenotazioni || [])
+        .filter(p => p.dal <= al && p.al >= dal && p.stato !== 'annullata' && p.stato !== 'completata')
+        .map(p => p.vehicleId).filter(Boolean)
+    );
+    const liberi = stessoTipo.filter(v => !occupati.has(v.id)).length;
+    return { liberi, totale: stessoTipo.length };
+  }, [fleet, prenotazioni, dal, al, cat.tipo]);
   // Modal dati cliente prima di generare il PDF
   const [showClienteModal, setShowClienteModal] = useState(false);
   const [clientePdf, setClientePdf] = useState({ nome: '', tel: '', email: '', note: '' });
@@ -4460,18 +4503,41 @@ function QuoteCard({ cat, dal, al, onPrenota }) {
       >
         <div style={{ flex: 1 }}>
           <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--ink)' }}>{cat.nome}</div>
-          <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
+          <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '0 6px' }}>
             <span style={{
               padding: '1px 7px', borderRadius: 10, fontSize: 10, fontWeight: 700,
-              color: seas.color, background: seas.bg, marginRight: 6,
+              color: seas.color, background: seas.bg,
             }}>{seas.label}</span>
-            {q.agosto && <span style={{ color: '#c14a2b', fontWeight: 600 }}>Regola agosto · </span>}
-            {!q.agosto && q.effectiveDaily && q.effectiveDaily !== q.rates.daily && (
-              <span style={{ color: '#b87333', fontWeight: 600 }}>€{q.effectiveDaily}/g </span>
+            <span>
+              {q.agosto && <span style={{ color: '#c14a2b', fontWeight: 600 }}>Regola agosto · </span>}
+              {!q.agosto && q.effectiveDaily && q.effectiveDaily !== q.rates.daily && (
+                <span style={{ color: '#b87333', fontWeight: 600 }}>€{q.effectiveDaily}/g </span>
+              )}
+              {!q.agosto && (!q.effectiveDaily || q.effectiveDaily === q.rates.daily) && `€${q.rates.daily}/g `}
+              · €{q.rates.weekly}/sett
+              {q.conRincaro && <span style={{ color: 'var(--muted)', marginLeft: 4, fontSize: 9 }}>(+€5/g rincaro)</span>}
+            </span>
+            {/* Mini disponibilità — visibile solo se le date sono impostate e ci sono mezzi in flotta */}
+            {disponibilita && (
+              <span style={{
+                fontSize: 10, fontWeight: 600,
+                color: disponibilita.liberi === 0 ? '#c0392b'
+                     : disponibilita.liberi === 1 ? '#e67e22'
+                     : '#27ae60',
+              }}>
+                {'· '}
+                <span style={{
+                  display: 'inline-block', width: 6, height: 6, borderRadius: '50%', marginRight: 3,
+                  background: disponibilita.liberi === 0 ? '#c0392b'
+                            : disponibilita.liberi === 1 ? '#e67e22'
+                            : '#27ae60',
+                  verticalAlign: 'middle', marginBottom: 1,
+                }} />
+                {disponibilita.liberi === 0
+                  ? 'nessuno libero'
+                  : `${disponibilita.liberi} di ${disponibilita.totale} liber${disponibilita.liberi === 1 ? 'o' : 'i'}`}
+              </span>
             )}
-            {!q.agosto && (!q.effectiveDaily || q.effectiveDaily === q.rates.daily) && `€${q.rates.daily}/g `}
-            · €{q.rates.weekly}/sett
-            {!q.agosto && !q.isBici && <span style={{ color: 'var(--muted)', marginLeft: 4, fontSize: 9 }}>(+€5/g rincaro)</span>}
           </div>
         </div>
 
@@ -4639,7 +4705,7 @@ function QuoteCard({ cat, dal, al, onPrenota }) {
 
       {/* ── Modal dati cliente per PDF ──────────────────────────────── */}
       {showClienteModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        <div className="modal-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
           onClick={() => setShowClienteModal(false)}>
           <div style={{ background: 'var(--bg)', borderRadius: 12, padding: '24px 28px', width: 380, boxShadow: '0 24px 60px rgba(0,0,0,.3)' }}
             onClick={e => e.stopPropagation()}>
@@ -5012,7 +5078,7 @@ function PreventiviPage({ setPage, setPrenotazioniPrefill, listino: listinoProps
       ) : giorni > 0 ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {categorieVisibili.map(cat => (
-            <QuoteCard key={cat.id} cat={cat} dal={dal} al={al} onPrenota={handlePrenota} />
+            <QuoteCard key={cat.id} cat={cat} dal={dal} al={al} onPrenota={handlePrenota} fleet={fleet} prenotazioni={prenotazioni} />
           ))}
         </div>
       ) : (
@@ -7715,14 +7781,13 @@ function BancoRapidoPage({ rentmeVehicles, prenotazioni, fleet, setPage, setPren
                 type="button"
                 onClick={() => handleSelect(cat)}
                 disabled={cat.free <= 0}
+                className="walk-in-btn"
                 style={{
                   background: c.bg, border: `1.5px solid ${c.border}`, borderRadius: 10,
                   padding: '16px 18px', textAlign: 'left', cursor: cat.free > 0 ? 'pointer' : 'not-allowed',
-                  transition: 'transform 0.1s, box-shadow 0.1s', position: 'relative', overflow: 'hidden',
+                  position: 'relative', overflow: 'hidden',
                   opacity: cat.free <= 0 ? 0.75 : 1,
                 }}
-                onMouseEnter={e => { if (cat.free > 0) { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 6px 18px rgba(0,0,0,.12)'; }}}
-                onMouseLeave={e => { e.currentTarget.style.transform = ''; e.currentTarget.style.boxShadow = ''; }}
               >
                 <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: c.text, marginBottom: 6 }}>
                   {c.label}
@@ -8231,8 +8296,8 @@ function FleetCSVImport({ fleet, onImport, onClose }) {
   };
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 600, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ background: 'var(--bg)', borderRadius: 10, padding: '28px 32px', width: 560, maxWidth: '95vw', maxHeight: '80vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,.25)' }}>
+    <div className="modal-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 600, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div className="modal-box" style={{ background: 'var(--bg)', borderRadius: 10, padding: '28px 32px', width: 560, maxWidth: '95vw', maxHeight: '80vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,.25)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
           <div>
             <h2 style={{ margin: 0, fontSize: 18, fontFamily: 'var(--font-serif)', fontWeight: 600 }}>Import flotta CSV</h2>
@@ -8418,8 +8483,8 @@ function CassaFormModal({ onSave, onClose, prenotazioni, customers, operator }) 
   const fieldStyle = { marginBottom: 14 };
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ background: 'var(--bg)', borderRadius: 10, padding: '28px 32px', width: 480, maxWidth: '95vw', boxShadow: '0 20px 60px rgba(0,0,0,.25)' }}>
+    <div className="modal-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div className="modal-box" style={{ background: 'var(--bg)', borderRadius: 10, padding: '28px 32px', width: 480, maxWidth: '95vw', boxShadow: '0 20px 60px rgba(0,0,0,.25)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
           <h2 style={{ margin: 0, fontSize: 18, fontFamily: 'var(--font-serif)', fontWeight: 600 }}>Nuovo incasso</h2>
           <button type="button" onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', fontSize: 20 }}>×</button>
@@ -8531,7 +8596,7 @@ function ChiusuraGiornalieraModal({ cassa, initialDate, onClose }) {
 
   return (
     <div className="edo-chiusura-modal" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 1000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 20px', overflowY: 'auto' }}>
-      <div style={{ background: 'var(--bg)', borderRadius: 10, width: '100%', maxWidth: 520, padding: '28px 30px', boxShadow: '0 8px 40px rgba(0,0,0,.22)' }}>
+      <div className="modal-box" style={{ background: 'var(--bg)', borderRadius: 10, width: '100%', maxWidth: 520, padding: '28px 30px', boxShadow: '0 8px 40px rgba(0,0,0,.22)' }}>
 
         {/* Intestazione */}
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 18 }}>
@@ -8893,7 +8958,7 @@ function ClienteStoricoPanel({ cliente, prenotazioni, contracts, onClose }) {
   };
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 700, display: 'flex', alignItems: 'flex-start', justifyContent: 'flex-end' }}>
+    <div className="modal-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 700, display: 'flex', alignItems: 'flex-start', justifyContent: 'flex-end' }}>
       <div style={{ background: 'var(--bg)', width: 480, maxWidth: '95vw', height: '100vh', overflow: 'auto', boxShadow: '-8px 0 40px rgba(0,0,0,.2)', padding: '28px 28px' }}>
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
@@ -9058,8 +9123,8 @@ function ScadenzeModal({ vehicle, scadenze, onSave, onClose }) {
   const inputStyle = { width: '100%', padding: '7px 10px', border: '1px solid var(--border)', borderRadius: 5, fontSize: 13, background: 'var(--bg)', color: 'var(--ink)', fontFamily: 'var(--font-sans)', boxSizing: 'border-box' };
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ background: 'var(--bg)', borderRadius: 10, padding: '28px 32px', width: 520, maxWidth: '95vw', maxHeight: '90vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,.25)' }}>
+    <div className="modal-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div className="modal-box" style={{ background: 'var(--bg)', borderRadius: 10, padding: '28px 32px', width: 520, maxWidth: '95vw', maxHeight: '90vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,.25)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
           <div>
             <h2 style={{ margin: 0, fontSize: 18, fontFamily: 'var(--font-serif)', fontWeight: 600 }}>Scadenze mezzo</h2>
@@ -9508,8 +9573,8 @@ function ImportStoricoModal({ existingPreno, existingCustomers, onImport, onClos
   const inputS = { padding: '4px 8px', border: '1px solid var(--border)', borderRadius: 4, fontSize: 12, background: 'var(--bg)', color: 'var(--ink)' };
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 900, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-      <div style={{ background: 'var(--bg)', borderRadius: 10, padding: '24px 28px', width: 740, maxWidth: '100%', maxHeight: '90vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,.25)' }}>
+    <div className="modal-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 900, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div className="modal-box" style={{ background: 'var(--bg)', borderRadius: 10, padding: '24px 28px', width: 740, maxWidth: '100%', maxHeight: '90vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,.25)' }}>
 
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
@@ -9781,8 +9846,8 @@ function FotoModal({ prenotazione, onSave, onClose }) {
   };
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 900, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-      <div style={{ background: 'var(--bg)', borderRadius: 10, padding: '24px 28px', width: 620, maxWidth: '100%', maxHeight: '90vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,.25)' }}>
+    <div className="modal-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 900, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div className="modal-box" style={{ background: 'var(--bg)', borderRadius: 10, padding: '24px 28px', width: 620, maxWidth: '100%', maxHeight: '90vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,.25)' }}>
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
           <div>
@@ -9833,7 +9898,7 @@ function FotoModal({ prenotazione, onSave, onClose }) {
 
       {/* Lightbox */}
       {preview && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.85)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        <div className="modal-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.85)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
           onClick={() => setPreview(null)}>
           <img src={preview.src} alt="preview" style={{ maxWidth: '90vw', maxHeight: '90vh', borderRadius: 8, boxShadow: '0 0 40px rgba(0,0,0,.5)' }} />
           <button type="button" onClick={() => setPreview(null)}
@@ -10157,8 +10222,8 @@ ${preno.codice ? `<div style="text-align:center;margin:-16px 0 20px;"><span styl
   }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 900, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-      <div style={{ background: 'var(--bg)', borderRadius: 10, padding: '24px 28px', width: 480, maxWidth: '100%', maxHeight: '90vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,.25)' }}>
+    <div className="modal-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 900, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div className="modal-box" style={{ background: 'var(--bg)', borderRadius: 10, padding: '24px 28px', width: 480, maxWidth: '100%', maxHeight: '90vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,.25)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
           <div>
             <h2 style={{ margin: 0, fontSize: 17, fontFamily: 'var(--font-serif)', fontWeight: 600 }}>Stampa contratto</h2>
@@ -10289,8 +10354,8 @@ function FirmaModal({ preno, onSave, onClose }) {
   const cliente = [preno.clienteCognome, preno.clienteNome].filter(Boolean).join(' ') || 'Cliente';
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 900, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-      <div style={{ background: 'var(--bg)', borderRadius: 10, padding: '24px 28px', width: 500, maxWidth: '100%', boxShadow: '0 20px 60px rgba(0,0,0,.25)' }}>
+    <div className="modal-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 900, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div className="modal-box" style={{ background: 'var(--bg)', borderRadius: 10, padding: '24px 28px', width: 500, maxWidth: '100%', boxShadow: '0 20px 60px rgba(0,0,0,.25)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
           <div>
             <h2 style={{ margin: 0, fontSize: 17, fontFamily: 'var(--font-serif)', fontWeight: 600 }}>✍️ Firma digitale</h2>
@@ -10468,8 +10533,10 @@ function OggiPage({ prenotazioni, setPrenotazioni, fleet, scadenze, customers, s
     !m.completata && m.dataScadenza && m.dataScadenza <= in30Str
   ).sort((a, b) => a.dataScadenza.localeCompare(b.dataScadenza));
 
-  // Prenotazioni domani (anticipo)
+  // Prenotazioni domani (anticipo consegne)
   const domani = prenoList.filter(p => p.dal === tomorrow && p.stato !== 'annullata');
+  // Rientri domani — per promemoria WhatsApp mattina
+  const rientranoDomani = prenoList.filter(p => p.al === tomorrow && p.stato !== 'annullata');
 
   // Export ICS — scarica tutte le prenotazioni attive come calendario .ics
   function exportICS() {
@@ -10791,15 +10858,13 @@ function OggiPage({ prenotazioni, setPrenotazioni, fleet, scadenze, customers, s
                       <button key={cat.id} type="button"
                         onClick={() => handleWalkIn(cat)}
                         disabled={cat.free <= 0}
+                        className="walk-in-btn"
                         style={{
                           background: c.bg, border: `1.5px solid ${c.border}`, borderRadius: 10,
                           padding: '12px 14px', textAlign: 'left',
                           cursor: cat.free > 0 ? 'pointer' : 'not-allowed',
                           opacity: cat.free <= 0 ? 0.72 : 1,
-                          transition: 'transform 0.1s, box-shadow 0.1s',
                         }}
-                        onMouseEnter={e => { if (cat.free > 0) { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 4px 14px rgba(0,0,0,.1)'; }}}
-                        onMouseLeave={e => { e.currentTarget.style.transform = ''; e.currentTarget.style.boxShadow = ''; }}
                       >
                         <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: c.text, marginBottom: 4 }}>{c.label}</div>
                         <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)', marginBottom: 6, lineHeight: 1.3 }}>{cat.nome}</div>
@@ -10859,12 +10924,13 @@ function OggiPage({ prenotazioni, setPrenotazioni, fleet, scadenze, customers, s
       )}
 
       {/* KPI strip */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 4 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 10, marginBottom: 4 }}>
         {[
-          { label: 'Consegne oggi',  value: partenze.length,  color: '#2e6e3e', emoji: '📤' },
-          { label: 'Rientri oggi',   value: rientri.length,   color: '#6a3d8f', emoji: '📥' },
-          { label: 'In corso',       value: inCorso.length,   color: '#1f5d83', emoji: '🔄' },
-          { label: 'Domani',         value: domani.length,    color: '#b87333', emoji: '📅' },
+          { label: 'Consegne oggi',  value: partenze.length,        color: '#2e6e3e', emoji: '📤' },
+          { label: 'Rientri oggi',   value: rientri.length,         color: '#6a3d8f', emoji: '📥' },
+          { label: 'In corso',       value: inCorso.length,         color: '#1f5d83', emoji: '🔄' },
+          { label: 'Consegne dom.',  value: domani.length,          color: '#b87333', emoji: '📅' },
+          { label: 'Rientri dom.',   value: rientranoDomani.length, color: '#0d7a5e', emoji: '📲' },
         ].map(k => (
           <div key={k.label} style={{
             background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8,
@@ -10878,6 +10944,61 @@ function OggiPage({ prenotazioni, setPrenotazioni, fleet, scadenze, customers, s
           </div>
         ))}
       </div>
+
+      {/* ── DASHBOARD OPERATIVA: SITUAZIONE FLOTTA ORA ─────────────── */}
+      {(() => {
+        const attivi = fleetList.filter(v => v.status !== 'fuori_uso');
+        const tipiPresenti = [...new Set(attivi.map(v => v.tipo || 'auto'))].sort();
+        if (tipiPresenti.length === 0) return null;
+        const manutenzioneIds = new Set(fleetList.filter(v => v.status === 'manutenzione').map(v => v.id));
+        return (
+          <div style={{ marginTop: 12, marginBottom: 4 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 10 }}>
+              <span style={{ fontSize: 14 }}>🚦</span>
+              <span style={{ fontFamily: 'var(--font-serif)', fontWeight: 600, fontSize: 14, color: 'var(--ink)' }}>
+                Situazione flotta ora
+              </span>
+              <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+                — {liberiCount}/{totaleFlotta} liberi
+              </span>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(128px, 1fr))', gap: 8 }}>
+              {tipiPresenti.map(tipo => {
+                const tutti = attivi.filter(v => (v.tipo || 'auto') === tipo);
+                const liberiTipo = tutti.filter(v => !occupatiIds.has(v.id) && !manutenzioneIds.has(v.id));
+                const inNoleggioTipo = tutti.filter(v => occupatiIds.has(v.id));
+                const inManutTipo = tutti.filter(v => manutenzioneIds.has(v.id) && !occupatiIds.has(v.id));
+                const pct = tutti.length > 0 ? liberiTipo.length / tutti.length : 0;
+                const barColor = pct > 0.5 ? '#27ae60' : pct > 0.15 ? '#e67e22' : '#c85050';
+                return (
+                  <div key={tipo} style={{
+                    background: 'var(--bg)', border: '1px solid var(--border)',
+                    borderRadius: 8, padding: '10px 12px',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 7 }}>
+                      <span style={{ fontSize: 15 }}>{TIPO_EMOJI[tipo] || '🚗'}</span>
+                      <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--ink)', textTransform: 'capitalize' }}>{tipo}</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, fontSize: 11, marginBottom: 7, flexWrap: 'wrap' }}>
+                      <span title="Liberi" style={{ color: '#27ae60', fontWeight: 700 }}>🟢 {liberiTipo.length}</span>
+                      <span title="In noleggio" style={{ color: '#1f5d83', fontWeight: 700 }}>🔵 {inNoleggioTipo.length}</span>
+                      {inManutTipo.length > 0 && (
+                        <span title="In manutenzione" style={{ color: '#b87333', fontWeight: 700 }}>🔧 {inManutTipo.length}</span>
+                      )}
+                    </div>
+                    <div style={{ height: 3, background: 'var(--surface-2)', borderRadius: 2, overflow: 'hidden' }}>
+                      <div style={{ height: '100%', width: `${Math.round(pct * 100)}%`, background: barColor, borderRadius: 2 }} />
+                    </div>
+                    <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 3 }}>
+                      {liberiTipo.length}/{tutti.length} liberi
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── PROMEMORIA DOCUMENTI ─────────────────────────────────────── */}
       {docAlerts.length > 0 && (
@@ -10987,6 +11108,76 @@ function OggiPage({ prenotazioni, setPrenotazioni, fleet, scadenze, customers, s
             {rientri.map(p => <PrenoRow key={p.id} p={p} accentColor="#6a3d8f" />)}
           </div>
       }
+
+      {/* ── RIENTRANO DOMANI — promemoria WhatsApp ──────────────────── */}
+      {rientranoDomani.length > 0 && (
+        <>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, marginTop: 22 }}>
+            <SectionTitle icon="📲" label="Rientrano domani" count={rientranoDomani.length} color="#0d7a5e" noMargin />
+            <span style={{ fontSize: 11, color: 'var(--muted)', fontStyle: 'italic' }}>invia promemoria WhatsApp</span>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {rientranoDomani.map(p => {
+              const nome = [p.clienteNome, p.clienteCognome].filter(Boolean).join(' ') || 'Cliente';
+              const mezzo = p.vehicleLabel || p.vehicleType || 'mezzo';
+              const dataRientro = formatDate(p.al);
+              const tel = (p.clienteTel || '').replace(/\D/g, '');
+              const msg = encodeURIComponent(
+                `Gentile ${nome}, le ricordiamo che domani ${dataRientro} è prevista la riconsegna di: ${mezzo}.\nLa aspettiamo con piacere! — Edonoleggio Lampedusa 🌊`
+              );
+              const waUrl = tel ? `https://wa.me/${tel}?text=${msg}` : null;
+              return (
+                <Card key={p.id} color="#0d7a5e">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+                        <span style={{ fontSize: 13 }}>{TIPO_EMOJI[p.tipo] || '🚗'}</span>
+                        <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--ink)' }}>{nome}</span>
+                        {p.clienteTel && (
+                          <a href={`tel:${p.clienteTel}`}
+                            style={{ fontSize: 11, color: 'var(--muted)', textDecoration: 'none' }}
+                            onClick={e => e.stopPropagation()}>
+                            📞 {p.clienteTel}
+                          </a>
+                        )}
+                      </div>
+                      <div style={{ fontSize: 12, color: 'var(--ink-2)' }}>
+                        {p.vehicleLabel || p.vehicleType || 'Mezzo da assegnare'}
+                        {p.vehicleTarga && (
+                          <span style={{ fontFamily: 'monospace', fontSize: 11, marginLeft: 6, color: 'var(--muted)' }}>
+                            {p.vehicleTarga}
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
+                        Rientro: <strong style={{ color: 'var(--ink)' }}>{dataRientro}</strong>
+                        {p.prezzo != null && <> · <strong>€{p.prezzo}</strong></>}
+                        {p.acconto > 0 && <> · acc. €{p.acconto}</>}
+                      </div>
+                    </div>
+                    {waUrl ? (
+                      <a href={waUrl} target="_blank" rel="noreferrer"
+                        onClick={e => e.stopPropagation()}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 6,
+                          padding: '9px 16px', borderRadius: 8, fontSize: 13, fontWeight: 700,
+                          background: '#25d366', color: '#fff', textDecoration: 'none',
+                          flexShrink: 0, boxShadow: '0 2px 6px rgba(37,211,102,.35)',
+                        }}>
+                        <span style={{ fontSize: 16 }}>💬</span> WA
+                      </a>
+                    ) : (
+                      <span style={{ fontSize: 11, color: 'var(--muted)', flexShrink: 0, fontStyle: 'italic' }}>
+                        Nessun tel.
+                      </span>
+                    )}
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+        </>
+      )}
 
       {/* ── IN CORSO ─────────────────────────────────────────────────── */}
       {inCorso.length > 0 && (
@@ -11183,9 +11374,9 @@ function GlobalSearchModal({ prenotazioni, customers, contracts, fleet, onClose,
   }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 1000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: '10vh' }}
+    <div className="modal-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 1000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: '10vh' }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div style={{ background: 'var(--bg)', borderRadius: 12, width: 560, maxWidth: '95vw', boxShadow: '0 24px 64px rgba(0,0,0,.25)', overflow: 'hidden' }}>
+      <div className="modal-box" style={{ background: 'var(--bg)', borderRadius: 12, width: 560, maxWidth: '95vw', boxShadow: '0 24px 64px rgba(0,0,0,.25)', overflow: 'hidden' }}>
 
         {/* Input */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 16px', borderBottom: '1px solid var(--border)' }}>
@@ -11581,6 +11772,8 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
                 const isEnd   = preno && (segAl  ? segAl  === d : preno.al  === d);
                 const isSegTransStart = preno && segDal && segDal === d && !preno._isFirstSeg;
                 const isSegTransEnd   = preno && segAl  && segAl  === d && !preno._isLastSeg;
+                // Prima cella visibile: isStart oppure primo giorno della vista se la preno è già iniziata
+                const isFirstVisible  = preno && (isStart || (!isStart && d === days[0]));
                 const color   = preno ? clienteColorHash(preno.clienteId || preno.clienteCognome || preno.clienteNome || preno.id) : null;
                 const isSel   = preno && selectedCell?.preno?.id === preno.id;
                 const prenoClienteKey = preno ? (preno.clienteId || preno.clienteCognome || preno.clienteNome || preno.id) : null;
@@ -11610,6 +11803,7 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
                     title={preno ? '' : `+ Nuova prenotazione · ${v.targa || v.id} · ${d}`}
                     style={{
                       width: COL_W, height: ROW_H, flexShrink: 0, position: 'relative',
+                      zIndex: isFirstVisible ? 1 : 0,
                       borderLeft: isToday ? '2px solid var(--accent)' : '1px solid var(--border)',
                       background: preno ? 'transparent' : isToday ? 'rgba(46,110,62,.06)' : isWeekend ? 'rgba(0,0,0,.02)' : 'transparent',
                       cursor: 'pointer',
@@ -11627,33 +11821,26 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
                         borderRadius: `${isStart ? 5 : 0}px ${isEnd ? 5 : 0}px ${isEnd ? 5 : 0}px ${isStart ? 5 : 0}px`,
                         borderLeft:  isStart       ? `3px solid ${color}`  : 'none',
                         borderRight: isSegTransEnd ? `3px dashed ${color}` : 'none',
-                        display: 'flex', alignItems: 'center', overflow: 'hidden',
+                        display: 'flex', alignItems: 'center', overflow: 'visible',
                         transition: 'background .12s, opacity .15s',
                         boxShadow: isSel ? `0 0 0 1.5px ${color}` : 'none',
                         opacity: isDimmed ? 0.15 : 1,
                       }}>
-                        {/* Transizione in arrivo (non è il primo segmento) */}
+                        {/* Freccia segmento in continuazione */}
                         {isSegTransStart && (
-                          <span style={{ fontSize: 10, paddingLeft: 3, color: color, opacity: 0.85, flexShrink: 0 }}>⟶</span>
+                          <span style={{ fontSize: 10, paddingLeft: 3, color, opacity: 0.85, flexShrink: 0 }}>⟶</span>
                         )}
-                        {/* Nome cliente — visibile nella cella corrente (overflow:hidden) */}
-                        {!isSegTransStart && (
+                        {/* Nome cliente — mostrato UNA SOLA VOLTA nella prima cella visibile,
+                            poi il testo "fluttua" sopra le celle successive grazie a overflow:visible + z-index */}
+                        {isFirstVisible && !isSegTransStart && (
                           <span style={{
-                            fontSize: 9, fontWeight: 700, color: color,
-                            paddingLeft: isStart ? 5 : 2,
-                            whiteSpace: 'nowrap', overflow: 'hidden',
-                            textOverflow: 'ellipsis', flexShrink: 1, minWidth: 0,
+                            fontSize: 9, fontWeight: 700, color,
+                            paddingLeft: isStart ? 5 : 3,
+                            whiteSpace: 'nowrap',
+                            overflow: 'visible',
                             pointerEvents: 'none',
-                          }}>
-                            {preno.clienteCognome || preno.clienteNome || '?'}
-                          </span>
-                        )}
-                        {/* Etichetta segmento successivo */}
-                        {isSegTransStart && (
-                          <span style={{
-                            fontSize: 9, fontWeight: 700, color: color,
-                            paddingLeft: 2, whiteSpace: 'nowrap', overflow: 'hidden',
-                            textOverflow: 'ellipsis', maxWidth: '100%',
+                            position: 'relative',
+                            zIndex: 3,
                           }}>
                             {preno.clienteCognome || preno.clienteNome || '?'}
                           </span>
@@ -12060,9 +12247,9 @@ function SaldoModal({ preno, operator, onSave, onClose }) {
   }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 9100,
+    <div className="modal-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 9100,
       display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-      <div style={{ background: 'var(--bg)', borderRadius: 10, width: '100%', maxWidth: 420,
+      <div className="modal-box" style={{ background: 'var(--bg)', borderRadius: 10, width: '100%', maxWidth: 420,
         boxShadow: '0 20px 60px rgba(0,0,0,.25)', padding: '28px 28px 24px' }}>
 
         {/* Header */}
@@ -12198,9 +12385,9 @@ function DepositoModal({ preno, operator, mode, onSave, onClose }) {
   const accentColor = isRimborso ? '#7d3c98' : '#b87333';
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 9100,
+    <div className="modal-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 9100,
       display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-      <div style={{ background: 'var(--bg)', borderRadius: 10, width: '100%', maxWidth: 400,
+      <div className="modal-box" style={{ background: 'var(--bg)', borderRadius: 10, width: '100%', maxWidth: 400,
         boxShadow: '0 20px 60px rgba(0,0,0,.25)', padding: '28px 28px 24px' }}>
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
@@ -12422,6 +12609,11 @@ export default function App() {
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, []);
+
+  // Scroll top automatico ad ogni cambio pagina
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  }, [page]);
 
   // Helper: aggrega tutti gli stati sync per il pannello Impostazioni
   const allSyncStatus = useMemo(() => ({
@@ -13114,6 +13306,7 @@ export default function App() {
             {/* ErrorBoundary con key={page}: se una pagina crasha, cambiando pagina
                 il boundary si resetta automaticamente (la key cambia → nuovo mount). */}
             <ErrorBoundary key={page}>
+            <div key={page} className="page-fade">
               {page === 'calendario' && <CalendarioFlottaPage prenotazioni={prenotazioni} fleet={fleet} rentmeVehicles={rentmeVehicles} setPage={setPage} setPrenotazioniPrefill={setPrenotazioniPrefill} />}
               {page === 'oggi'       && <OggiPage prenotazioni={prenotazioni} fleet={fleet} scadenze={scadenze} customers={customers} setPage={setPage} rentmeVehicles={rentmeVehicles} setPrenotazioniPrefill={setPrenotazioniPrefill} pushToast={pushToast} setPrenotazioni={setPrenotazioni} operator={operator} fermiFlotta={fermiFlotta} rentmePush={rentmeSync.pushBooking} rentmeConnected={rentmeSync.status === 'ok'} manutenzioni={manutenzioni} />}
               {page === 'dashboard'  && <Dashboard onNew={() => openWizard()} setPage={setPage} operator={operator} fleet={fleet} contracts={localContracts} partners={partners} onMarkReturned={markContractReturned} scadenze={scadenze} prenotazioni={prenotazioni} agency={agency} />}
@@ -13143,6 +13336,7 @@ export default function App() {
                 setCustomers(prev => [...prev, ...newC]);
                 pushToast({ tone: 'success', title: 'Storico importato', message: `${newP.length} prenotazioni · ${newC.length} clienti` });
               }} />}
+            </div>{/* /page-fade */}
             </ErrorBoundary>
           </div>
         </main>
@@ -13449,6 +13643,52 @@ function Styles() {
 
       /* Focus visible global */
       .pratica-app :focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; border-radius: 3px; }
+
+      /* ── OTTIMIZZAZIONI FLUIDITÀ ── */
+
+      /* Transizioni universali su TUTTI i bottoni (anche con stili inline) */
+      .pratica-app button {
+        transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease,
+                    transform 0.1s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+      }
+      /* Hover fallback per bottoni senza classe esplicita */
+      .pratica-app button:not(:disabled):not(.btn-primary):not(.btn-accent):not(.btn-ghost):not(.nav-item):hover {
+        filter: brightness(0.93);
+      }
+      .pratica-app button:not(:disabled):active { transform: translateY(1px) !important; }
+
+      /* Link fluidi */
+      .pratica-app a { transition: color 0.15s ease, opacity 0.15s ease; }
+
+      /* Select e input fluidi */
+      .pratica-app select { transition: border-color 0.15s ease, box-shadow 0.15s ease; }
+
+      /* Selezione testo coerente col brand */
+      .pratica-app ::selection { background: var(--accent-soft); color: var(--ink); }
+
+      /* Animazione overlay modale (inline style) */
+      .modal-overlay { animation: fadeIn 0.18s ease-out; }
+      /* Animazione box modale (inline style) */
+      .modal-box { animation: slideUp 0.22s ease-out; }
+
+      /* Fade pagina al cambio route */
+      .page-fade { animation: fadeIn 0.2s ease-out; }
+
+      /* Walk-in category button — hover via CSS invece di JS */
+      .walk-in-btn { transition: transform 0.15s ease, box-shadow 0.15s ease !important; }
+      .walk-in-btn:not(:disabled):hover {
+        transform: translateY(-2px) !important;
+        box-shadow: 0 6px 18px rgba(0,0,0,.12) !important;
+      }
+      .walk-in-btn:not(:disabled):active { transform: translateY(0) !important; }
+
+      /* Card hover leggero */
+      .card-hover { transition: box-shadow 0.15s ease, transform 0.15s ease; }
+      .card-hover:hover { box-shadow: 0 4px 16px rgba(26,24,21,0.08); transform: translateY(-1px); }
+
+      /* Scroll smooth globale */
+      html { scroll-behavior: smooth; }
+      .pratica-app { -webkit-tap-highlight-color: transparent; }
     `}</style>
   );
 }
