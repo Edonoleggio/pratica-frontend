@@ -25,6 +25,11 @@ const APP_VERSION = {
   codename: 'Pagamenti, notifiche push, statistiche veicolo, manutenzioni, YoY, Drive',
   date: '2026-05-25',
   changelog: [
+    // v0.39.7 — 2026-05-25
+    'Fix critico CSV EDOX: parser ora usa indici intestazione invece di posizioni fisse — il ; iniziale del CSV creava uno shift +1 che assegnava valori sbagliati (idRentme="", modello=codiceRentme, targa=modello, colore=targa)',
+    'normalizzaTipoEdox: aggiunto riconoscimento prefissi bici dal campo idRentme — muscolare/fat/piega→bici, city→ebike (prima tornavano tutti "auto")',
+    'RENTME_TARGA_MAP: aggiunte tutte le targhe scooter (standard 1-31, superior 33-80+308-310, liberty 170-261) e quad 50cc (mxu 155-166) dal CSV EDOX — ora il sync RentMe riconosce automaticamente plate reale per ogni scooter',
+    'Flotta: aggiunto pulsante "♻️ Ricalcola tipi" — riesegue normalizzaTipoEdox su tutta la flotta senza re-import (fix immediato per flotte importate con vecchio parser)',
     // v0.39.6 — 2026-05-25
     'Fix critico: campo idRentme (flotta locale CSV) ora correttamente letto in useRentMeSync, resolveVehicleDisplay, getVehicleCategoria, makeVehicleLabel e fleet card — prima veniva cercato "rentmeId" (usato dall\'API RentMe) causando zero match per scooter/moto importati da CSV',
     // v0.39.5 — 2026-05-25
@@ -7673,6 +7678,148 @@ const RENTME_TARGA_MAP = {
   '312': { targa: 'DW08528', modello: 'QUAD' },
   'xwolf 311': { targa: 'FS23036', modello: 'QUAD' },
   '311': { targa: 'FS23036', modello: 'QUAD' },
+  // ── Quad 50cc ────────────────────────────────────────────────────────
+  'mxu 155': { targa: 'XB8W8M', modello: 'QUAD 50' },  '155': { targa: 'XB8W8M', modello: 'QUAD 50' },
+  'mxu 156': { targa: 'X2Y3HD', modello: 'QUAD 50' },  '156': { targa: 'X2Y3HD', modello: 'QUAD 50' },
+  'mxu 157': { targa: 'X5VP8L', modello: 'QUAD 50' },  '157': { targa: 'X5VP8L', modello: 'QUAD 50' },
+  'mxu 158': { targa: 'X8CN8T', modello: 'QUAD 50' },  '158': { targa: 'X8CN8T', modello: 'QUAD 50' },
+  'mxu 159': { targa: 'X5VPR6', modello: 'QUAD 50' },  '159': { targa: 'X5VPR6', modello: 'QUAD 50' },
+  'mxu 160': { targa: 'X2Y3D5', modello: 'QUAD 50' },  '160': { targa: 'X2Y3D5', modello: 'QUAD 50' },
+  'mxu 161': { targa: 'X79M47', modello: 'QUAD 50' },  '161': { targa: 'X79M47', modello: 'QUAD 50' },
+  'mxu 162': { targa: 'X4BPC8', modello: 'QUAD 50' },  '162': { targa: 'X4BPC8', modello: 'QUAD 50' },
+  'mxu 163': { targa: 'XBBF38', modello: 'QUAD 50' },  '163': { targa: 'XBBF38', modello: 'QUAD 50' },
+  'mxu 164': { targa: 'X7VK41', modello: 'QUAD 50' },  '164': { targa: 'X7VK41', modello: 'QUAD 50' },
+  'mxu 165': { targa: 'X8KTMS', modello: 'QUAD 50' },  '165': { targa: 'X8KTMS', modello: 'QUAD 50' },
+  'mxu 166': { targa: 'X2Y3H5', modello: 'QUAD 50' },  '166': { targa: 'X2Y3H5', modello: 'QUAD 50' },
+  // ── Scooter standard 125cc ────────────────────────────────────────────
+  'standard 1':  { targa: 'CG25160', modello: 'MOTO STD 125' },  '1':  { targa: 'CG25160', modello: 'MOTO STD 125' },
+  'standard 2':  { targa: 'CV61957', modello: 'MOTO STD 125' },  '2':  { targa: 'CV61957', modello: 'MOTO STD 125' },
+  'standard 3':  { targa: 'DT07281', modello: 'MOTO STD 125' },  '3':  { targa: 'DT07281', modello: 'MOTO STD 125' },
+  'standard 4':  { targa: 'DT07199', modello: 'MOTO STD 125' },  '4':  { targa: 'DT07199', modello: 'MOTO STD 125' },
+  'standard 5':  { targa: 'DM59120', modello: 'MOTO STD 125' },  '5':  { targa: 'DM59120', modello: 'MOTO STD 125' },
+  'standard 6':  { targa: 'ET46342', modello: 'MOTO STD 125' },  '6':  { targa: 'ET46342', modello: 'MOTO STD 125' },
+  'standard 7':  { targa: 'ET46340', modello: 'MOTO STD 125' },  '7':  { targa: 'ET46340', modello: 'MOTO STD 125' },
+  'standard 8':  { targa: 'ET46341', modello: 'MOTO STD 125' },  '8':  { targa: 'ET46341', modello: 'MOTO STD 125' },
+  'standard 10': { targa: 'CG25175', modello: 'MOTO STD 125' },  '10': { targa: 'CG25175', modello: 'MOTO STD 125' },
+  'standard 11': { targa: 'CP85154', modello: 'MOTO STD 125' },  '11': { targa: 'CP85154', modello: 'MOTO STD 125' },
+  'standard 12': { targa: 'CV78763', modello: 'MOTO STD 125' },  '12': { targa: 'CV78763', modello: 'MOTO STD 125' },
+  'standard 13': { targa: 'DE81460', modello: 'MOTO STD 125' },  '13': { targa: 'DE81460', modello: 'MOTO STD 125' },
+  'standard 14': { targa: 'CW77242', modello: 'MOTO STD 125' },  '14': { targa: 'CW77242', modello: 'MOTO STD 125' },
+  'standard 15': { targa: 'DJ16006', modello: 'MOTO STD 125' },  '15': { targa: 'DJ16006', modello: 'MOTO STD 125' },
+  'standard 16': { targa: 'ER52914', modello: 'MOTO STD 125' },  '16': { targa: 'ER52914', modello: 'MOTO STD 125' },
+  'standard 17': { targa: 'BV68609', modello: 'MOTO STD 125' },  '17': { targa: 'BV68609', modello: 'MOTO STD 125' },
+  'standard 18': { targa: 'DV40167', modello: 'MOTO STD 125' },  '18': { targa: 'DV40167', modello: 'MOTO STD 125' },
+  'standard 19': { targa: 'BW58323', modello: 'MOTO STD 125' },  '19': { targa: 'BW58323', modello: 'MOTO STD 125' },
+  'standard 20': { targa: 'DM06845', modello: 'MOTO STD 125' },  '20': { targa: 'DM06845', modello: 'MOTO STD 125' },
+  'standard 21': { targa: 'DV46333', modello: 'MOTO STD 125' },  '21': { targa: 'DV46333', modello: 'MOTO STD 125' },
+  'standard 22': { targa: 'DV46926', modello: 'MOTO STD 125' },  '22': { targa: 'DV46926', modello: 'MOTO STD 125' },
+  'standard 23': { targa: 'DV40304', modello: 'MOTO STD 125' },  '23': { targa: 'DV40304', modello: 'MOTO STD 125' },
+  'standard 24': { targa: 'DN16471', modello: 'MOTO STD 125' },  '24': { targa: 'DN16471', modello: 'MOTO STD 125' },
+  'standard 25': { targa: 'BY77132', modello: 'MOTO STD 125' },  '25': { targa: 'BY77132', modello: 'MOTO STD 125' },
+  'standard 27': { targa: 'DV92194', modello: 'MOTO STD 125' },  '27': { targa: 'DV92194', modello: 'MOTO STD 125' },
+  'standard 28': { targa: 'DV46995', modello: 'MOTO STD 125' },  '28': { targa: 'DV46995', modello: 'MOTO STD 125' },
+  'standard 29': { targa: 'DT07280', modello: 'MOTO STD 125' },  '29': { targa: 'DT07280', modello: 'MOTO STD 125' },
+  'standard 30': { targa: 'DT07282', modello: 'MOTO STD 125' },  '30': { targa: 'DT07282', modello: 'MOTO STD 125' },
+  'standard 31': { targa: 'DV40304', modello: 'MOTO STD 125' },  '31': { targa: 'DV40304', modello: 'MOTO STD 125' },
+  // ── Scooter superior 125cc ────────────────────────────────────────────
+  'superior 33':  { targa: 'FP74556', modello: 'MOTO SUP 125' },  '33':  { targa: 'FP74556', modello: 'MOTO SUP 125' },
+  'superior 34':  { targa: 'FP74554', modello: 'MOTO SUP 125' },  '34':  { targa: 'FP74554', modello: 'MOTO SUP 125' },
+  'superior 35':  { targa: 'EW92292', modello: 'MOTO SUP 125' },  '35':  { targa: 'EW92292', modello: 'MOTO SUP 125' },
+  'superior 36':  { targa: 'EW92293', modello: 'MOTO SUP 125' },  '36':  { targa: 'EW92293', modello: 'MOTO SUP 125' },
+  'superior 37':  { targa: 'EW92294', modello: 'MOTO SUP 125' },  '37':  { targa: 'EW92294', modello: 'MOTO SUP 125' },
+  'superior 38':  { targa: 'EW92295', modello: 'MOTO SUP 125' },  '38':  { targa: 'EW92295', modello: 'MOTO SUP 125' },
+  'superior 39':  { targa: 'EW92296', modello: 'MOTO SUP 125' },  '39':  { targa: 'EW92296', modello: 'MOTO SUP 125' },
+  'superior 40':  { targa: 'EW92297', modello: 'MOTO SUP 125' },  '40':  { targa: 'EW92297', modello: 'MOTO SUP 125' },
+  'superior 41':  { targa: 'EW92298', modello: 'MOTO SUP 125' },  '41':  { targa: 'EW92298', modello: 'MOTO SUP 125' },
+  'superior 42':  { targa: 'EW92299', modello: 'MOTO SUP 125' },  '42':  { targa: 'EW92299', modello: 'MOTO SUP 125' },
+  'superior 43':  { targa: 'EW92300', modello: 'MOTO SUP 125' },  '43':  { targa: 'EW92300', modello: 'MOTO SUP 125' },
+  'superior 44':  { targa: 'EW92301', modello: 'MOTO SUP 125' },  '44':  { targa: 'EW92301', modello: 'MOTO SUP 125' },
+  'superior 45':  { targa: 'FF16659', modello: 'MOTO SUP 125' },  '45':  { targa: 'FF16659', modello: 'MOTO SUP 125' },
+  'superior 46':  { targa: 'FK08061', modello: 'MOTO SUP 125' },  '46':  { targa: 'FK08061', modello: 'MOTO SUP 125' },
+  'superior 47':  { targa: 'FK08098', modello: 'MOTO SUP 125' },  '47':  { targa: 'FK08098', modello: 'MOTO SUP 125' },
+  'superior 48':  { targa: 'FB88295', modello: 'MOTO SUP 125' },  '48':  { targa: 'FB88295', modello: 'MOTO SUP 125' },
+  'superior 49':  { targa: 'FB88299', modello: 'MOTO SUP 125' },  '49':  { targa: 'FB88299', modello: 'MOTO SUP 125' },
+  'superior 50':  { targa: 'FB88260', modello: 'MOTO SUP 125' },  '50':  { targa: 'FB88260', modello: 'MOTO SUP 125' },
+  'superior 51':  { targa: 'FB88330', modello: 'MOTO SUP 125' },  '51':  { targa: 'FB88330', modello: 'MOTO SUP 125' },
+  'superior 52':  { targa: 'FB88344', modello: 'MOTO SUP 125' },  '52':  { targa: 'FB88344', modello: 'MOTO SUP 125' },
+  'superior 53':  { targa: 'FB88345', modello: 'MOTO SUP 125' },  '53':  { targa: 'FB88345', modello: 'MOTO SUP 125' },
+  'superior 54':  { targa: 'FB88346', modello: 'MOTO SUP 125' },  '54':  { targa: 'FB88346', modello: 'MOTO SUP 125' },
+  'superior 55':  { targa: 'FB88347', modello: 'MOTO SUP 125' },  '55':  { targa: 'FB88347', modello: 'MOTO SUP 125' },
+  'superior 56':  { targa: 'FB88348', modello: 'MOTO SUP 125' },  '56':  { targa: 'FB88348', modello: 'MOTO SUP 125' },
+  'superior 57':  { targa: 'FB88349', modello: 'MOTO SUP 125' },  '57':  { targa: 'FB88349', modello: 'MOTO SUP 125' },
+  'superior 58':  { targa: 'FF16747', modello: 'MOTO SUP 125' },  '58':  { targa: 'FF16747', modello: 'MOTO SUP 125' },
+  'superior 59':  { targa: 'FF16748', modello: 'MOTO SUP 125' },  '59':  { targa: 'FF16748', modello: 'MOTO SUP 125' },
+  'superior 60':  { targa: 'FK08089', modello: 'MOTO SUP 125' },  '60':  { targa: 'FK08089', modello: 'MOTO SUP 125' },
+  'superior 61':  { targa: 'FK08090', modello: 'MOTO SUP 125' },  '61':  { targa: 'FK08090', modello: 'MOTO SUP 125' },
+  'superior 62':  { targa: 'FK08091', modello: 'MOTO SUP 125' },  '62':  { targa: 'FK08091', modello: 'MOTO SUP 125' },
+  'superior 63':  { targa: 'FK08092', modello: 'MOTO SUP 125' },  '63':  { targa: 'FK08092', modello: 'MOTO SUP 125' },
+  'superior 64':  { targa: 'FK08093', modello: 'MOTO SUP 125' },  '64':  { targa: 'FK08093', modello: 'MOTO SUP 125' },
+  'superior 65':  { targa: 'FD33808', modello: 'MOTO SUP 125' },  '65':  { targa: 'FD33808', modello: 'MOTO SUP 125' },
+  'superior 66':  { targa: 'FA13043', modello: 'MOTO SUP 125' },  '66':  { targa: 'FA13043', modello: 'MOTO SUP 125' },
+  'superior 67':  { targa: 'FA13042', modello: 'MOTO SUP 125' },  '67':  { targa: 'FA13042', modello: 'MOTO SUP 125' },
+  'superior 68':  { targa: 'FA13040', modello: 'MOTO SUP 125' },  '68':  { targa: 'FA13040', modello: 'MOTO SUP 125' },
+  'superior 69':  { targa: 'FA13038', modello: 'MOTO SUP 125' },  '69':  { targa: 'FA13038', modello: 'MOTO SUP 125' },
+  'superior 70':  { targa: 'FA13039', modello: 'MOTO SUP 125' },  '70':  { targa: 'FA13039', modello: 'MOTO SUP 125' },
+  'superior 71':  { targa: 'FA13036', modello: 'MOTO SUP 125' },  '71':  { targa: 'FA13036', modello: 'MOTO SUP 125' },
+  'superior 72':  { targa: 'FA13035', modello: 'MOTO SUP 125' },  '72':  { targa: 'FA13035', modello: 'MOTO SUP 125' },
+  'superior 73':  { targa: 'FA13037', modello: 'MOTO SUP 125' },  '73':  { targa: 'FA13037', modello: 'MOTO SUP 125' },
+  'superior 74':  { targa: 'FA13041', modello: 'MOTO SUP 125' },  '74':  { targa: 'FA13041', modello: 'MOTO SUP 125' },
+  'superior 75':  { targa: 'EX61503', modello: 'MOTO SUP 125' },  '75':  { targa: 'EX61503', modello: 'MOTO SUP 125' },
+  'superior 76':  { targa: 'EX61501', modello: 'MOTO SUP 125' },  '76':  { targa: 'EX61501', modello: 'MOTO SUP 125' },
+  'superior 77':  { targa: 'EX61500', modello: 'MOTO SUP 125' },  '77':  { targa: 'EX61500', modello: 'MOTO SUP 125' },
+  'superior 78':  { targa: 'EX61499', modello: 'MOTO SUP 125' },  '78':  { targa: 'EX61499', modello: 'MOTO SUP 125' },
+  'superior 79':  { targa: 'EX61505', modello: 'MOTO SUP 125' },  '79':  { targa: 'EX61505', modello: 'MOTO SUP 125' },
+  'superior 80':  { targa: 'EX61498', modello: 'MOTO SUP 125' },  '80':  { targa: 'EX61498', modello: 'MOTO SUP 125' },
+  'superior 308': { targa: 'EV53905', modello: 'MOTO SUP 125' },  '308': { targa: 'EV53905', modello: 'MOTO SUP 125' },
+  'superior 309': { targa: 'EV53904', modello: 'MOTO SUP 125' },  '309': { targa: 'EV53904', modello: 'MOTO SUP 125' },
+  'superior 310': { targa: 'FP74555', modello: 'MOTO SUP 125' },  '310': { targa: 'FP74555', modello: 'MOTO SUP 125' },
+  // ── Scooter liberty 50cc ─────────────────────────────────────────────
+  'liberty 170': { targa: 'X5B5DM', modello: 'LIBERTY 50' },  '170': { targa: 'X5B5DM', modello: 'LIBERTY 50' },
+  'liberty 171': { targa: 'XB7854', modello: 'LIBERTY 50' },  '171': { targa: 'XB7854', modello: 'LIBERTY 50' },
+  'liberty 172': { targa: 'X2XN4Z', modello: 'LIBERTY 50' }, '172': { targa: 'X2XN4Z', modello: 'LIBERTY 50' },
+  'liberty 173': { targa: 'X2Y3HH', modello: 'LIBERTY 50' }, '173': { targa: 'X2Y3HH', modello: 'LIBERTY 50' },
+  'liberty 174': { targa: 'X7SSPW', modello: 'LIBERTY 50' }, '174': { targa: 'X7SSPW', modello: 'LIBERTY 50' },
+  'liberty 175': { targa: 'X7MMXX', modello: 'LIBERTY 50' }, '175': { targa: 'X7MMXX', modello: 'LIBERTY 50' },
+  'liberty 176': { targa: 'X2XN4N', modello: 'LIBERTY 50' }, '176': { targa: 'X2XN4N', modello: 'LIBERTY 50' },
+  'liberty 177': { targa: 'X5VP8K', modello: 'LIBERTY 50' }, '177': { targa: 'X5VP8K', modello: 'LIBERTY 50' },
+  'liberty 178': { targa: 'X5VP8N', modello: 'LIBERTY 50' }, '178': { targa: 'X5VP8N', modello: 'LIBERTY 50' },
+  'liberty 179': { targa: 'X86FTS', modello: 'LIBERTY 50' }, '179': { targa: 'X86FTS', modello: 'LIBERTY 50' },
+  'liberty 180': { targa: 'X7NRR3', modello: 'LIBERTY 50' }, '180': { targa: 'X7NRR3', modello: 'LIBERTY 50' },
+  'liberty 181': { targa: 'X2XN53', modello: 'LIBERTY 50' }, '181': { targa: 'X2XN53', modello: 'LIBERTY 50' },
+  'liberty 182': { targa: 'X5VP8M', modello: 'LIBERTY 50' }, '182': { targa: 'X5VP8M', modello: 'LIBERTY 50' },
+  'liberty 183': { targa: 'X4BJLB', modello: 'LIBERTY 50' }, '183': { targa: 'X4BJLB', modello: 'LIBERTY 50' },
+  'liberty 184': { targa: 'X2Y3H9', modello: 'LIBERTY 50' }, '184': { targa: 'X2Y3H9', modello: 'LIBERTY 50' },
+  'liberty 185': { targa: 'X7SSPV', modello: 'LIBERTY 50' }, '185': { targa: 'X7SSPV', modello: 'LIBERTY 50' },
+  'liberty 186': { targa: 'X2Y3HG', modello: 'LIBERTY 50' }, '186': { targa: 'X2Y3HG', modello: 'LIBERTY 50' },
+  'liberty 187': { targa: 'X4BJLC', modello: 'LIBERTY 50' }, '187': { targa: 'X4BJLC', modello: 'LIBERTY 50' },
+  'liberty 188': { targa: 'X86FTR', modello: 'LIBERTY 50' }, '188': { targa: 'X86FTR', modello: 'LIBERTY 50' },
+  'liberty 189': { targa: 'X7MMXW', modello: 'LIBERTY 50' }, '189': { targa: 'X7MMXW', modello: 'LIBERTY 50' },
+  'liberty 190': { targa: 'X7NRR2', modello: 'LIBERTY 50' }, '190': { targa: 'X7NRR2', modello: 'LIBERTY 50' },
+  'liberty 191': { targa: 'X7NRR4', modello: 'LIBERTY 50' }, '191': { targa: 'X7NRR4', modello: 'LIBERTY 50' },
+  'liberty 192': { targa: 'X7XXZB', modello: 'LIBERTY 50' }, '192': { targa: 'X7XXZB', modello: 'LIBERTY 50' },
+  'liberty 193': { targa: 'X7MMXV', modello: 'LIBERTY 50' }, '193': { targa: 'X7MMXV', modello: 'LIBERTY 50' },
+  'liberty 194': { targa: 'X3BGRP', modello: 'LIBERTY 50' }, '194': { targa: 'X3BGRP', modello: 'LIBERTY 50' },
+  'liberty 195': { targa: 'X2Y3HB', modello: 'LIBERTY 50' }, '195': { targa: 'X2Y3HB', modello: 'LIBERTY 50' },
+  'liberty 196': { targa: 'X2Y3HF', modello: 'LIBERTY 50' }, '196': { targa: 'X2Y3HF', modello: 'LIBERTY 50' },
+  'liberty 197': { targa: 'X2Y3HC', modello: 'LIBERTY 50' }, '197': { targa: 'X2Y3HC', modello: 'LIBERTY 50' },
+  'liberty 198': { targa: 'X7XXZC', modello: 'LIBERTY 50' }, '198': { targa: 'X7XXZC', modello: 'LIBERTY 50' },
+  'liberty 199': { targa: 'X7YZYP', modello: 'LIBERTY 50' }, '199': { targa: 'X7YZYP', modello: 'LIBERTY 50' },
+  'liberty 200': { targa: 'X84X4N', modello: 'LIBERTY 50' }, '200': { targa: 'X84X4N', modello: 'LIBERTY 50' },
+  'liberty 201': { targa: 'X2Y3HJ', modello: 'LIBERTY 50' }, '201': { targa: 'X2Y3HJ', modello: 'LIBERTY 50' },
+  'liberty 202': { targa: 'X9RTS7', modello: 'LIBERTY 50' }, '202': { targa: 'X9RTS7', modello: 'LIBERTY 50' },
+  'liberty 203': { targa: 'X2XN4Y', modello: 'LIBERTY 50' }, '203': { targa: 'X2XN4Y', modello: 'LIBERTY 50' },
+  'liberty 204': { targa: 'X2XN4P', modello: 'LIBERTY 50' }, '204': { targa: 'X2XN4P', modello: 'LIBERTY 50' },
+  'liberty 205': { targa: 'X6RZ3M', modello: 'LIBERTY 50' }, '205': { targa: 'X6RZ3M', modello: 'LIBERTY 50' },
+  'liberty 206': { targa: 'X84X9C', modello: 'LIBERTY 50' }, '206': { targa: 'X84X9C', modello: 'LIBERTY 50' },
+  'liberty 207': { targa: 'X2XN4R', modello: 'LIBERTY 50' }, '207': { targa: 'X2XN4R', modello: 'LIBERTY 50' },
+  'liberty 208': { targa: 'X8KTLT', modello: 'LIBERTY 50' }, '208': { targa: 'X8KTLT', modello: 'LIBERTY 50' },
+  'liberty 209': { targa: 'X2XN54', modello: 'LIBERTY 50' }, '209': { targa: 'X2XN54', modello: 'LIBERTY 50' },
+  'liberty 210': { targa: 'X2XN52', modello: 'LIBERTY 50' }, '210': { targa: 'X2XN52', modello: 'LIBERTY 50' },
+  'liberty 211': { targa: 'X2Y3HK', modello: 'LIBERTY 50' }, '211': { targa: 'X2Y3HK', modello: 'LIBERTY 50' },
+  'liberty 212': { targa: 'X2Y3HL', modello: 'LIBERTY 50' }, '212': { targa: 'X2Y3HL', modello: 'LIBERTY 50' },
+  'liberty 213': { targa: 'X2Y3H8', modello: 'LIBERTY 50' }, '213': { targa: 'X2Y3H8', modello: 'LIBERTY 50' },
+  'liberty 214': { targa: 'X79M4M', modello: 'LIBERTY 50' }, '214': { targa: 'X79M4M', modello: 'LIBERTY 50' },
+  'liberty 261': { targa: 'X6RZ3R', modello: 'LIBERTY 50' }, '261': { targa: 'X6RZ3R', modello: 'LIBERTY 50' },
 };
 
 //
@@ -8475,10 +8622,12 @@ function normalizzaTipoEdox(idRentme, modello, cc) {
   ];
   if (SCOOTER_BRANDS.includes(raw) || mod.includes('scooter') || mod.includes('moto')) return 'scooter';
 
-  // ── E-bike / bicicletta ──────────────────────────────────────────────
-  if (['ebike','bici','bicicletta'].includes(raw)
+  // ── Biciclette muscolari (muscolare, piega, fat) ─────────────────────
+  if (['muscolare','piega','fat'].includes(raw)
+    || mod.includes('muscolare') || mod.includes('piega')) return 'bici';
+  // ── E-bike / bicicletta / city-bike ──────────────────────────────────
+  if (['ebike','bici','bicicletta','city'].includes(raw)
     || mod.includes('ebike') || mod.includes('e-bike') || mod.includes('bicicletta')) {
-    if (mod.includes('muscolare') || mod.includes('piega')) return 'bici';
     return 'ebike';
   }
 
@@ -8514,32 +8663,47 @@ function FleetCSVImport({ fleet, onImport, onClose }) {
 
     if (isEdox) {
       // Formato: ID RENTME;Modello;Targa;Colore;;CC;
+      // NOTA: il CSV EDOX può avere un ; iniziale che crea una colonna vuota in pos. 0
+      // → usiamo gli indici delle intestazioni invece di posizioni fisse
+      const idCol  = heads.findIndex(h => h.includes('id rentme') || h === 'id');
+      const modCol = heads.indexOf('modello');
+      const tarCol = heads.indexOf('targa');
+      const colCol = heads.indexOf('colore');
+      const ccCol  = heads.findIndex(h => h.includes('cilindrata') || h === 'cc');
+      // Fallback alle posizioni originali se le intestazioni non trovate
+      const gc = (cells, idx, fb) => (cells[idx > -1 ? idx : fb] || '').trim();
+
       const rows = lines.slice(1).map(l => {
         const cells = l.split(sep).map(c => c.trim().replace(/"/g,''));
         return {
-          idRentme: (cells[0] || '').trim(),
-          modello:  (cells[1] || '').trim(),
-          targa:    (cells[2] || '').trim().toUpperCase(),
-          colore:   (cells[3] || '').trim(),
-          cc:       (cells[5] || '').trim(),
+          idRentme: gc(cells, idCol, 0),
+          modello:  gc(cells, modCol, 1),
+          targa:    gc(cells, tarCol, 2).toUpperCase(),
+          colore:   gc(cells, colCol, 3),
+          cc:       gc(cells, ccCol, 5),
         };
-      }).filter(r => r.targa && r.targa !== 'TARGA');
+      }).filter(r => (r.targa && r.targa !== 'TARGA') || r.idRentme);
 
       if (!rows.length) throw new Error('Nessuna riga valida trovata (colonna "Targa" obbligatoria)');
 
       setFormato('EDOX');
-      return rows.map(r => ({
-        id:        r.targa,                        // targa = vehicleId univoco
-        targa:     r.targa,
-        idRentme:  r.idRentme,                     // es. "mehari 130"
-        tipo:      normalizzaTipoEdox(r.idRentme, r.modello, r.cc), // mappa a auto/scooter/quad/ebike
-        modello:   r.modello,
-        colore:    r.colore,
-        marca:     '',
-        cc:        r.cc,
-        stato:     'available',
-        anno:      null,
-      }));
+      return rows.map(r => {
+        const tipo = normalizzaTipoEdox(r.idRentme, r.modello, r.cc);
+        // Veicoli senza targa (bici/ebike) usano idRentme come id univoco
+        const id = r.targa || r.idRentme.replace(/\s+/g, '_');
+        return {
+          id,
+          targa:     r.targa || '',                  // vuota per bici senza targa/targa
+          idRentme:  r.idRentme,                     // es. "standard 1", "superior 33", "liberty 170"
+          tipo,
+          modello:   r.modello,
+          colore:    r.colore,
+          marca:     '',
+          cc:        r.cc,
+          stato:     'available',
+          anno:      null,
+        };
+      });
     }
 
     // ── Formato generico ──────────────────────────────────────────────
@@ -13653,7 +13817,7 @@ export default function App() {
               {page === 'preventivi'    && <PreventiviPage setPage={setPage} setPrenotazioniPrefill={setPrenotazioniPrefill} listino={listino} fleet={fleet} rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} pushToast={pushToast} />}
               {page === 'prenotazioni' && <PrenotazioniPage prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} setCassa={setCassa} fleet={fleet} rentmeVehicles={rentmeVehicles} customers={customers} operator={operator} onOpenWizard={openWizard} pushToast={pushToast} prefill={prenotazioniPrefill} onClearPrefill={() => setPrenotazioniPrefill(null)} fermiFlotta={fermiFlotta} rentmePush={rentmeSync.pushBooking} rentmeConnected={rentmeSync.status === 'ok'} agency={agency} />}
               {page === 'contracts'  && <ContractsList contracts={localContracts} operators={operators} onRetry={retryContract} onMarkReturned={markContractReturned} online={online} />}
-              {page === 'fleet'      && <FleetPage fleet={fleet} prenotazioni={prenotazioni} admin={admin} onAddVehicle={() => setModal('newVehicle')} onEditVehicle={(v) => setModal({ type: 'editVehicle', vehicle: v })} onDeleteVehicle={requestDeleteVehicle} onImportCSV={() => setShowCsvImport(true)} onResetFleet={() => setModal({ type: 'confirm', title: 'Azzera flotta?', message: <><strong>Tutti i {fleet.length} veicoli</strong> verranno eliminati dalla flotta. Le prenotazioni esistenti restano invariate. Dopo puoi reimportare con un CSV aggiornato. <strong>Azione irreversibile.</strong></>, confirmLabel: '🗑 Azzera flotta', variant: 'danger', onConfirm: () => { setFleet([]); pushToast({ tone: 'info', title: 'Flotta azzerata', message: 'Tutti i veicoli rimossi. Importa un nuovo CSV per ricaricare.' }); } })} scadenze={scadenze} setScadenze={setScadenze} fermiFlotta={fermiFlotta} setFermiFlotta={setFermiFlotta} rentmeVehicles={rentmeVehicles} manutenzioni={manutenzioni} setManutenzioni={setManutenzioni} />}
+              {page === 'fleet'      && <FleetPage fleet={fleet} prenotazioni={prenotazioni} admin={admin} onAddVehicle={() => setModal('newVehicle')} onEditVehicle={(v) => setModal({ type: 'editVehicle', vehicle: v })} onDeleteVehicle={requestDeleteVehicle} onImportCSV={() => setShowCsvImport(true)} onResetFleet={() => setModal({ type: 'confirm', title: 'Azzera flotta?', message: <><strong>Tutti i {fleet.length} veicoli</strong> verranno eliminati dalla flotta. Le prenotazioni esistenti restano invariate. Dopo puoi reimportare con un CSV aggiornato. <strong>Azione irreversibile.</strong></>, confirmLabel: '🗑 Azzera flotta', variant: 'danger', onConfirm: () => { setFleet([]); pushToast({ tone: 'info', title: 'Flotta azzerata', message: 'Tutti i veicoli rimossi. Importa un nuovo CSV per ricaricare.' }); } })} onSetFleet={setFleet} scadenze={scadenze} setScadenze={setScadenze} fermiFlotta={fermiFlotta} setFermiFlotta={setFermiFlotta} rentmeVehicles={rentmeVehicles} manutenzioni={manutenzioni} setManutenzioni={setManutenzioni} />}
               {page === 'customers'  && <CustomersPage customers={customers} setCustomers={setCustomers} prenotazioni={prenotazioni} admin={admin} onShowQR={(c) => setModal({ type: 'qr', customer: c })} onNewWithCustomer={openWizard} onAddCustomer={() => setModal('newCustomer')} onEditCustomer={(c) => setModal({ type: 'editCustomer', customer: c })} onDeleteCustomer={deleteCustomer} onShowStorico={(c) => setStorioClienteId(c.id)} />}
               {page === 'partners'   && <PartnersPage partners={partners} admin={admin} onAddPartner={() => setModal('newPartner')} onEditPartner={(p) => setModal({ type: 'editPartner', partner: p })} onDeletePartner={requestDeletePartner} />}
               {page === 'listino'    && <div style={{padding:'28px 32px',maxWidth:900,margin:'0 auto'}}>
@@ -15179,7 +15343,7 @@ function ManutenzioniModal({ vehicle, manutenzioni, setManutenzioni, onClose }) 
 // ═══════════════════════════════════════════════════════════════════
 // FLEET
 // ═══════════════════════════════════════════════════════════════════
-function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, onDeleteVehicle, onImportCSV, onResetFleet, scadenze, setScadenze, fermiFlotta, setFermiFlotta, rentmeVehicles, manutenzioni, setManutenzioni }) {
+function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, onDeleteVehicle, onImportCSV, onResetFleet, onSetFleet, scadenze, setScadenze, fermiFlotta, setFermiFlotta, rentmeVehicles, manutenzioni, setManutenzioni }) {
   const [typeFilter, setTypeFilter] = useState('all');
   const [categoriaFilter, setCategoriaFilter] = useState(null);
   const [statusFilter, setStatusFilter] = useState('all');
@@ -15302,6 +15466,22 @@ function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, on
               <button type="button" onClick={onResetFleet}
                 style={{ padding: '8px 14px', borderRadius: 5, background: 'transparent', border: '1px solid #e0b0b0', color: '#c0392b', fontSize: 13, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
                 🗑 Azzera flotta
+              </button>
+            )}
+            {/* Ricalcola tipi — migrazione per flotte importate con vecchio parser */}
+            {fleet.length > 0 && (
+              <button type="button" onClick={() => {
+                const fixed = fleet.map(v => ({
+                  ...v,
+                  tipo: normalizzaTipoEdox(v.idRentme || v.rentmeId, v.modello, v.cc)
+                }));
+                onSetFleet && onSetFleet(fixed);
+                const changed = fixed.filter((v, i) => v.tipo !== fleet[i].tipo).length;
+                alert(`♻️ Tipi ricalcolati: ${changed} mezzi aggiornati su ${fleet.length}`);
+              }}
+                style={{ padding: '8px 14px', borderRadius: 5, background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--ink-2)', fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}
+                title="Ricalcola tipo (scooter/quad/ebike/bici) per tutti i mezzi in flotta">
+                ♻️ Ricalcola tipi
               </button>
             )}
             <button type="button" onClick={onImportCSV}
