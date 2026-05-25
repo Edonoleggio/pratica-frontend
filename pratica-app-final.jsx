@@ -25,6 +25,8 @@ const APP_VERSION = {
   codename: 'Pagamenti, notifiche push, statistiche veicolo, manutenzioni, YoY, Drive',
   date: '2026-05-25',
   changelog: [
+    // v0.39.6 — 2026-05-25
+    'Fix critico: campo idRentme (flotta locale CSV) ora correttamente letto in useRentMeSync, resolveVehicleDisplay, getVehicleCategoria, makeVehicleLabel e fleet card — prima veniva cercato "rentmeId" (usato dall\'API RentMe) causando zero match per scooter/moto importati da CSV',
     // v0.39.5 — 2026-05-25
     'Flotta: aggiunto tasto "Azzera flotta" (rosso, con conferma) nella testata — svuota la flotta mantenendo prenotazioni intatte',
     'Flotta Import CSV: aggiunta modalità "Aggiorna + aggiungi" (default) — reuploading aggiorna tipo/modello/colore dei mezzi esistenti senza cancellare stato e scadenze; "Sostituisci tutto" rimpiazza intera flotta',
@@ -390,7 +392,7 @@ function getVehicleCategoria(v) {
   // Fast path: campo già salvato durante l'import
   if (v?.categoria) return v.categoria;
   const vr = resolveVehicleDisplay(v);
-  const text = `${vr.modello || ''} ${vr.marca || ''} ${v.rentmeId || ''}`.toLowerCase();
+  const text = `${vr.modello || ''} ${vr.marca || ''} ${v.idRentme || v.rentmeId || ''}`.toLowerCase();
   for (const [cat, kws] of Object.entries(CATEGORIA_KEYWORDS)) {
     if (kws.some(kw => text.includes(kw))) return cat;
   }
@@ -530,7 +532,7 @@ const MOCK_OPERATORS = [
 const makeVehicleLabel = (v) => {
   if (!v) return '';
   const vr = resolveVehicleDisplay(v);
-  const parts = [vr.modello || vr.marca, vr.targa, vr.rentmeId].filter(Boolean);
+  const parts = [vr.modello || vr.marca, vr.targa, vr.idRentme || vr.rentmeId].filter(Boolean);
   return parts.join(' · ');
 };
 
@@ -543,9 +545,9 @@ const makeVehicleLabel = (v) => {
 // ─────────────────────────────────────────────────────────────────────
 function resolveVehicleDisplay(v) {
   if (!v) return v;
-  // Chiavi candidate: rentmeId, id del veicolo, targa (potrebbero essere codici RentMe)
+  // Chiavi candidate: idRentme/rentmeId, id del veicolo, targa (potrebbero essere codici RentMe)
   const candidates = [
-    (v.rentmeId || '').toLowerCase().trim(),
+    (v.idRentme || v.rentmeId || '').toLowerCase().trim(),
     (v.id || '').toLowerCase().trim(),
     (v.targa || '').toLowerCase().trim(),
   ].filter(Boolean);
@@ -7702,9 +7704,10 @@ function useRentMeSync({ fleet, rentmeVehicles, setRentmeVehicles, setPrenotazio
       Object.entries(RENTME_TARGA_MAP).forEach(([k, v]) => { rentmeToTarga[k] = v.targa; });
       // Override con dati flotta locale (modifiche manuali prevalgono)
       (fleet || []).forEach(v => {
-        if (v.rentmeId && v.targa) {
-          rentmeToTarga[v.rentmeId.toLowerCase().trim()] = v.targa.toUpperCase();
-          const num = v.rentmeId.trim().split(' ').pop();
+        const rmId = v.idRentme || v.rentmeId; // flotta locale usa idRentme, RentMe API usa rentmeId
+        if (rmId && v.targa) {
+          rentmeToTarga[rmId.toLowerCase().trim()] = v.targa.toUpperCase();
+          const num = rmId.trim().split(' ').pop();
           if (num && !rentmeToTarga[num]) rentmeToTarga[num.toLowerCase()] = v.targa.toUpperCase();
         }
       });
@@ -15223,7 +15226,7 @@ function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, on
   // getCat: funzione locale che usa il lookup RentMe-live come fonte principale,
   // poi v.categoria salvato, poi keyword sul modello.
   const getCat = useCallback((v) => {
-    const rmKey = (v.rentmeId || v.id || '').toLowerCase().trim();
+    const rmKey = (v.idRentme || v.rentmeId || v.id || '').toLowerCase().trim();
     if (rmKey && rentmeCategoriaMap[rmKey]) return rentmeCategoriaMap[rmKey];
     // Prova anche solo la parte numerica: "panda 81" → "81"
     const num = rmKey.split(' ').pop();
@@ -15405,7 +15408,7 @@ function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, on
             const dimmed = v.stato === 'venduto';
             const vr = resolveVehicleDisplay(v);
             const realTarga  = vr.targa || null;
-            const rmCode     = v.rentmeId || null;
+            const rmCode     = v.idRentme || v.rentmeId || null;
             return (
               <div key={v.id} className="card-paper p-5 group relative" style={{ opacity: dimmed ? 0.55 : 1 }}>
                 <div className="flex items-start justify-between mb-3">
