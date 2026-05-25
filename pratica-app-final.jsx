@@ -25,6 +25,17 @@ const APP_VERSION = {
   codename: 'Pagamenti, notifiche push, statistiche veicolo, manutenzioni, YoY, Drive',
   date: '2026-05-25',
   changelog: [
+    // v0.39.5 — 2026-05-25
+    'Flotta: aggiunto tasto "Azzera flotta" (rosso, con conferma) nella testata — svuota la flotta mantenendo prenotazioni intatte',
+    'Flotta Import CSV: aggiunta modalità "Aggiorna + aggiungi" (default) — reuploading aggiorna tipo/modello/colore dei mezzi esistenti senza cancellare stato e scadenze; "Sostituisci tutto" rimpiazza intera flotta',
+    'normalizzaTipoEdox: ampliata lista brand scooter (Piaggio, Honda, Yamaha, Kymco, Aprilia, Sym, Suzuki, ecc.) — prima venivano classificati auto; aggiunto fallback CC ≤ 300 per riconoscere modelli non in lista',
+    // v0.39.4 — 2026-05-25
+    'Fix Preventivi: badge "X di Y liberi" ora usa rentmeVehicles (tipo normalizzato) invece della flotta locale — corregge il bug che mostrava 91/93 per ogni categoria auto perché tutti i mezzi importati avevano tipo="auto" come fallback',
+    // v0.39.3 — 2026-05-25
+    'Nuova prenotazione: input ricerca targa con autocomplete — digita 2+ caratteri e vedi i match in flotta (occupati evidenziati in rosso)',
+    'Nuova prenotazione: bottone 📷 Scansiona targa — apre fotocamera (rear cam su mobile), viewfinder dorato, OCR via Tesseract.js già bundled, riconosce formato IT standard AB123CD e vecchio moto AB12345',
+    // v0.39.2 — 2026-05-25
+    'Fix ordinamento dropdown mezzi: tipo (scooter→moto→auto→quad→ebike→bici) → modello alfabetico → targa numerica',
     // v0.39.1 — 2026-05-25
     'Fix preventivi: rincaro +€5/g ora si applica SOLO per soggiorni < 7 giorni — per 7+ giorni si usa tariffa settimanale/7 senza maggiorazione (bici/ebike e agosto sempre esclusi)',
     // v0.39.0 — 2026-05-25
@@ -2359,6 +2370,16 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
     initial?.vehicleSchedule || null
   ); // null = mezzo singolo, array = multi-mezzo
 
+  // ── Ricerca targa manuale + OCR ─────────────────
+  const [targaSearch, setTargaSearch] = useState('');
+  const [showOcrModal, setShowOcrModal] = useState(false);
+  const [ocrStatus, setOcrStatus] = useState('idle'); // idle|loading|scanning|done|error
+  const [ocrMsg, setOcrMsg]       = useState('');
+  const [ocrFound, setOcrFound]   = useState(null);  // { plate, vehicle, booked }
+  const videoRef  = useRef(null);
+  const canvasRef = useRef(null);
+  const streamRef = useRef(null);
+
   // Anti-overbooking: esclude i veicoli già prenotati nel periodo selezionato
   // Controlla sia vehicleId principale che singoli segmenti del vehicleSchedule
   const bookedIds = useMemo(() => {
@@ -2406,10 +2427,25 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
     return (fleet || []).filter(v => v.stato === 'available');
   }, [fleet, rentmeVehicles]);
 
-  const availableVehicles = useMemo(() =>
-    allVehicles.filter(v => !bookedIds.has(v.id)),
-    [allVehicles, bookedIds]
-  );
+  const availableVehicles = useMemo(() => {
+    const TIPO_ORD = { scooter: 0, moto: 1, auto: 2, quad: 3, ebike: 4, bici: 5 };
+    return allVehicles
+      .filter(v => !bookedIds.has(v.id))
+      .sort((a, b) => {
+        // 1. tipo (scooter → auto → quad → ebike → bici)
+        const tA = TIPO_ORD[a.tipo] ?? 9;
+        const tB = TIPO_ORD[b.tipo] ?? 9;
+        if (tA !== tB) return tA - tB;
+        // 2. modello/nome alfabetico
+        const mA = (a.modello || a.nome || '').toLowerCase();
+        const mB = (b.modello || b.nome || '').toLowerCase();
+        if (mA !== mB) return mA.localeCompare(mB, 'it');
+        // 3. numero targa (ordinamento numerico, es. 2 < 10 < 11)
+        const nA = parseInt((a.targa || a.id || '').replace(/\D+/g, '') || '0', 10);
+        const nB = parseInt((b.targa || b.id || '').replace(/\D+/g, '') || '0', 10);
+        return nA - nB;
+      });
+  }, [allVehicles, bookedIds]);
 
   // Smart assignment: calcola combinazione ottimale se nessun mezzo singolo è disponibile
   const smartCombo = useMemo(() => {
@@ -2517,6 +2553,100 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
     return { totale, occupati, liberi: Math.max(0, totale - occupati) };
   }, [prenotazioni, allVehicles, fleet, f.vehicleType, f.vehicleId, f.dal, f.al, initial?.id]);
 
+  // ── Targa search: suggerimenti da allVehicles (anche occupati) ──────
+  const targaSuggestions = useMemo(() => {
+    const q = targaSearch.trim().toUpperCase();
+    if (q.length < 2) return [];
+    return allVehicles.filter(v => {
+      const t = (v.targa || v.id || '').toUpperCase();
+      return t.includes(q);
+    }).slice(0, 6);
+  }, [targaSearch, allVehicles]);
+
+  function selectVehicleFromTarga(v) {
+    set('vehicleId', v.id);
+    set('vehicleLabel', makeVehicleLabel(v));
+    set('vehicleType', v.tipo || 'auto');
+    setTargaSearch('');
+    setVehicleSchedule(null);
+  }
+
+  // ── OCR helpers ────────────────────────────────
+  function extractItalianPlate(text) {
+    // Formato standard IT: AB123CD — oppure vecchio moto: AB12345
+    const clean = text.toUpperCase().replace(/[^A-Z0-9]/g, ' ');
+    const m = clean.match(/([A-Z]{2})\s*(\d{3})\s*([A-Z]{2})|([A-Z]{2})\s*(\d{5})/);
+    if (!m) return null;
+    if (m[1]) return `${m[1]}${m[2]}${m[3]}`;
+    return `${m[4]}${m[5]}`;
+  }
+
+  async function openOcrModal() {
+    setShowOcrModal(true);
+    setOcrStatus('loading');
+    setOcrMsg('Avvio fotocamera…');
+    setOcrFound(null);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }
+      });
+      streamRef.current = stream;
+      if (videoRef.current) { videoRef.current.srcObject = stream; videoRef.current.play(); }
+      setOcrStatus('scanning');
+      setOcrMsg('Punta la fotocamera sulla targa e premi 📸');
+    } catch (err) {
+      setOcrStatus('error');
+      setOcrMsg(`Fotocamera non disponibile: ${err.message}`);
+    }
+  }
+
+  function closeOcrModal() {
+    if (streamRef.current) { streamRef.current.getTracks().forEach(t => t.stop()); streamRef.current = null; }
+    setShowOcrModal(false);
+    setOcrStatus('idle');
+    setOcrMsg('');
+    setOcrFound(null);
+  }
+
+  async function captureAndOcr() {
+    if (!videoRef.current || !canvasRef.current) return;
+    setOcrStatus('loading');
+    setOcrMsg('Elaborazione immagine…');
+    const video  = videoRef.current;
+    const canvas = canvasRef.current;
+    canvas.width  = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext('2d').drawImage(video, 0, 0);
+    try {
+      setOcrMsg('Riconosco targa…');
+      // Tesseract già importato a livello modulo — nessun caricamento dinamico
+      const result = await Tesseract.recognize(canvas, 'eng', {
+        logger: m2 => { if (m2.status === 'recognizing text') setOcrMsg(`OCR: ${Math.round(m2.progress * 100)}%`); }
+      });
+      const plate = extractItalianPlate(result.data.text);
+      if (!plate) {
+        setOcrStatus('error');
+        setOcrMsg(`Targa non riconosciuta — testo: "${result.data.text.trim().slice(0, 50)}" — riprova`);
+        return;
+      }
+      const found = allVehicles.find(v => {
+        const t = (v.targa || v.id || '').toUpperCase().replace(/\s/g, '');
+        return t === plate || t.includes(plate) || plate.includes(t);
+      });
+      if (found) {
+        setOcrFound({ plate, vehicle: found, booked: bookedIds.has(found.id) });
+        setOcrStatus('done');
+        setOcrMsg(`✅ Targa riconosciuta: ${plate}`);
+      } else {
+        setOcrStatus('error');
+        setOcrMsg(`Targa "${plate}" non trovata in flotta — verifica manualmente`);
+      }
+    } catch (err) {
+      setOcrStatus('error');
+      setOcrMsg(`Errore OCR: ${err.message}`);
+    }
+  }
+
   const inp = { border: '1px solid var(--border)', borderRadius: 4, padding: '7px 10px', fontSize: 13, width: '100%', background: 'var(--bg)', color: 'var(--ink)', boxSizing: 'border-box' };
   const lbl = { display: 'block', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--ink-2)', marginBottom: 4 };
 
@@ -2563,6 +2693,53 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
           {/* Mezzo */}
           <div>
             <label style={lbl}>Mezzo</label>
+
+            {/* ── Ricerca targa manuale + pulsante OCR ── */}
+            <div style={{ display: 'flex', gap: 8, marginBottom: 6, alignItems: 'stretch' }}>
+              <div style={{ flex: 1, position: 'relative' }}>
+                <input
+                  style={{ ...inp, fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: 1, paddingLeft: 28 }}
+                  value={targaSearch}
+                  onChange={e => setTargaSearch(e.target.value.toUpperCase())}
+                  placeholder="🔍  Cerca targa  (es. AB123CD)"
+                />
+                {/* Suggestions */}
+                {targaSuggestions.length > 0 && (
+                  <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 200,
+                    background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 6,
+                    boxShadow: '0 4px 16px rgba(0,0,0,0.15)', maxHeight: 220, overflowY: 'auto' }}>
+                    {targaSuggestions.map(v => {
+                      const isBooked = bookedIds.has(v.id);
+                      return (
+                        <div key={v.id}
+                          onClick={() => { if (!isBooked) selectVehicleFromTarga(v); }}
+                          style={{ padding: '8px 12px', cursor: isBooked ? 'not-allowed' : 'pointer',
+                            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                            borderBottom: '1px solid var(--border)', opacity: isBooked ? 0.5 : 1,
+                            background: 'var(--bg)', transition: 'background 0.1s' }}
+                          onMouseEnter={e => { if (!isBooked) e.currentTarget.style.background = 'var(--accent-soft)'; }}
+                          onMouseLeave={e => { e.currentTarget.style.background = 'var(--bg)'; }}>
+                          <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 13 }}>
+                            {v.targa || v.id}
+                          </span>
+                          <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+                            {makeVehicleLabel(v)}{v.tipo ? ` · ${v.tipo}` : ''}
+                            {isBooked ? <span style={{ color: '#c85050' }}> · ⛔ occupato</span> : ''}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+              <button type="button" onClick={openOcrModal} title="Scansiona targa con fotocamera"
+                style={{ padding: '0 14px', borderRadius: 6, border: '1px solid var(--border)',
+                  background: 'var(--bg-subtle)', cursor: 'pointer', fontSize: 20, flexShrink: 0,
+                  display: 'flex', alignItems: 'center' }}>
+                📷
+              </button>
+            </div>
+
             <select style={inp} value={f.vehicleId} onChange={handleVehicleChange}>
               <option value="">— Categoria generica —</option>
               {availableVehicles.map(v => (
@@ -2757,6 +2934,95 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
               {initial ? 'Salva modifiche' : (sendToRentme && isNew && rentmeConnected ? 'Crea prenotazione + RentMe' : 'Crea prenotazione')}
             </button>
           </div>
+
+          {/* ── Modal OCR fotocamera ── */}
+          {showOcrModal && (
+            <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.88)', zIndex: 10000,
+              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+              padding: 20, gap: 14 }}>
+
+              {/* Messaggio stato */}
+              <div style={{ color: '#fff', fontSize: 14, textAlign: 'center', maxWidth: 380,
+                padding: '8px 16px', borderRadius: 8,
+                background: ocrStatus === 'error' ? 'rgba(200,80,80,0.4)' : ocrStatus === 'done' ? 'rgba(46,110,62,0.4)' : 'rgba(255,255,255,0.1)' }}>
+                {ocrMsg || 'Preparazione…'}
+              </div>
+
+              {/* Video preview */}
+              <div style={{ position: 'relative', borderRadius: 12, overflow: 'hidden',
+                maxWidth: 420, width: '100%', border: '2px solid rgba(255,255,255,0.2)' }}>
+                <video ref={videoRef} autoPlay playsInline muted
+                  style={{ width: '100%', display: 'block', maxHeight: 280, objectFit: 'cover' }} />
+                {/* Viewfinder: rettangolo giallo dove inquadrare la targa */}
+                <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center',
+                  justifyContent: 'center', pointerEvents: 'none' }}>
+                  <div style={{ border: '3px solid #FFD700', borderRadius: 4, width: '82%', height: 56,
+                    boxShadow: '0 0 0 9999px rgba(0,0,0,0.35)' }} />
+                </div>
+                {/* Label */}
+                <div style={{ position: 'absolute', bottom: 8, left: 0, right: 0, textAlign: 'center',
+                  color: '#FFD700', fontSize: 11, fontWeight: 700, letterSpacing: 1, textShadow: '0 1px 4px #000' }}>
+                  INQUADRA LA TARGA
+                </div>
+              </div>
+
+              {/* Canvas nascosto per capture */}
+              <canvas ref={canvasRef} style={{ display: 'none' }} />
+
+              {/* Risultato trovato */}
+              {ocrFound && (
+                <div style={{ background: ocrFound.booked ? 'rgba(200,80,80,0.2)' : 'rgba(46,110,62,0.25)',
+                  border: `1px solid ${ocrFound.booked ? '#c85050' : '#2e6e3e'}`,
+                  borderRadius: 10, padding: '14px 22px', textAlign: 'center', maxWidth: 380, width: '100%' }}>
+                  <div style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: 22, color: '#fff', letterSpacing: 2, marginBottom: 4 }}>
+                    {ocrFound.plate}
+                  </div>
+                  <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.8)', marginBottom: 12 }}>
+                    {makeVehicleLabel(ocrFound.vehicle)} · <em>{ocrFound.vehicle.tipo}</em>
+                    {ocrFound.booked && <span style={{ color: '#f87171', fontWeight: 700 }}> · ⛔ occupato nel periodo</span>}
+                  </div>
+                  {!ocrFound.booked && (
+                    <button type="button"
+                      onClick={() => { selectVehicleFromTarga(ocrFound.vehicle); closeOcrModal(); }}
+                      style={{ padding: '10px 28px', borderRadius: 8, border: 'none',
+                        background: '#2e6e3e', color: '#fff', fontWeight: 800, fontSize: 15, cursor: 'pointer' }}>
+                      ✓ Usa questo mezzo
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* Azioni */}
+              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', justifyContent: 'center' }}>
+                {(ocrStatus === 'scanning') && (
+                  <button type="button" onClick={captureAndOcr}
+                    style={{ padding: '13px 32px', borderRadius: 10, border: 'none',
+                      background: '#FFD700', color: '#111', fontWeight: 800, fontSize: 17, cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <Camera size={20} /> Leggi targa
+                  </button>
+                )}
+                {ocrStatus === 'loading' && (
+                  <div style={{ color: '#FFD700', fontSize: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ animation: 'spin 1s linear infinite', display: 'inline-block' }}>⏳</span> Elaborazione…
+                  </div>
+                )}
+                {ocrStatus === 'error' && (
+                  <button type="button"
+                    onClick={() => { setOcrStatus('scanning'); setOcrMsg('Punta la fotocamera sulla targa e premi 📸'); setOcrFound(null); }}
+                    style={{ padding: '10px 24px', borderRadius: 8, border: 'none',
+                      background: 'rgba(255,255,255,0.15)', color: '#fff', fontWeight: 700, cursor: 'pointer' }}>
+                    🔄 Riprova
+                  </button>
+                )}
+                <button type="button" onClick={closeOcrModal}
+                  style={{ padding: '10px 24px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.3)',
+                    background: 'transparent', color: '#fff', fontWeight: 600, cursor: 'pointer' }}>
+                  ✕ Chiudi
+                </button>
+              </div>
+            </div>
+          )}
         </form>
       </div>
     </div>
@@ -4446,18 +4712,24 @@ function calcPreventivo(cat, dal, al) {
 }
 
 // ── QuoteCard — singola categoria con prezzo calcolato ───────────────
-function QuoteCard({ cat, dal, al, onPrenota, fleet, prenotazioni }) {
+function QuoteCard({ cat, dal, al, onPrenota, fleet, rentmeVehicles, prenotazioni }) {
   const [open, setOpen] = useState(false);
   const [lang, setLang] = useState('it');
   // Codice univoco generato una volta per questo preventivo — segue fino alla prenotazione
   const [bookingCode] = useState(() => generateBookingCode());
 
   // Mini disponibilità per le date selezionate
+  // Preferisce rentmeVehicles (tipo già normalizzato da normalizzaTipoEdox)
+  // su fleet locale che può avere tipo='auto' come fallback per tutti i veicoli
   const disponibilita = useMemo(() => {
-    if (!dal || !al || !fleet || !fleet.length) return null;
-    const stessoTipo = fleet.filter(v => {
+    if (!dal || !al) return null;
+    const source = (rentmeVehicles && rentmeVehicles.length > 0)
+      ? rentmeVehicles
+      : (fleet || []);
+    if (!source.length) return null;
+    const ct = (cat.tipo || '').toLowerCase();
+    const stessoTipo = source.filter(v => {
       const t = (v.tipo || '').toLowerCase();
-      const ct = (cat.tipo || '').toLowerCase();
       return t === ct || (t === 'moto' && ct === 'scooter') || (t === 'scooter' && ct === 'moto');
     });
     if (!stessoTipo.length) return null;
@@ -4466,9 +4738,13 @@ function QuoteCard({ cat, dal, al, onPrenota, fleet, prenotazioni }) {
         .filter(p => p.dal <= al && p.al >= dal && p.stato !== 'annullata' && p.stato !== 'completata')
         .map(p => p.vehicleId).filter(Boolean)
     );
-    const liberi = stessoTipo.filter(v => !occupati.has(v.id)).length;
+    // Normalizza id: rentmeVehicles usa targa come vehicleId (come in PrenoForm)
+    const liberi = stessoTipo.filter(v => {
+      const id = (v.targa || v.id || '').toUpperCase().trim();
+      return !id || !occupati.has(id);
+    }).length;
     return { liberi, totale: stessoTipo.length };
-  }, [fleet, prenotazioni, dal, al, cat.tipo]);
+  }, [fleet, rentmeVehicles, prenotazioni, dal, al, cat.tipo]);
   // Modal dati cliente prima di generare il PDF
   const [showClienteModal, setShowClienteModal] = useState(false);
   const [clientePdf, setClientePdf] = useState({ nome: '', tel: '', email: '', note: '' });
@@ -5078,7 +5354,7 @@ function PreventiviPage({ setPage, setPrenotazioniPrefill, listino: listinoProps
       ) : giorni > 0 ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {categorieVisibili.map(cat => (
-            <QuoteCard key={cat.id} cat={cat} dal={dal} al={al} onPrenota={handlePrenota} fleet={fleet} prenotazioni={prenotazioni} />
+            <QuoteCard key={cat.id} cat={cat} dal={dal} al={al} onPrenota={handlePrenota} fleet={fleet} rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} />
           ))}
         </div>
       ) : (
@@ -8176,21 +8452,34 @@ function StagioniEditor({ stagioni, onSave }) {
 // ═══════════════════════════════════════════════════════════════════
 // Mappa il tipo EDOX (es. "mehari", "panda", "mxu") → tipo Pratica (auto/scooter/quad/ebike)
 function normalizzaTipoEdox(idRentme, modello, cc) {
-  const id  = (idRentme || '').toLowerCase();
-  const mod = (modello  || '').toLowerCase();
+  const id  = (idRentme || '').toLowerCase().trim();
+  const mod = (modello  || '').toLowerCase().trim();
   const raw = id.split(' ')[0] || '';
-  // Quad / ATV
-  if (['mxu','xwolf','quad','atv'].includes(raw) || mod.includes('quad')) return 'quad';
-  // Scooter / moto
-  if (['scooter','moto','vespa','maxi'].includes(raw) || mod.includes('scooter')) return 'scooter';
-  // E-bike / bicicletta
-  if (raw === 'ebike' || mod.includes('ebike') || mod.includes('e-bike')) return 'ebike';
-  if (raw === 'bicicletta' || raw === 'bici' || mod.includes('bicicletta')) {
-    // MUSCOLARE e PIEGA = bici tradizionale, nessuna categoria motore
+
+  // ── Quad / ATV — PRIMA degli scooter (Kymco fa sia quad MXU che scooter) ──
+  if (['mxu','xwolf','quad','atv'].includes(raw)
+    || id.includes('quad') || id.includes('mxu') || id.includes('xwolf')
+    || mod.includes('quad')) return 'quad';
+
+  // ── Scooter / Moto — brand noti ─────────────────────────────────────
+  // NON usare CC come fallback: i quad possono avere motori da 50–700 cc
+  // e verrebbero classificati erroneamente come scooter.
+  const SCOOTER_BRANDS = [
+    'scooter','moto','vespa','maxi',
+    'piaggio','honda','yamaha','aprilia','kymco','sym','tgb',
+    'peugeot','italjet','daelim','benelli','suzuki','kawasaki',
+    'gilera','derbi','malaguti','bmw','scarabeo','atlantic',
+  ];
+  if (SCOOTER_BRANDS.includes(raw) || mod.includes('scooter') || mod.includes('moto')) return 'scooter';
+
+  // ── E-bike / bicicletta ──────────────────────────────────────────────
+  if (['ebike','bici','bicicletta'].includes(raw)
+    || mod.includes('ebike') || mod.includes('e-bike') || mod.includes('bicicletta')) {
     if (mod.includes('muscolare') || mod.includes('piega')) return 'bici';
     return 'ebike';
   }
-  // Tutto il resto è auto (mehari, panda, stepway, golf, corsa, smart, rav4, ecc.)
+
+  // ── Auto (mehari, panda, citroen, fiat, smart, rav4, ecc.) ──────────
   return 'auto';
 }
 
@@ -8201,11 +8490,13 @@ function normalizzaTipoEdox(idRentme, modello, cc) {
 // Il separatore viene rilevato automaticamente (virgola o punto-e-virgola).
 // ═══════════════════════════════════════════════════════════════════
 function FleetCSVImport({ fleet, onImport, onClose }) {
-  const [step, setStep]     = useState('upload'); // upload | preview | done
+  const [step, setStep]       = useState('upload'); // upload | preview | done
   const [preview, setPreview] = useState([]);
-  const [error, setError]   = useState(null);
-  const [added, setAdded]   = useState(0);
+  const [error, setError]     = useState(null);
+  const [added, setAdded]     = useState(0);
+  const [updated, setUpdated] = useState(0);
   const [formato, setFormato] = useState('');
+  const [mode, setMode]       = useState('update'); // 'update' = aggiorna+aggiungi | 'replace' = sostituisci tutto
   const fileRef = useRef();
 
   const parseCSV = (text) => {
@@ -8287,11 +8578,38 @@ function FleetCSVImport({ fleet, onImport, onClose }) {
   };
 
   const handleImport = () => {
-    // Filtra duplicati per targa (univoca)
-    const existing = new Set((fleet || []).map(v => (v.targa || '').toUpperCase()));
-    const toAdd = preview.filter(r => !existing.has((r.targa || '').toUpperCase()));
-    onImport([...(fleet || []), ...toAdd]);
+    if (mode === 'replace') {
+      // Sostituisce tutta la flotta con i dati del CSV
+      onImport(preview);
+      setAdded(preview.length);
+      setUpdated(0);
+      setStep('done');
+      return;
+    }
+    // ── Modalità "Aggiorna + aggiungi" ──────────────────────────────────
+    // Aggiorna i campi tecnici (tipo, modello, colore, cc, idRentme) dei mezzi
+    // già in flotta abbinando per targa — NON tocca stato, scadenze, note.
+    const previewMap = new Map(preview.map(r => [(r.targa || '').toUpperCase(), r]));
+    let nUpdated = 0;
+    const updatedFleet = (fleet || []).map(v => {
+      const t = (v.targa || '').toUpperCase();
+      if (!previewMap.has(t)) return v;
+      nUpdated++;
+      const fresh = previewMap.get(t);
+      return {
+        ...v,
+        tipo:     fresh.tipo     || v.tipo,
+        modello:  fresh.modello  || v.modello,
+        idRentme: fresh.idRentme || v.idRentme,
+        colore:   fresh.colore   || v.colore,
+        cc:       fresh.cc       || v.cc,
+      };
+    });
+    const existingTargas = new Set((fleet || []).map(v => (v.targa || '').toUpperCase()));
+    const toAdd = preview.filter(r => !existingTargas.has((r.targa || '').toUpperCase()));
+    onImport([...updatedFleet, ...toAdd]);
     setAdded(toAdd.length);
+    setUpdated(nUpdated);
     setStep('done');
   };
 
@@ -8342,10 +8660,24 @@ function FleetCSVImport({ fleet, onImport, onClose }) {
 
         {step === 'preview' && (
           <div>
-            <div style={{ marginBottom: 14, fontSize: 13, color: 'var(--ink-2)' }}>
+            <div style={{ marginBottom: 10, fontSize: 13, color: 'var(--ink-2)' }}>
               <strong>{preview.length}</strong> mezzi trovati
               {formato && <span style={{ marginLeft: 8, fontSize: 11, background: formato === 'EDOX' ? '#e8f4e8' : 'var(--surface-2)', color: formato === 'EDOX' ? '#2e6e3e' : 'var(--muted)', padding: '2px 8px', borderRadius: 10, fontWeight: 600 }}>Formato {formato}</span>}
-              . Controlla e conferma l'importazione.
+            </div>
+            {/* Modalità import */}
+            <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+              {[
+                { id: 'update',  label: '🔄 Aggiorna + aggiungi', desc: 'Aggiorna tipo/modello dei mezzi esistenti, aggiunge i nuovi' },
+                { id: 'replace', label: '⚠️ Sostituisci tutto',   desc: 'Sostituisce l\'intera flotta con il contenuto del CSV' },
+              ].map(m => (
+                <button key={m.id} type="button" onClick={() => setMode(m.id)}
+                  title={m.desc}
+                  style={{ flex: 1, padding: '8px 10px', borderRadius: 6, border: `2px solid ${mode === m.id ? 'var(--accent)' : 'var(--border)'}`,
+                    background: mode === m.id ? 'var(--accent-soft)' : 'var(--bg)', cursor: 'pointer',
+                    fontSize: 12, fontWeight: mode === m.id ? 700 : 400, color: 'var(--ink)', textAlign: 'center' }}>
+                  {m.label}
+                </button>
+              ))}
             </div>
             <div style={{ maxHeight: 280, overflow: 'auto', border: '1px solid var(--border)', borderRadius: 6 }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
@@ -8385,8 +8717,8 @@ function FleetCSVImport({ fleet, onImport, onClose }) {
             </div>
             <div style={{ display: 'flex', gap: 10, marginTop: 18 }}>
               <button type="button" onClick={handleImport}
-                style={{ flex: 1, padding: '10px', background: 'var(--ink)', color: '#fff', border: 'none', borderRadius: 5, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
-                Importa {preview.length} mezzi
+                style={{ flex: 1, padding: '10px', background: mode === 'replace' ? '#c0392b' : 'var(--ink)', color: '#fff', border: 'none', borderRadius: 5, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
+                {mode === 'replace' ? `⚠️ Sostituisci flotta (${preview.length} mezzi)` : `✓ Conferma import (${preview.length} mezzi)`}
               </button>
               <button type="button" onClick={() => { setStep('upload'); setPreview([]); }}
                 style={{ padding: '10px 20px', background: 'var(--surface-2)', color: 'var(--ink)', border: '1px solid var(--border)', borderRadius: 5, fontSize: 14, cursor: 'pointer' }}>
@@ -8401,7 +8733,9 @@ function FleetCSVImport({ fleet, onImport, onClose }) {
             <div style={{ fontSize: 48, marginBottom: 14 }}>✅</div>
             <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>Import completato</div>
             <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 24 }}>
-              {added > 0 ? `${added} mezzi aggiunti alla flotta.` : 'Nessun nuovo mezzo (tutti già presenti).'}
+              {mode === 'replace'
+                ? `Flotta sostituita con ${added} mezzi dal CSV.`
+                : `${updated > 0 ? `${updated} aggiornati` : ''}${updated > 0 && added > 0 ? ' · ' : ''}${added > 0 ? `${added} nuovi aggiunti` : ''}${updated === 0 && added === 0 ? 'Nessuna modifica (flotta già aggiornata).' : '.'}`}
             </div>
             <button type="button" onClick={onClose}
               style={{ padding: '10px 28px', background: 'var(--ink)', color: '#fff', border: 'none', borderRadius: 5, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
@@ -13316,7 +13650,7 @@ export default function App() {
               {page === 'preventivi'    && <PreventiviPage setPage={setPage} setPrenotazioniPrefill={setPrenotazioniPrefill} listino={listino} fleet={fleet} rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} pushToast={pushToast} />}
               {page === 'prenotazioni' && <PrenotazioniPage prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} setCassa={setCassa} fleet={fleet} rentmeVehicles={rentmeVehicles} customers={customers} operator={operator} onOpenWizard={openWizard} pushToast={pushToast} prefill={prenotazioniPrefill} onClearPrefill={() => setPrenotazioniPrefill(null)} fermiFlotta={fermiFlotta} rentmePush={rentmeSync.pushBooking} rentmeConnected={rentmeSync.status === 'ok'} agency={agency} />}
               {page === 'contracts'  && <ContractsList contracts={localContracts} operators={operators} onRetry={retryContract} onMarkReturned={markContractReturned} online={online} />}
-              {page === 'fleet'      && <FleetPage fleet={fleet} prenotazioni={prenotazioni} admin={admin} onAddVehicle={() => setModal('newVehicle')} onEditVehicle={(v) => setModal({ type: 'editVehicle', vehicle: v })} onDeleteVehicle={requestDeleteVehicle} onImportCSV={() => setShowCsvImport(true)} scadenze={scadenze} setScadenze={setScadenze} fermiFlotta={fermiFlotta} setFermiFlotta={setFermiFlotta} rentmeVehicles={rentmeVehicles} manutenzioni={manutenzioni} setManutenzioni={setManutenzioni} />}
+              {page === 'fleet'      && <FleetPage fleet={fleet} prenotazioni={prenotazioni} admin={admin} onAddVehicle={() => setModal('newVehicle')} onEditVehicle={(v) => setModal({ type: 'editVehicle', vehicle: v })} onDeleteVehicle={requestDeleteVehicle} onImportCSV={() => setShowCsvImport(true)} onResetFleet={() => setModal({ type: 'confirm', title: 'Azzera flotta?', message: <><strong>Tutti i {fleet.length} veicoli</strong> verranno eliminati dalla flotta. Le prenotazioni esistenti restano invariate. Dopo puoi reimportare con un CSV aggiornato. <strong>Azione irreversibile.</strong></>, confirmLabel: '🗑 Azzera flotta', variant: 'danger', onConfirm: () => { setFleet([]); pushToast({ tone: 'info', title: 'Flotta azzerata', message: 'Tutti i veicoli rimossi. Importa un nuovo CSV per ricaricare.' }); } })} scadenze={scadenze} setScadenze={setScadenze} fermiFlotta={fermiFlotta} setFermiFlotta={setFermiFlotta} rentmeVehicles={rentmeVehicles} manutenzioni={manutenzioni} setManutenzioni={setManutenzioni} />}
               {page === 'customers'  && <CustomersPage customers={customers} setCustomers={setCustomers} prenotazioni={prenotazioni} admin={admin} onShowQR={(c) => setModal({ type: 'qr', customer: c })} onNewWithCustomer={openWizard} onAddCustomer={() => setModal('newCustomer')} onEditCustomer={(c) => setModal({ type: 'editCustomer', customer: c })} onDeleteCustomer={deleteCustomer} onShowStorico={(c) => setStorioClienteId(c.id)} />}
               {page === 'partners'   && <PartnersPage partners={partners} admin={admin} onAddPartner={() => setModal('newPartner')} onEditPartner={(p) => setModal({ type: 'editPartner', partner: p })} onDeletePartner={requestDeletePartner} />}
               {page === 'listino'    && <div style={{padding:'28px 32px',maxWidth:900,margin:'0 auto'}}>
@@ -14842,7 +15176,7 @@ function ManutenzioniModal({ vehicle, manutenzioni, setManutenzioni, onClose }) 
 // ═══════════════════════════════════════════════════════════════════
 // FLEET
 // ═══════════════════════════════════════════════════════════════════
-function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, onDeleteVehicle, onImportCSV, scadenze, setScadenze, fermiFlotta, setFermiFlotta, rentmeVehicles, manutenzioni, setManutenzioni }) {
+function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, onDeleteVehicle, onImportCSV, onResetFleet, scadenze, setScadenze, fermiFlotta, setFermiFlotta, rentmeVehicles, manutenzioni, setManutenzioni }) {
   const [typeFilter, setTypeFilter] = useState('all');
   const [categoriaFilter, setCategoriaFilter] = useState(null);
   const [statusFilter, setStatusFilter] = useState('all');
@@ -14960,7 +15294,13 @@ function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, on
           </p>
         </div>
         {admin && (
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {onResetFleet && fleet.length > 0 && (
+              <button type="button" onClick={onResetFleet}
+                style={{ padding: '8px 14px', borderRadius: 5, background: 'transparent', border: '1px solid #e0b0b0', color: '#c0392b', fontSize: 13, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+                🗑 Azzera flotta
+              </button>
+            )}
             <button type="button" onClick={onImportCSV}
               style={{ padding: '8px 16px', borderRadius: 5, background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--ink-2)', fontSize: 13, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
               <Upload className="w-4 h-4" aria-hidden="true" /> Import CSV
