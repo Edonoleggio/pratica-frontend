@@ -21,8 +21,8 @@ import Tesseract from 'tesseract.js';
 // Convenzione: x.y.z dove x = major rewrite, y = feature, z = fix.
 // La data accanto aiuta a verificare al volo che il deploy sia andato a buon fine.
 const APP_VERSION = {
-  number: '0.40.0',
-  codename: 'Preventivo multi-stagione, categorie CC, dropdown mezzi disponibili',
+  number: '0.40.1',
+  codename: 'Fix classificazione bici/ebike/quad, ♻️ ripristino idRentme, subcategorie quad',
   date: '2026-05-25',
   changelog: [
     // v0.40.0 — 2026-05-25
@@ -363,14 +363,11 @@ const VEHICLE_TYPES = {
 //   'bicicletta'  → 'ebike'     (e-bike da RentMe)
 //                   ECCEZIONE: MUSCOLARE e PIEGA sono bici tradizionali → 'bici'
 function canonicalTipo(v) {
-  const t   = (v?.tipo    || '').toLowerCase().trim();
-  const mod = (v?.modello || '').toUpperCase().trim();
-  if (t === 'moto') return 'scooter';
-  if (t === 'bicicletta' || t === 'bici') {
-    // MUSCOLARE e PIEGA sono bici muscolari — non e-bike, nessuna categoria
-    if (mod.includes('MUSCOLARE') || mod.includes('PIEGA')) return 'bici';
-    return 'ebike';
-  }
+  const t = (v?.tipo || '').toLowerCase().trim();
+  if (t === 'moto') return 'scooter';       // alias RentMe
+  if (t === 'bicicletta') return 'ebike';   // bici assistita generica → ebike
+  // 'bici' = muscolare/piega (senza motore) → rimane 'bici'
+  // 'ebike' (fat, city) rimane 'ebike'
   return t;
 }
 
@@ -418,7 +415,9 @@ function getVehicleCategoria(v) {
   // Fast path: campo già salvato durante l'import
   if (v?.categoria) return v.categoria;
   const tipo = (v.tipo || '').toLowerCase();
-  const rmId = (v.idRentme || v.rentmeId || '').toLowerCase().trim();
+  // idRentme può essere vuoto per import vecchi — usa modello come fallback
+  // (il parser vecchio salvava il codice RentMe in modello anziché idRentme)
+  const rmId = (v.idRentme || v.rentmeId || v.modello || '').toLowerCase().trim();
   const cc   = parseInt(v.cc || 0, 10);
   const vr   = resolveVehicleDisplay(v);
   const text = `${vr.modello || ''} ${vr.marca || ''} ${rmId}`.toLowerCase();
@@ -8719,12 +8718,14 @@ function normalizzaTipoEdox(idRentme, modello, cc) {
   ];
   if (SCOOTER_BRANDS.includes(raw) || mod.includes('scooter') || mod.includes('moto')) return 'scooter';
 
-  // ── Biciclette muscolari (muscolare, piega, fat) ─────────────────────
-  if (['muscolare','piega','fat'].includes(raw)
+  // ── Bici muscolari (senza motore): solo muscolare e piega ────────────
+  if (['muscolare','piega'].includes(raw)
     || mod.includes('muscolare') || mod.includes('piega')) return 'bici';
-  // ── E-bike / bicicletta / city-bike ──────────────────────────────────
-  if (['ebike','bici','bicicletta','city'].includes(raw)
-    || mod.includes('ebike') || mod.includes('e-bike') || mod.includes('bicicletta')) {
+  // ── E-bike / fat-bike / city-bike / bicicletta assistita ─────────────
+  // fat = fat-bike elettrica → ebike; city = citybike assistita → ebike
+  if (['ebike','fat','city','bici','bicicletta'].includes(raw)
+    || mod.includes('ebike') || mod.includes('e-bike') || mod.includes('bicicletta')
+    || mod.includes('fat') || mod.includes('city')) {
     return 'ebike';
   }
 
@@ -15497,9 +15498,9 @@ function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, on
   }, [rentmeCategoriaMap]);
 
   const filtered = useMemo(() => {
-    // 'all' esclude le bici muscolari (non sono veicoli da noleggio)
+    // 'all' include tutto (bici muscolari ora hanno il loro tab dedicato)
     let f = typeFilter === 'all'
-      ? fleet.filter(v => canonicalTipo(v) !== 'bici')
+      ? [...fleet]
       : fleet.filter(v => canonicalTipo(v) === typeFilter);
     if (categoriaFilter) f = f.filter(v => getCat(v) === categoriaFilter);
     if (statusFilter !== 'all') f = f.filter(v => (v.stato || 'available') === statusFilter);
@@ -15516,9 +15517,9 @@ function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, on
     return f;
   }, [fleet, typeFilter, categoriaFilter, statusFilter, query, getCat]);
 
-  // Categorie disponibili nel tipo selezionato (solo quelle con almeno 1 veicolo)
+  // Categorie disponibili nel tipo selezionato (auto, scooter, quad)
   const categorieDisponibili = useMemo(() => {
-    if (typeFilter !== 'auto' && typeFilter !== 'scooter') return [];
+    if (!['auto', 'scooter', 'quad'].includes(typeFilter)) return [];
     const inTipo = fleet.filter(v => canonicalTipo(v) === typeFilter);
     const cats = RENTME_CATEGORIE_MAP[typeFilter] || [];
     return cats.map(cat => ({
@@ -15528,9 +15529,8 @@ function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, on
     })).filter(c => c.n > 0);
   }, [fleet, typeFilter, getCat]);
 
-  const noBiciCount = fleet.filter(v => canonicalTipo(v) !== 'bici').length;
   const filters = [
-    { id: 'all',     label: 'Tutti',   n: noBiciCount },
+    { id: 'all',     label: 'Tutti',   n: fleet.length },
     { id: 'auto',    label: 'Auto',    n: counts.auto },
     { id: 'scooter', label: 'Scooter', n: counts.scooter },
     { id: 'quad',    label: 'Quad',    n: counts.quad },
@@ -15552,7 +15552,7 @@ function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, on
         <div>
           <h2 className="serif text-3xl font-medium">Flotta</h2>
           <p className="text-sm mt-1" style={{ color: 'var(--muted)' }}>
-            {fleet.length} veicoli · {counts.auto} auto · {counts.scooter} scooter · {counts.quad} quad · {counts.ebike} e-bike
+            {fleet.length} veicoli · {counts.auto} auto · {counts.scooter} scooter · {counts.quad} quad · {counts.ebike} e-bike{counts.bici > 0 ? ` · ${counts.bici} bici` : ''}
             {statusCounts.fermo > 0 && <span style={{ color: 'var(--warning)' }}> · {statusCounts.fermo} fermi</span>}
             {statusCounts.incidentato > 0 && <span style={{ color: 'var(--accent)' }}> · {statusCounts.incidentato} incidentati</span>}
           </p>
@@ -15568,13 +15568,21 @@ function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, on
             {/* Ricalcola tipi — migrazione per flotte importate con vecchio parser */}
             {fleet.length > 0 && (
               <button type="button" onClick={() => {
-                const fixed = fleet.map(v => ({
-                  ...v,
-                  tipo: normalizzaTipoEdox(v.idRentme || v.rentmeId, v.modello, v.cc)
-                }));
+                const fixed = fleet.map(v => {
+                  // Import vecchio: idRentme era vuoto, il codice RentMe era in modello
+                  // → usa modello come fallback per garantire classificazione corretta
+                  const rmCode = v.idRentme || v.rentmeId || v.modello || '';
+                  const nuovoTipo = normalizzaTipoEdox(rmCode, v.modello, v.cc);
+                  // Ripristina idRentme se era vuoto e modello contiene un codice RentMe valido
+                  const idRentmeFixed = (v.idRentme || v.rentmeId)
+                    ? (v.idRentme || v.rentmeId)
+                    : (rmCode && nuovoTipo !== 'auto' ? rmCode : v.idRentme || '');
+                  return { ...v, tipo: nuovoTipo, idRentme: idRentmeFixed };
+                });
                 onSetFleet && onSetFleet(fixed);
-                const changed = fixed.filter((v, i) => v.tipo !== fleet[i].tipo).length;
-                alert(`♻️ Tipi ricalcolati: ${changed} mezzi aggiornati su ${fleet.length}`);
+                const tipoChanged = fixed.filter((v, i) => v.tipo !== fleet[i].tipo).length;
+                const idFixed    = fixed.filter((v, i) => (v.idRentme || '') !== (fleet[i].idRentme || '')).length;
+                alert(`♻️ Ricalcolo completato:\n· ${tipoChanged} tipi aggiornati\n· ${idFixed} codici RentMe ripristinati\nsu ${fleet.length} mezzi totali`);
               }}
                 style={{ padding: '8px 14px', borderRadius: 5, background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--ink-2)', fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}
                 title="Ricalcola tipo (scooter/quad/ebike/bici) per tutti i mezzi in flotta">
