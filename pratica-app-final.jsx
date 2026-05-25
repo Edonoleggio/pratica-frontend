@@ -18690,6 +18690,7 @@ function PlateScanModal({ fleet, onClose }) {
       )}
     </ModalShell>
   );
+}
 
 // ═══════════════════════════════════════════════════════════════════
 // MODAL: SHIFT CHANGE
