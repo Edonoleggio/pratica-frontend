@@ -11,7 +11,7 @@ import { CalendarDays, Receipt, BarChart2,
   Hotel, Anchor, Plane, Wallet, Printer, Save, Mail, Home, Compass,
   Upload, Image as ImageIcon, RefreshCw, Key, Eye as EyeIcon, EyeOff,
   CircleDot, Power, Shield, Briefcase, Zap, Package
-} from 'lucide-react'; import Tesseract from 'tesseract.js';
+} from 'lucide-react';
 import Tesseract from 'tesseract.js';
 
 // ═══════════════════════════════════════════════════════════════════
@@ -21,10 +21,52 @@ import Tesseract from 'tesseract.js';
 // Convenzione: x.y.z dove x = major rewrite, y = feature, z = fix.
 // La data accanto aiuta a verificare al volo che il deploy sia andato a buon fine.
 const APP_VERSION = {
-  number: '0.32.2',
-  codename: 'Preventivo → scelta mezzo → RentMe',
-  date: '2026-05-22',
+  number: '0.38.0',
+  codename: 'Pagamenti, notifiche push, statistiche veicolo, manutenzioni, YoY, Drive',
+  date: '2026-05-24',
   changelog: [
+    // v0.38.0 — 2026-05-24
+    'Pagamento bonifico + PayPal: IBAN/BIC/PayPal.me configurabili in Anagrafica agenzia → sezione Pagamenti',
+    'Pagamento: bottone "💳 Paga" nella PrenoCard genera messaggio WA con dati bancari/link PayPal — visibile solo se IBAN o PayPal configurati e residuo > 0',
+    'Notifiche push: rientri in ritardo — alert al caricamento per prenotazioni confermata/in_corso scadute',
+    'Notifiche push: scadenze documenti flotta estese da 0–2 giorni a 30 giorni con priorità (SCADUTA / URGENTE / in scadenza)',
+    'Statistiche veicolo: modal "📊 Statistiche" per ogni veicolo — revenue, giorni noleggiati, occupazione % per anno corrente/precedente e lifetime, confronto YoY',
+    'Manutenzioni programmate: nuova sezione "🔩 Manutenzioni" per ogni veicolo in Flotta — aggiungi/completa/elimina interventi con alert scadenza',
+    'Manutenzioni: alert nella pagina Oggi per interventi in scadenza entro 30 giorni o scaduti',
+    'Manutenzioni: badge colorato sul pulsante (rosso = scaduta, arancione = entro 30 giorni, verde = ok)',
+    'Report: nuovo tab "Anno su Anno 📈" con confronto mensile revenue/prenotazioni anno selezionato vs anno precedente, grafico barre affiancate e tabella con Δ%',
+    'Backup Google Drive: configurazione Client ID OAuth2 in Impostazioni, upload JSON su Drive con tokenClient GIS — ultimo backup mostrato in interfaccia',
+    // v0.37.0 — 2026-05-24
+    'Pagina iniziale: l\'app si apre su Oggi invece che Dashboard',
+    'Bug critico: setPrenotazioni non definito in OggiPage — aggiunto alla firma props',
+    'Preventivi: il rincaro giornaliero +€5 non si applica alle bici/e-bike',
+    'WhatsApp preventivo: rimosso riferimento stagione e "Confermate disponibilità e prezzo? Grazie!"',
+    'Contratto: bottoni Invia via WA / Email / SMS (SMS predisposto, attivo con abbonamento)',
+    'Import clienti: riconosce colonna ragione sociale — record solo con P.IVA/azienda ora vengono importati',
+    'Import clienti: deduplicazione usa ragione sociale come chiave quando cognome è vuoto',
+    'Nuovo cliente: accessibile a tutti gli operatori, non solo admin',
+    // v0.36.0 — 2026-05-24
+    'Fix OCR: tessedit_pageseg_mode passato come numero (6/7) invece di stringa — parametro accettato correttamente da Tesseract.js',
+    'Fix Gantt: rimosso position:sticky incompatibile con overflow:hidden — nome cliente ora usa overflow:hidden + textOverflow:ellipsis per cella',
+    'Fix OggiPage: rimossi prop fantasma "otazioni" e "savePendingBooking" dalla firma — nessun comportamento alterato, solo pulizia',
+    'Fix props duplicate: rentmePush/rentmeVehicles/pushToast moltiplicati ×12 su una riga — ridotti a ×1 ciascuno',
+    'Fix dead code: savePendingBooking={undefined} rimosso da due call-site (PrenotazioniPage, CalendarioFlottaPage)',
+    // v0.35.0 — 2026-05-24
+    'OCR Tesseract.js abilitato: fix import duplicato rimosso · API aggiornata a createWorker (più stabile, char-whitelist corretta)',
+    'Scansione documento: OCR reale on-device — legge MRZ di CI (TD1) e Passaporto (TD3) e pre-compila automaticamente cognome, nome, data nascita, cittadinanza, num.documento nel form CARGOS',
+    'Lettura targa: OCR migliorato con pageseg_mode 7 (riga singola), whitelist A-Z0-9, cleanup più preciso',
+    'Nessun dato inviato in rete — tutto on-device via Tesseract WASM',
+    // v0.34.0 — 2026-05-24
+    'Calendario Gantt: nome cliente visibile su tutta la barra prenotazione (sticky a sinistra), non solo sulla prima casella',
+    'Documenti: aggiunto tipo "Altro (documento straniero/speciale)" · validazione caratteri per CI (9), Passaporto (9), Patente (8–12), Permesso (8–20) — feedback verde/rosso in tempo reale',
+    'Tutti i PDF generati dall\'app ora usano formato A4 con margini 1.5cm (@page size: A4)',
+    // v0.33.0 — 2026-05-24
+    'Fix Calendario → Modifica: il pulsante apre direttamente il form di modifica della prenotazione (non più solo scroll/evidenzia)',
+    'Fix Formula agosto: tariffa = settimanale/7 × giorni (non più arrotondamento a settimane intere)',
+    'RentMe re-invio: checkbox "Re-invia a RentMe" disponibile anche in modifica prenotazione esistente',
+    'Vista Prenotazioni: default cambiato a "Gruppi" (mese + settimana) — più chiara per navigare',
+    'Report: "Revenue prenotazioni" come KPI principale (somma prezzi non annullate) con sottotitolo "In cassa / Da incassare" — addio cifre confuse',
+    'Fix: props rentmePush/rentmeVehicles/pushToast duplicate in PrenoCard (vista gruppi) rimosse',
     // v0.32.2 — 2026-05-22
     'Preventivi: click "Prenota" apre modal selezione mezzo specifico (libero/occupato) — poi form prenotazione con vehicleId reale e checkbox RentMe attiva',
     // v0.32.1 — 2026-05-21
@@ -237,6 +279,11 @@ const INITIAL_AGENCY = {
   agenziaId: 'EDO-LMP-1994',
   orari: 'Lun–Dom · 08:30–13:00 / 14:30–19:00',
   servizi: 'Auto · Scooter · Quad · E-bike · Mehari · Transfer · Officina',
+  // Pagamenti
+  iban: '',
+  intestatario: '',
+  bic: '',
+  paypalMe: '',   // es. "edonoleggio" → link: https://paypal.me/edonoleggio/IMPORTO
 };
 
 // Configurazione CARGOS — modificabile via UI in Impostazioni
@@ -524,7 +571,33 @@ const TIPO_PAGAMENTO = {
   T: { label: 'Contante',         cargosMap: 'T', icon: Wallet },
 };
 
-const TIPO_DOC = { CI: "Carta d'identità", PA: 'Passaporto', PT: 'Patente di guida', PE: 'Permesso di soggiorno' };
+const TIPO_DOC = {
+  CI: "Carta d'identità",
+  PA: 'Passaporto',
+  PT: 'Patente di guida',
+  PE: 'Permesso di soggiorno',
+  AL: 'Altro (documento straniero/speciale)',
+};
+
+// Regole di validazione per numero documento (conteggio caratteri)
+const DOC_VALIDATION = {
+  CI: { min: 9, max: 9,  hint: '9 caratteri (es. AB1234567)' },
+  PA: { min: 9, max: 9,  hint: '9 caratteri (es. YA1234567)' },
+  PT: { min: 8, max: 12, hint: '8–12 caratteri' },
+  PE: { min: 8, max: 20, hint: '8–20 caratteri' },
+  AL: { min: 0, max: 99, hint: 'Qualsiasi formato' },
+};
+
+function validateDocNum(tipo, num) {
+  if (!num || !tipo) return null;
+  const clean = num.replace(/\s/g, '');
+  const rule = DOC_VALIDATION[tipo];
+  if (!rule) return null;
+  if (rule.min === 0) return null; // no validation for ALTRO
+  if (clean.length < rule.min) return { ok: false, msg: `Troppo corto — ${rule.hint}` };
+  if (clean.length > rule.max) return { ok: false, msg: `Troppo lungo — ${rule.hint}` };
+  return { ok: true, msg: `✓ ${clean.length} caratteri` };
+}
 
 // ═══════════════════════════════════════════════════════════════════
 // BACKEND API
@@ -1102,24 +1175,151 @@ const ReadonlyBanner = memo(function ReadonlyBanner({ message }) {
   );
 });
 
+// ─── OCR MRZ parser ──────────────────────────────────────────────────────────
+// Estrae dati anagrafici dalla zona MRZ di CI / Passaporto / Patente italiana.
+// Supporta: TD1 (CI 3×30), TD3 (Passaporto 2×44), fallback testo libero.
+function parseMRZ(ocrText) {
+  if (!ocrText) return null;
+
+  // Normalizza: toUpperCase, sostituisci spazi con < per preservare allineamento
+  const lines = ocrText
+    .split('\n')
+    .map(l => l.toUpperCase().replace(/\s/g, '<').replace(/[^A-Z0-9<]/g, '<'))
+    .filter(l => l.replace(/<+/g, '').length > 8 && l.length >= 20);
+
+  if (lines.length === 0) return null;
+
+  const result = {};
+
+  // Helper: decodifica nome da stringa MRZ "COGNOME<<NOME<ALTRO"
+  function decodeName(raw) {
+    const parts = raw.split('<<').map(p => p.replace(/</g, ' ').trim()).filter(Boolean);
+    return { cognome: parts[0] || '', nome: parts.slice(1).join(' ') || '' };
+  }
+
+  // Helper: converte YYMMDD → DD/MM/YYYY (anno ≥ 2000 se YY<30, altrimenti 1900)
+  function mrzDate(yymmdd) {
+    if (!yymmdd || yymmdd.length < 6) return '';
+    const yy = parseInt(yymmdd.slice(0, 2));
+    const mm = yymmdd.slice(2, 4);
+    const dd = yymmdd.slice(4, 6);
+    const yyyy = yy < 30 ? 2000 + yy : 1900 + yy;
+    return `${dd}/${mm}/${yyyy}`;
+  }
+
+  // Helper: converti codice ISO 3166-1 alpha-3 → nome nazione comune
+  const NATION = {
+    ITA: 'Italia', FRA: 'Francia', DEU: 'Germania', GBR: 'Regno Unito',
+    ESP: 'Spagna', USA: 'USA', CHE: 'Svizzera', AUT: 'Austria',
+    BEL: 'Belgio', NLD: 'Paesi Bassi', POL: 'Polonia', ROU: 'Romania',
+    ALB: 'Albania', TUN: 'Tunisia', MAR: 'Marocco', SEN: 'Senegal',
+    BRA: 'Brasile', ARG: 'Argentina', CHN: 'Cina', JPN: 'Giappone',
+    RUS: 'Russia', UKR: 'Ucraina', TUR: 'Turchia', GRC: 'Grecia',
+  };
+
+  // TD3 — Passaporto: 2 righe da 44 char
+  if (lines.length >= 2 && lines[0].length >= 44 && lines[1].length >= 44) {
+    const l1 = lines[0].padEnd(44, '<');
+    const l2 = lines[1].padEnd(44, '<');
+    if (l1[0] === 'P') {
+      const natCode = l1.slice(2, 5).replace(/</g, '');
+      const names = decodeName(l1.slice(5, 44));
+      result.cognome = names.cognome;
+      result.nome = names.nome;
+      result.cittadinanza = NATION[natCode] || natCode;
+      result.docNum = l2.slice(0, 9).replace(/<+$/, '');
+      result.docTipo = 'PA';
+      result.nascita = mrzDate(l2.slice(13, 19));
+      return result;
+    }
+  }
+
+  // TD1 — Carta d'Identità italiana: 3 righe da 30 char
+  if (lines.length >= 3 && lines[0].length >= 30) {
+    const l1 = lines[0].padEnd(30, '<');
+    const l2 = lines[1].padEnd(30, '<');
+    const l3 = lines[2].padEnd(30, '<');
+    if (l1[0] === 'I' || l1[0] === 'A') {
+      const natCode = l1.slice(2, 5).replace(/</g, '') || 'ITA';
+      result.docNum = l1.slice(5, 14).replace(/<+$/, '');
+      result.docTipo = 'CI';
+      result.nascita = mrzDate(l2.slice(0, 6));
+      const natCode2 = l2.slice(15, 18).replace(/</, '');
+      result.cittadinanza = NATION[natCode2 || natCode] || (natCode2 || natCode);
+      const names = decodeName(l3.slice(0, 30));
+      result.cognome = names.cognome;
+      result.nome = names.nome;
+      return result;
+    }
+  }
+
+  // Fallback: estrai quello che si riesce dal testo OCR libero
+  // Prova a trovare sequenze che sembrano num.documento (8-10 alfanum)
+  const docMatch = ocrText.match(/\b([A-Z]{2}\d{7}[A-Z]?)\b/);
+  if (docMatch) result.docNum = docMatch[1];
+  return Object.keys(result).length > 0 ? result : null;
+}
+
 // DocumentScanner — componente in-line per scansione documenti o QR cliente
 // Supporta: fotocamera live (getUserMedia) + upload file da galleria.
-// In produzione: il dataURL/file viene mandato al backend per OCR MRZ (documenti)
-// o decodifica QR (jsQR/zxing) → pre-compilazione campi.
+// OCR Tesseract.js on-device: legge MRZ di CI/Passaporto e pre-compila i campi.
 // mode: 'document' (CI/passaporto/patente) | 'qr' (codice cliente)
-function DocumentScanner({ mode = 'document', customers, onPick, onUpload }) {
+function DocumentScanner({ mode = 'document', customers, onPick, onUpload, onOcrResult }) {
   const [stage, setStage] = useState('idle'); // 'idle' | 'camera' | 'captured'
   const [snapshot, setSnapshot] = useState(null);
   const [uploaded, setUploaded] = useState(null);
+  const [ocrRunning, setOcrRunning] = useState(false);
+  const [ocrStatus, setOcrStatus] = useState('');  // messaggio di progresso
+  const [ocrResult, setOcrResult] = useState(null); // dati estratti
   const fileInputRef = useRef(null);
   const { videoRef, error: camError, ready, capture } = useCameraStream(stage === 'camera');
+
+  // OCR Tesseract on-device: riconosce MRZ documento e chiama onOcrResult
+  const runDocOcr = async (dataUrl) => {
+    if (mode !== 'document') return;
+    setOcrRunning(true);
+    setOcrStatus('⏳ Caricamento motore OCR…');
+    let worker;
+    try {
+      worker = await Tesseract.createWorker('eng', 1, {
+        logger: m => {
+          if (m.status === 'recognizing text') {
+            setOcrStatus(`🔍 Analisi testo… ${Math.round((m.progress || 0) * 100)}%`);
+          }
+        },
+      });
+      await worker.setParameters({
+        tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789<',
+        tessedit_pageseg_mode: 6, // assume un blocco uniforme di testo
+      });
+      setOcrStatus('🔍 Lettura documento in corso…');
+      const { data: { text } } = await worker.recognize(dataUrl);
+      const parsed = parseMRZ(text);
+      if (parsed && Object.keys(parsed).length > 0) {
+        setOcrResult(parsed);
+        setOcrStatus('✅ Dati estratti — verifica e conferma');
+        if (onOcrResult) onOcrResult(parsed);
+      } else {
+        setOcrStatus('⚠️ MRZ non rilevata — compila manualmente');
+      }
+    } catch (err) {
+      setOcrStatus('⚠️ OCR non riuscito — compila manualmente');
+      console.warn('Tesseract OCR error:', err);
+    } finally {
+      if (worker) await worker.terminate().catch(() => {});
+      setOcrRunning(false);
+    }
+  };
 
   const handleCapture = () => {
     const dataUrl = capture();
     if (dataUrl) {
       setSnapshot(dataUrl);
       setStage('captured');
+      setOcrResult(null);
+      setOcrStatus('');
       if (onUpload) onUpload(null, dataUrl);
+      runDocOcr(dataUrl);
     }
   };
 
@@ -1128,8 +1328,12 @@ function DocumentScanner({ mode = 'document', customers, onPick, onUpload }) {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = (ev) => {
-      setUploaded({ name: file.name, dataUrl: ev.target.result });
-      if (onUpload) onUpload(file, ev.target.result);
+      const dataUrl = ev.target.result;
+      setUploaded({ name: file.name, dataUrl });
+      setOcrResult(null);
+      setOcrStatus('');
+      if (onUpload) onUpload(file, dataUrl);
+      runDocOcr(dataUrl);
     };
     reader.readAsDataURL(file);
   };
@@ -1138,6 +1342,9 @@ function DocumentScanner({ mode = 'document', customers, onPick, onUpload }) {
     setSnapshot(null);
     setUploaded(null);
     setStage('idle');
+    setOcrResult(null);
+    setOcrStatus('');
+    setOcrRunning(false);
   };
 
   const labelDoc = mode === 'qr' ? 'codice cliente' : 'documento d\'identità';
@@ -1265,36 +1472,74 @@ function DocumentScanner({ mode = 'document', customers, onPick, onUpload }) {
     );
   }
 
-  // Stato post-scatto o post-upload: anteprima + conferma
+  // Stato post-scatto o post-upload: anteprima + OCR feedback
   const previewSrc = snapshot || uploaded?.dataUrl;
   const previewName = snapshot ? 'snapshot dalla fotocamera' : uploaded?.name;
 
   return (
     <div className="card-paper p-5 mb-6">
       <div className="flex items-center justify-between mb-3">
-        <div className="text-[11px] uppercase tracking-widest flex items-center gap-2" style={{ color: 'var(--success)' }}>
-          <CheckCircle2 className="w-3.5 h-3.5" /> Acquisito
+        <div className="text-[11px] uppercase tracking-widest flex items-center gap-2"
+          style={{ color: ocrResult ? 'var(--success)' : 'var(--muted)' }}>
+          {ocrResult ? <CheckCircle2 className="w-3.5 h-3.5" /> : <ScanLine className="w-3.5 h-3.5" />}
+          {ocrResult ? 'Dati estratti' : 'Acquisito'}
         </div>
         <button type="button" onClick={reset} className="btn-ghost px-2 py-1 rounded text-xs inline-flex items-center gap-1">
           <RefreshCw className="w-3.5 h-3.5" /> Ricomincia
         </button>
       </div>
       {previewSrc && previewSrc.startsWith('data:image') ? (
-        <img src={previewSrc} alt={previewName} className="w-full rounded" style={{ maxHeight: 280, objectFit: 'contain', background: 'var(--surface-2)' }} />
+        <img src={previewSrc} alt={previewName} className="w-full rounded"
+          style={{ maxHeight: 220, objectFit: 'contain', background: 'var(--surface-2)',
+            opacity: ocrRunning ? 0.6 : 1, transition: 'opacity .3s' }} />
       ) : (
         <div className="p-6 rounded text-center" style={{ background: 'var(--surface-2)' }}>
           <FileCheck2 className="w-8 h-8 mx-auto mb-2" style={{ color: 'var(--success)' }} />
           <div className="text-sm font-medium">{previewName}</div>
         </div>
       )}
-      <div className="mt-3 p-3 rounded text-[11px] flex items-start gap-2" style={{ background: 'var(--surface-2)', color: 'var(--ink-2)' }}>
-        <Info className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
-        <span>
-          {mode === 'qr'
-            ? 'In produzione: il QR viene decodificato (libreria jsQR) e i dati cliente pre-compilati automaticamente. Per ora compila i campi sotto manualmente o seleziona da "clienti precedenti".'
-            : 'In produzione: l\'immagine viene inviata al backend per OCR della zona MRZ del documento; i campi sotto verranno pre-compilati automaticamente. Per ora compila manualmente.'}
-        </span>
-      </div>
+
+      {/* Status OCR / risultato */}
+      {mode === 'document' && (
+        <div className="mt-3">
+          {(ocrRunning || ocrStatus) && (
+            <div className="p-3 rounded text-[11px] flex items-start gap-2 mb-2"
+              style={{ background: ocrResult ? 'rgba(46,110,62,.08)' : 'var(--surface-2)',
+                color: ocrResult ? 'var(--success)' : 'var(--ink-2)',
+                border: ocrResult ? '1px solid var(--success)' : 'none' }}>
+              {ocrRunning && <span className="animate-spin inline-block mr-1">⏳</span>}
+              <span>{ocrStatus || '🔍 OCR in corso…'}</span>
+            </div>
+          )}
+          {ocrResult && (
+            <div className="p-3 rounded text-xs space-y-1"
+              style={{ background: 'rgba(46,110,62,.06)', border: '1px solid rgba(46,110,62,.2)' }}>
+              <div className="font-semibold text-[11px] uppercase tracking-wider mb-2"
+                style={{ color: 'var(--success)' }}>Dati rilevati — campi pre-compilati ↓</div>
+              {ocrResult.cognome  && <div><span style={{ color: 'var(--muted)' }}>Cognome:</span> <strong>{ocrResult.cognome}</strong></div>}
+              {ocrResult.nome     && <div><span style={{ color: 'var(--muted)' }}>Nome:</span> <strong>{ocrResult.nome}</strong></div>}
+              {ocrResult.nascita  && <div><span style={{ color: 'var(--muted)' }}>Nascita:</span> <strong>{ocrResult.nascita}</strong></div>}
+              {ocrResult.cittadinanza && <div><span style={{ color: 'var(--muted)' }}>Cittadinanza:</span> <strong>{ocrResult.cittadinanza}</strong></div>}
+              {ocrResult.docNum   && <div><span style={{ color: 'var(--muted)' }}>N. documento:</span> <strong className="font-mono">{ocrResult.docNum}</strong></div>}
+              {ocrResult.docTipo  && <div><span style={{ color: 'var(--muted)' }}>Tipo:</span> <strong>{TIPO_DOC[ocrResult.docTipo] || ocrResult.docTipo}</strong></div>}
+            </div>
+          )}
+          {!ocrRunning && !ocrStatus && (
+            <div className="p-3 rounded text-[11px] flex items-start gap-2"
+              style={{ background: 'var(--surface-2)', color: 'var(--ink-2)' }}>
+              <Info className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+              <span>OCR on-device · nessun dato inviato in rete · MRZ di CI, Passaporto</span>
+            </div>
+          )}
+        </div>
+      )}
+      {mode === 'qr' && (
+        <div className="mt-3 p-3 rounded text-[11px] flex items-start gap-2"
+          style={{ background: 'var(--surface-2)', color: 'var(--ink-2)' }}>
+          <Info className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+          <span>Seleziona il cliente dalla lista oppure compila i campi manualmente.</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -1597,10 +1842,38 @@ function PrenoStatPill({ stato }) {
 }
 
 // ── PrenoCard ────────────────────────────────────────────────────────
-function PrenoCard({ p, onEdit, onConvert, onDelete, onFoto, onContratto, onFirma, onSaldo, onSaldoRapido, onDeposito, onRientro, onRiconsegna, onProroga, onSostituzione, onConsegna, onRicrea, onWaConferma, rentmePush, rentmeVehicles, pushToast }) {
+function PrenoCard({ p, onEdit, onConvert, onDelete, onFoto, onContratto, onFirma, onSaldo, onSaldoRapido, onDeposito, onRientro, onRiconsegna, onProroga, onSostituzione, onConsegna, onRicrea, onWaConferma, rentmePush, rentmeVehicles, pushToast, agency }) {
   const giorni = daysDiff(p.dal, p.al);
   const [saldoRapidoOpen, setSaldoRapidoOpen] = useState(false);
+  const [pagamentoOpen, setPagamentoOpen] = useState(false);
   const sp = statoPagamento(p);
+
+  // Genera messaggio pagamento via bonifico / PayPal
+  const buildPagamentoMsg = useCallback(() => {
+    const ag = agency || {};
+    const cliente = [p.clienteCognome, p.clienteNome].filter(Boolean).join(' ') || 'Cliente';
+    const importo = sp.residuo > 0 ? sp.residuo : (p.prezzo || 0);
+    const causale = `Noleggio ${p.id || ''} ${cliente} ${p.dal || ''}-${p.al || ''}`.trim();
+    let msg = `💳 Pagamento noleggio — *${cliente}*\n`;
+    msg += `Importo da saldare: *€${importo}*\n\n`;
+    if (ag.iban) {
+      msg += `🏦 *Bonifico bancario*\nIBAN: \`${ag.iban}\`\n`;
+      if (ag.intestatario) msg += `Intestatario: ${ag.intestatario}\n`;
+      if (ag.bic) msg += `BIC/SWIFT: ${ag.bic}\n`;
+      msg += `Causale: _${causale}_\n\n`;
+    }
+    if (ag.paypalMe) {
+      msg += `🅿️ *PayPal.me*\nhttps://paypal.me/${ag.paypalMe}/${importo}`;
+    }
+    return msg;
+  }, [agency, p, sp]);
+
+  const paypalUrl = (() => {
+    const ag = agency || {};
+    if (!ag.paypalMe) return null;
+    const importo = sp.residuo > 0 ? sp.residuo : (p.prezzo || 0);
+    return `https://paypal.me/${ag.paypalMe}/${importo}`;
+  })();
   return (
     <div style={{
       background: 'var(--bg)', border: '1px solid var(--border)',
@@ -1711,6 +1984,74 @@ function PrenoCard({ p, onEdit, onConvert, onDelete, onFoto, onContratto, onFirm
                 {i < p.vehicleSchedule.length - 1 && <span style={{ marginLeft: 3, color: '#1f5d83' }}>›</span>}
               </span>
             ))}
+          </div>
+        )}
+        {/* Pagamento rapido — bonifico / PayPal */}
+        {(agency && (agency.iban || agency.paypalMe)) && sp.residuo > 0 && !p.saldoRegistrato && (
+          <div style={{ marginTop: 6 }}>
+            <button type="button" onClick={() => setPagamentoOpen(o => !o)}
+              style={{ fontSize: 11, padding: '3px 8px', borderRadius: 4,
+                border: '1px solid #1f5d83', background: pagamentoOpen ? '#1f5d83' : 'transparent',
+                color: pagamentoOpen ? 'white' : '#1f5d83', cursor: 'pointer', fontWeight: 600 }}>
+              💳 Pagamento (€{sp.residuo})
+            </button>
+            {pagamentoOpen && (
+              <div style={{ marginTop: 6, padding: '10px 12px', borderRadius: 6,
+                background: 'var(--surface-2)', border: '1px solid var(--border)', fontSize: 11 }}>
+                {agency.iban && (
+                  <div style={{ marginBottom: 6 }}>
+                    <div style={{ fontWeight: 600, color: 'var(--ink)', marginBottom: 2 }}>🏦 Bonifico bancario</div>
+                    <div style={{ fontFamily: 'monospace', fontSize: 10, color: 'var(--ink-2)',
+                      wordBreak: 'break-all', marginBottom: 2 }}>{agency.iban}</div>
+                    {agency.bic && <div style={{ color: 'var(--muted)', fontSize: 10 }}>BIC: {agency.bic}</div>}
+                    <div style={{ color: 'var(--muted)', fontSize: 10, marginTop: 2 }}>
+                      Causale: Noleggio {p.id} {[p.clienteCognome, p.clienteNome].filter(Boolean).join(' ')}
+                    </div>
+                    <div style={{ display: 'flex', gap: 4, marginTop: 6 }}>
+                      <button type="button"
+                        onClick={() => { navigator.clipboard?.writeText(agency.iban); }}
+                        style={{ fontSize: 10, padding: '2px 7px', borderRadius: 3, border: '1px solid var(--border)',
+                          background: 'transparent', color: 'var(--ink-2)', cursor: 'pointer' }}>
+                        📋 Copia IBAN
+                      </button>
+                      {p.clienteTel && (
+                        <a
+                          href={`https://wa.me/${p.clienteTel.replace(/\D/g,'')}?text=${encodeURIComponent(buildPagamentoMsg())}`}
+                          target="_blank" rel="noreferrer"
+                          style={{ fontSize: 10, padding: '2px 7px', borderRadius: 3, border: 'none',
+                            background: '#25d366', color: 'white', fontWeight: 600,
+                            textDecoration: 'none', cursor: 'pointer' }}>
+                          📲 WA dati bancari
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                )}
+                {agency.paypalMe && (
+                  <div style={{ borderTop: agency.iban ? '1px solid var(--border)' : 'none', paddingTop: agency.iban ? 6 : 0 }}>
+                    <div style={{ fontWeight: 600, color: 'var(--ink)', marginBottom: 4 }}>🅿️ PayPal.me</div>
+                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                      <a href={paypalUrl} target="_blank" rel="noreferrer"
+                        style={{ fontSize: 10, padding: '3px 9px', borderRadius: 3, border: 'none',
+                          background: '#003087', color: 'white', fontWeight: 600,
+                          textDecoration: 'none' }}>
+                        Apri PayPal €{sp.residuo}
+                      </a>
+                      {p.clienteTel && (
+                        <a
+                          href={`https://wa.me/${p.clienteTel.replace(/\D/g,'')}?text=${encodeURIComponent(`Puoi pagare €${sp.residuo} via PayPal: ${paypalUrl}`)}`}
+                          target="_blank" rel="noreferrer"
+                          style={{ fontSize: 10, padding: '3px 9px', borderRadius: 3, border: 'none',
+                            background: '#25d366', color: 'white', fontWeight: 600,
+                            textDecoration: 'none' }}>
+                          📲 WA link PayPal
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -2109,7 +2450,7 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
       acconto: f.acconto !== '' ? parseFloat(f.acconto) : null,
       metodoPagamento: f.metodoPagamento || 'contanti',
       vehicleSchedule: vehicleSchedule || null,
-      sendToRentme: isNew ? sendToRentme : false,
+      sendToRentme: sendToRentme,
     });
   }
 
@@ -2370,8 +2711,8 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
             <textarea style={{ ...inp, resize: 'vertical', minHeight: 50, borderColor: 'var(--border)' }} value={f.noteInterne} onChange={e => set('noteInterne', e.target.value)} placeholder="Osservazioni interne, avvisi staff…" />
           </div>
 
-          {/* Toggle RentMe — visibile solo su nuove prenotazioni quando RentMe è connesso */}
-          {isNew && rentmeConnected && (
+          {/* Toggle RentMe — visibile sia per nuove prenotazioni che in modifica */}
+          {rentmeConnected && (
             <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', userSelect: 'none' }}>
                 <input
@@ -2381,9 +2722,11 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
                   style={{ width: 16, height: 16, accentColor: 'var(--accent)', cursor: 'pointer' }}
                 />
                 <span style={{ fontSize: 13 }}>
-                  <strong>📡 Invia anche a RentMe</strong>
+                  <strong>📡 {isNew ? 'Invia anche a RentMe' : 'Re-invia a RentMe'}</strong>
                   <span style={{ color: 'var(--ink-2)', marginLeft: 6, fontSize: 12 }}>
-                    {sendToRentme ? '— la prenotazione sarà creata nel gestionale RentMe' : '— solo locale, RentMe non verrà aggiornato'}
+                    {sendToRentme
+                      ? isNew ? '— la prenotazione sarà creata nel gestionale RentMe' : '— i dati aggiornati saranno inviati a RentMe'
+                      : '— solo locale, RentMe non verrà aggiornato'}
                   </span>
                 </span>
               </label>
@@ -2407,7 +2750,7 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
 }
 
 // ── PrenotazioniPage ─────────────────────────────────────────────────
-function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rentmeVehicles, customers, operator, onOpenWizard, pushToast, prefill, onClearPrefill, fermiFlotta, rentmePush, rentmeConnected }) {
+function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rentmeVehicles, customers, operator, onOpenWizard, pushToast, prefill, onClearPrefill, fermiFlotta, rentmePush, rentmeConnected, agency }) {
   const [form, setForm] = useState(null); // null | 'new' | {record}
   const [showDisp, setShowDisp] = useState(false);
 
@@ -2415,13 +2758,24 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rent
   const [focusId, setFocusId] = useState(null);
   const focusRef  = useRef(null); // ref aggiornato dalla PrenoCard evidenziata
 
-  // Quando arriva un prefill: se ha solo focusId → evidenzia; altrimenti apri form
+  // Quando arriva un prefill:
+  // · editId → trova la prenotazione e apri direttamente il form di modifica
+  // · focusId solo → scorri e evidenzia la card senza aprire il form
+  // · altri campi (vehicleId, vehicleLabel, ecc.) → nuova prenotazione con prefill
   useEffect(() => {
     if (!prefill) return;
-    if (prefill.focusId && !prefill.vehicleId && !prefill.vehicleLabel) {
+    if (prefill.editId) {
+      // Apri il form di modifica direttamente per la prenotazione con quell'ID
+      const target = (prenotazioni || []).find(p => p.id === prefill.editId);
+      if (target) {
+        setFilterStato('tutti');
+        setSearch('');
+        setForm(target);
+      }
+      onClearPrefill && onClearPrefill();
+    } else if (prefill.focusId && !prefill.vehicleId && !prefill.vehicleLabel) {
       // Solo focus: non aprire form, solo scorrere e evidenziare
       setFocusId(prefill.focusId);
-      // Togli il filtro stato così la prenotazione è sicuramente visibile
       setFilterStato('tutti');
       setSearch('');
       onClearPrefill && onClearPrefill();
@@ -2455,7 +2809,7 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rent
   const [showAdvFilter, setShowAdvFilter] = useState(false);
   const [prePage, setPrePage] = useState(1);
   const PAGE_SIZE = 20;
-  const [viewMode, setViewMode] = useState('lista'); // 'lista' | 'gruppi'
+  const [viewMode, setViewMode] = useState('gruppi'); // 'lista' | 'gruppi'
   // Modali contratto e firma
   const [contrattoPreno, setContrattoPreno] = useState(null);
   const [firmaPreno, setFirmaPreno] = useState(null);
@@ -2497,12 +2851,21 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rent
   }
 
   function updatePreno(data) {
-    setPrenotazioni(ps => ps.map(p => p.id === form.id
-      ? { ...p, ...data, updatedAt: new Date().toISOString() }
-      : p
-    ));
+    const { sendToRentme, ...cleanData } = data;
+    const updatedRec = { ...cleanData, updatedAt: new Date().toISOString() };
+    setPrenotazioni(ps => ps.map(p => p.id === form.id ? { ...p, ...updatedRec } : p));
     setForm(null);
     pushToast && pushToast({ tone: 'success', title: 'Prenotazione aggiornata', message: `${data.clienteCognome || ''} ${data.clienteNome || ''}`.trim() });
+    // Re-invio opzionale a RentMe
+    if (sendToRentme && rentmePush) {
+      const rmVeh = (rentmeVehicles || []).find(v =>
+        v.targa === cleanData.vehicleId || v.rentmeCode === cleanData.vehicleId
+      );
+      const slug = rmVeh?.slug || cleanData.vehicleType || 'auto';
+      rentmePush({ ...cleanData, id: form.id }, slug)
+        .then(() => pushToast && pushToast({ tone: 'success', title: '📡 Re-inviato a RentMe', message: `${[cleanData.clienteCognome, cleanData.clienteNome].filter(Boolean).join(' ')}` }))
+        .catch(err => pushToast && pushToast({ tone: 'warning', title: 'RentMe: invio fallito', message: err.message, duration: 6000 }));
+    }
   }
 
   function deletePreno(id) {
@@ -2973,7 +3336,11 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rent
                                 onConsegna={(rec) => setConsegnaPreno(rec)}
                                 onRicrea={handleRicrea}
                                 onSaldoRapido={handleSaldoRapido}
-                                onWaConferma={(rec) => { window.open(buildWaConferma(rec), '_blank', 'noopener'); }}               rentmePush={rentmePush}               rentmeVehicles={rentmeVehicles}               pushToast={pushToast}               rentmePush={rentmePush}               rentmeVehicles={rentmeVehicles}               pushToast={pushToast}               rentmePush={rentmePush}               rentmeVehicles={rentmeVehicles}               pushToast={pushToast}               rentmePush={rentmePush}               rentmeVehicles={rentmeVehicles}               pushToast={pushToast}               rentmePush={rentmePush}               rentmeVehicles={rentmeVehicles}               pushToast={pushToast}               rentmePush={rentmePush}               rentmeVehicles={rentmeVehicles}               pushToast={pushToast}               rentmePush={rentmePush}               rentmeVehicles={rentmeVehicles}               pushToast={pushToast}               rentmePush={rentmePush}               rentmeVehicles={rentmeVehicles}               pushToast={pushToast}               rentmePush={rentmePush}               rentmeVehicles={rentmeVehicles}               pushToast={pushToast}               rentmePush={rentmePush}               rentmeVehicles={rentmeVehicles}               pushToast={pushToast}               rentmePush={rentmePush}               rentmeVehicles={rentmeVehicles}               pushToast={pushToast}               rentmePush={rentmePush}               rentmeVehicles={rentmeVehicles}               pushToast={pushToast}
+                                onWaConferma={(rec) => { window.open(buildWaConferma(rec), '_blank', 'noopener'); }}
+                                rentmePush={rentmePush}
+                                rentmeVehicles={rentmeVehicles}
+                                pushToast={pushToast}
+                                agency={agency}
                               />
                             </div>
                           ))}
@@ -3009,7 +3376,11 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rent
               onConsegna={(rec) => setConsegnaPreno(rec)}
               onRicrea={handleRicrea}
               onSaldoRapido={handleSaldoRapido}
-              onWaConferma={(rec) => { window.open(buildWaConferma(rec), '_blank', 'noopener'); }}               rentmePush={rentmePush}               rentmeVehicles={rentmeVehicles}               pushToast={pushToast}               rentmePush={rentmePush}               rentmeVehicles={rentmeVehicles}               pushToast={pushToast}               rentmePush={rentmePush}               rentmeVehicles={rentmeVehicles}               pushToast={pushToast}               rentmePush={rentmePush}               rentmeVehicles={rentmeVehicles}               pushToast={pushToast}               rentmePush={rentmePush}               rentmeVehicles={rentmeVehicles}               pushToast={pushToast}               rentmePush={rentmePush}               rentmeVehicles={rentmeVehicles}               pushToast={pushToast}               rentmePush={rentmePush}               rentmeVehicles={rentmeVehicles}               pushToast={pushToast}               rentmePush={rentmePush}               rentmeVehicles={rentmeVehicles}               pushToast={pushToast}               rentmePush={rentmePush}               rentmeVehicles={rentmeVehicles}               pushToast={pushToast}               rentmePush={rentmePush}               rentmeVehicles={rentmeVehicles}               pushToast={pushToast}               rentmePush={rentmePush}               rentmeVehicles={rentmeVehicles}               pushToast={pushToast}               rentmePush={rentmePush}               rentmeVehicles={rentmeVehicles}               pushToast={pushToast}
+              onWaConferma={(rec) => { window.open(buildWaConferma(rec), '_blank', 'noopener'); }}
+              rentmePush={rentmePush}
+              rentmeVehicles={rentmeVehicles}
+              pushToast={pushToast}
+              agency={agency}
             />
             </div>
           ))}
@@ -3061,7 +3432,6 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rent
           prefillValues={form?.id === '__new__' ? form : null}
           fermiFlotta={fermiFlotta}
           rentmeConnected={rentmeConnected}
-              savePendingBooking={rentmePush ? undefined : undefined}
           onSave={form === 'new' || form?.id === '__new__' ? createPreno : updatePreno}
           onClose={() => setForm(null)}
         />
@@ -4029,20 +4399,25 @@ function calcPreventivo(cat, dal, al) {
 
   let totale, righe = [], risparmio = 0;
 
+  // Bici e e-bike: nessun rincaro giornaliero (+€5 non si applica)
+  const isBici = cat.tipo === 'ebike' || cat.tipo === 'bici' || cat.tipo === 'bicicletta';
+
   if (agosto) {
-    // Regola agosto: solo settimanale, minimo 7 giorni
-    const settimane = Math.max(1, Math.ceil(giorni / 7));
-    totale = settimane * rates.weekly;
-    righe.push({ desc: `${settimane} settimana${settimane > 1 ? 'e' : ''} × €${rates.weekly}`, sub: totale });
-    if (giorni < 7) righe.push({ desc: '⚠ Agosto: minimo 7 giorni', sub: null, warn: true });
+    // Regola agosto: tariffa giornaliera = settimanale / 7 (senza maggiorazione +5)
+    const effectiveDailyAgo = rates.weekly / 7;
+    totale = Math.round(giorni * effectiveDailyAgo);
+    righe.push({ desc: `${giorni} giorno${giorni > 1 ? 'i' : ''} × €${effectiveDailyAgo.toFixed(2)}/g`, sub: totale });
   } else {
-    // Formula fuori agosto: (tariffa settimanale / 7 + 5) × giorni
-    const effectiveDaily = Math.ceil(rates.weekly / 7 + 5);
+    // Formula fuori agosto: (tariffa settimanale / 7 + 5) × giorni  [bici: senza +5]
+    const effectiveDaily = isBici ? Math.ceil(rates.weekly / 7) : Math.ceil(rates.weekly / 7 + 5);
     totale = giorni * effectiveDaily;
     righe.push({ desc: `${giorni} giorno${giorni > 1 ? 'i' : ''} × €${effectiveDaily}/g`, sub: totale });
   }
 
-  return { totale, righe, risparmio, giorni, season, agosto, rates, effectiveDaily: agosto ? null : Math.ceil(rates.weekly / 7 + 5) };
+  const effectiveDailyReturn = agosto
+    ? Math.round(rates.weekly / 7 * 100) / 100
+    : (isBici ? Math.ceil(rates.weekly / 7) : Math.ceil(rates.weekly / 7 + 5));
+  return { totale, righe, risparmio, giorni, season, agosto, rates, effectiveDaily: effectiveDailyReturn, isBici };
 }
 
 // ── QuoteCard — singola categoria con prezzo calcolato ───────────────
@@ -4096,7 +4471,7 @@ function QuoteCard({ cat, dal, al, onPrenota }) {
             )}
             {!q.agosto && (!q.effectiveDaily || q.effectiveDaily === q.rates.daily) && `€${q.rates.daily}/g `}
             · €{q.rates.weekly}/sett
-            {!q.agosto && <span style={{ color: 'var(--muted)', marginLeft: 4, fontSize: 9 }}>(+€5/g rincaro)</span>}
+            {!q.agosto && !q.isBici && <span style={{ color: 'var(--muted)', marginLeft: 4, fontSize: 9 }}>(+€5/g rincaro)</span>}
           </div>
         </div>
 
@@ -4162,6 +4537,7 @@ function QuoteCard({ cat, dal, al, onPrenota }) {
             <span style={{ fontSize: 10, color: 'var(--muted)', marginLeft: 'auto' }}>segue nella prenotazione</span>
           </div>
 
+          {/* ── Riga azioni preventivo ── */}
           <div style={{ display: 'flex', gap: 8 }}>
             <a
               href={buildWhatsApp()}
@@ -4173,7 +4549,7 @@ function QuoteCard({ cat, dal, al, onPrenota }) {
                 background: '#25d366', color: 'white',
               }}
             >
-              WhatsApp
+              📲 WhatsApp
             </a>
             <button
               type="button"
@@ -4198,6 +4574,65 @@ function QuoteCard({ cat, dal, al, onPrenota }) {
             >
               + Prenota
             </button>
+          </div>
+
+          {/* ── Invia contratto firmato / per accettazione ── */}
+          <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--border)' }}>
+            <div style={{ fontSize: 10, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 6 }}>
+              Invia contratto / accettazione
+            </div>
+            <div style={{ display: 'flex', gap: 6 }}>
+              {/* WhatsApp contratto */}
+              <a
+                href={(() => {
+                  const tel = clientePdf.tel ? clientePdf.tel.replace(/\D/g,'') : '';
+                  const msg = `Edonoleggio Lampedusa — contratto noleggio ${cat.nome}\nDal ${formatDate(dal)} al ${formatDate(al)}\nCodice: ${bookingCode}\n\nIn allegato il contratto firmato.`;
+                  return tel
+                    ? `https://wa.me/${tel.startsWith('39') ? tel : '39' + tel}?text=${encodeURIComponent(msg)}`
+                    : `https://wa.me/?text=${encodeURIComponent(msg)}`;
+                })()}
+                target="_blank"
+                rel="noreferrer"
+                style={{
+                  flex: 1, padding: '6px 0', borderRadius: 5, textAlign: 'center',
+                  fontSize: 11, fontWeight: 600, textDecoration: 'none',
+                  background: '#25d366', color: 'white',
+                }}
+                title="Apri WhatsApp — allega manualmente il PDF del contratto"
+              >
+                📲 WA
+              </a>
+              {/* Email contratto */}
+              <a
+                href={(() => {
+                  const to = clientePdf.email || '';
+                  const sub = `Contratto noleggio — ${cat.nome} ${formatDate(dal)}–${formatDate(al)}`;
+                  const body = `Gentile Cliente,\n\nIn allegato il contratto di noleggio per:\nMezzo: ${cat.nome}\nDal ${formatDate(dal)} al ${formatDate(al)}\nCodice: ${bookingCode}\n\nEdonoleggio Lampedusa`;
+                  return `mailto:${to}?subject=${encodeURIComponent(sub)}&body=${encodeURIComponent(body)}`;
+                })()}
+                style={{
+                  flex: 1, padding: '6px 0', borderRadius: 5, textAlign: 'center',
+                  fontSize: 11, fontWeight: 600, textDecoration: 'none',
+                  background: '#1a6fbf', color: 'white',
+                }}
+                title="Apri client email — allega il PDF del contratto"
+              >
+                ✉ Email
+              </a>
+              {/* SMS — predisposto, disabilitato fino ad abbonamento */}
+              <button
+                type="button"
+                disabled
+                style={{
+                  flex: 1, padding: '6px 0', borderRadius: 5, border: '1px dashed var(--border)',
+                  fontSize: 11, fontWeight: 600, cursor: 'not-allowed', opacity: 0.5,
+                  background: 'transparent', color: 'var(--muted)',
+                }}
+                title="SMS — disponibile con abbonamento servizio SMS"
+              >
+                💬 SMS
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -4886,10 +5321,16 @@ function useReportData({ prenotazioni, contracts, cassa, customers, fleet, opera
     // ── KPI annuali ──────────────────────────────────────────────
     const totPreno     = allP.length;
     const totContratti = allC.length;
-    const incassoPreno = allP.reduce((s,p) => s + (p.prezzo||0), 0);
+    // Revenue prenotazioni: somma dei prezzi di tutte le prenotazioni NON annullate
+    // Questo è il numero principale che risponde a "quanto abbiamo fatturato"
+    const incassoPreno = allP.filter(p => p.stato !== 'annullata').reduce((s,p) => s + (p.prezzo||0), 0);
+    // Incasso cassa: movimenti fisici registrati nel registro (acconto/saldo)
     const incassoCassa = allK.filter(k => k.tipo !== 'rimborso').reduce((s,k) => s + (k.importo||0), 0);
     const rimborsiCassa= allK.filter(k => k.tipo === 'rimborso').reduce((s,k) => s + (k.importo||0), 0);
-    const nettoCassa   = incassoCassa - rimborsiCassa;
+    // Netto = revenue prenotazioni − rimborsi registrati
+    const nettoCassa   = incassoPreno - rimborsiCassa;
+    // Da incassare ancora (prezzo prenotazione − quanto già registrato in cassa)
+    const daIncassare  = Math.max(0, incassoPreno - incassoCassa);
 
     // ── Mensile: prenotazioni + revenue ─────────────────────────
     const mesi = Array.from({length:12}, (_,i) => {
@@ -5121,7 +5562,7 @@ function useReportData({ prenotazioni, contracts, cassa, customers, fleet, opera
         insights.push({ icon:'🔮', text:`€${revenueFutura.toLocaleString('it-IT')} di revenue futura già confermata` });
     }
 
-    return { totPreno, totContratti, incassoPreno, incassoCassa, rimborsiCassa, nettoCassa,
+    return { totPreno, totContratti, incassoPreno, incassoCassa, rimborsiCassa, nettoCassa, daIncassare,
              avgTicket, avgDurata, clientiUnici, tassoAnnullamento,
              metodi, tipiCassa, fonti, durBuckets, funnel, perVeicolo, maxVRevenue,
              mesi, maxPreno, maxRev, occupazione, topCats, topClienti, topOp, statiPreno, allP, allK,
@@ -5252,6 +5693,7 @@ function ReportPage({ prenotazioni, contracts, cassa, customers, fleet, operator
     { id:'cassa',       label:'Cassa 💵' },
     { id:'flotta',      label:'Flotta 🚗' },
     { id:'mix',         label:'Mix 📊' },
+    { id:'yoy',         label:'Anno su Anno 📈' },
   ];
 
   // Dati mensili per grafico stagionale
@@ -5274,6 +5716,27 @@ function ReportPage({ prenotazioni, contracts, cassa, customers, fleet, operator
       return { label, mese: meseStr, prenotazioni: prenoMese.length, revenue: revenueMese, cassa: cassaMese, occupazione: occ };
     });
   }, [prenotazioni, cassa, fleet, year]);
+
+  // Dati YoY: anno selezionato vs anno precedente, stessa struttura mensile
+  const prevYear = String(Number(year) - 1);
+  const datiMensiliPrev = useMemo(() => {
+    return mesiLabels.map((label, mi) => {
+      const meseStr = `${prevYear}-${String(mi+1).padStart(2,'0')}`;
+      const prenoMese = (prenotazioni||[]).filter(p => (p.dal||'').startsWith(meseStr) && p.stato !== 'annullata');
+      const revenueMese = prenoMese.reduce((s,p) => s + (p.prezzo||0), 0);
+      const cassaMese = (cassa||[]).filter(k => (k.data||'').startsWith(meseStr) && k.importo > 0).reduce((s,k) => s + k.importo, 0);
+      const fleetCount = (fleet||[]).length || 1;
+      const giorni = new Date(Number(prevYear), mi+1, 0).getDate();
+      const giorniOccupati = prenoMese.reduce((s,p) => {
+        const dal = new Date(Math.max(new Date(p.dal), new Date(`${meseStr}-01`)));
+        const al  = new Date(Math.min(new Date(p.al),  new Date(`${meseStr}-${String(giorni).padStart(2,'0')}`)));
+        const diff = Math.max(0, Math.round((al - dal) / 86400000) + 1);
+        return s + diff;
+      }, 0);
+      const occ = Math.min(100, Math.round(giorniOccupati / (fleetCount * giorni) * 100));
+      return { label, mese: meseStr, prenotazioni: prenoMese.length, revenue: revenueMese, cassa: cassaMese, occupazione: occ };
+    });
+  }, [prenotazioni, cassa, fleet, prevYear]);
 
   const tabBtn = (t) => (
     <button key={t.id} type="button" onClick={() => setTab(t.id)}
@@ -5319,8 +5782,8 @@ function ReportPage({ prenotazioni, contracts, cassa, customers, fleet, operator
       {/* KPI — 2 righe × 3 */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12, marginBottom:12 }}>
         {card('Prenotazioni '+year, d.totPreno, `${d.totContratti} contratti CARGOS`)}
-        {card('Incassato (cassa)', `€${d.incassoCassa.toLocaleString('it-IT')}`, `Rimborsi: €${d.rimborsiCassa}`, '#1f5d83')}
-        {card('Netto cassa', `€${d.nettoCassa.toLocaleString('it-IT')}`, 'entrate − uscite', '#2e6e3e')}
+        {card('Revenue prenotazioni', `€${d.incassoPreno.toLocaleString('it-IT')}`, `In cassa: €${d.incassoCassa.toLocaleString('it-IT')} · Da incassare: €${d.daIncassare.toLocaleString('it-IT')}`, '#1f5d83')}
+        {card('Netto (revenue − rimborsi)', `€${d.nettoCassa.toLocaleString('it-IT')}`, `Rimborsi registrati: €${d.rimborsiCassa}`, '#2e6e3e')}
         {card('Ticket medio', d.avgTicket > 0 ? `€${d.avgTicket}` : '—', 'valore medio prenotazione', '#b87333')}
         {card('Durata media', d.avgDurata > 0 ? `${d.avgDurata}g` : '—', 'giorni medi per noleggio', '#6a3d8f')}
         {card('Clienti unici', d.clientiUnici, `annullamenti: ${d.tassoAnnullamento}%`, d.tassoAnnullamento > 15 ? '#c85050' : 'var(--ink)')}
@@ -5344,26 +5807,28 @@ function ReportPage({ prenotazioni, contracts, cassa, customers, fleet, operator
                 <strong>Prenotazioni {year}</strong> — totale prenotazioni con data inizio nell'anno selezionato (tutti gli stati, incluse annullate e completate).
               </div>
               <div>
-                <strong>Incassato (cassa)</strong> — somma dei movimenti di cassa <em>in entrata</em> (tipo ≠ rimborso) registrati quell'anno, manualmente o automaticamente al saldo. <em>Non include caparre non ancora registrate.</em>
+                <strong>Revenue prenotazioni</strong> — somma dei <em>prezzi</em> di tutte le prenotazioni non annullate. È il fatturato concordato con i clienti, indipendentemente da quando i soldi arrivano fisicamente.
               </div>
               <div>
-                <strong>Rimborsi</strong> — movimenti di tipo "rimborso" in cassa; vengono sottratti per calcolare il netto.
+                <strong>In cassa</strong> (sottotitolo) — movimenti fisici registrati nel registro (acconti, saldi). Può essere inferiore alla revenue se non tutti i pagamenti sono stati ancora riscossi e registrati.
               </div>
               <div>
-                <strong>Netto cassa</strong> — <code>Incassato − Rimborsi</code>. Il flusso di cassa reale dopo le restituzioni.
+                <strong>Da incassare</strong> (sottotitolo) — differenza tra revenue e quanto già in cassa: soldi dovuti ma non ancora riscossi.
               </div>
               <div>
-                <strong>Ticket medio</strong> — media del campo <em>prezzo</em> delle prenotazioni non annullate (non dei movimenti cassa).
+                <strong>Rimborsi</strong> — movimenti di tipo "rimborso" nel registro cassa; sottratti per calcolare il netto.
+              </div>
+              <div>
+                <strong>Netto (revenue − rimborsi)</strong> — fatturato prenotazioni meno i rimborsi registrati: il risultato economico reale dell'anno.
+              </div>
+              <div>
+                <strong>Ticket medio</strong> — media del campo prezzo delle prenotazioni non annullate.
               </div>
               <div>
                 <strong>Durata media</strong> — media giorni tra <em>dal</em> e <em>al</em> delle prenotazioni non annullate.
               </div>
               <div>
                 <strong>Clienti unici</strong> — clienti distinti per cognome+nome o ID. Il tasso annullamento è la % di prenotazioni con stato "annullata".
-              </div>
-              <div style={{ marginTop:4, padding:'8px 12px', background:'var(--bg)', borderRadius:6,
-                border:'1px solid var(--border)', fontSize:11, color:'var(--muted)' }}>
-                💡 <strong>Perché Incassato ≠ Prenotazioni×prezzo?</strong> L'incassato conta solo i soldi registrati in cassa. Una prenotazione con prezzo €200 ma senza movimento cassa registrato non compare nell'incassato.
               </div>
             </div>
           </div>
@@ -6343,6 +6808,120 @@ function ReportPage({ prenotazioni, contracts, cassa, customers, fleet, operator
                   <td style={{ padding:'10px 14px', color:'#2e6e3e' }}>€{datiMensili.reduce((s,m)=>s+m.revenue,0).toLocaleString('it-IT')}</td>
                   <td style={{ padding:'10px 14px' }}>€{datiMensili.reduce((s,m)=>s+m.cassa,0).toLocaleString('it-IT')}</td>
                   <td style={{ padding:'10px 14px' }}>{Math.round(datiMensili.reduce((s,m)=>s+m.occupazione,0)/12)}% media</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ── YoY: Confronto Anno su Anno ──────────────────────────────── */}
+      {tab === 'yoy' && (
+        <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
+          {/* Totali a confronto */}
+          <div style={{ display:'flex', gap:12, flexWrap:'wrap' }}>
+            {[
+              { label:'Revenue', curr: datiMensili.reduce((s,m)=>s+m.revenue,0), prev: datiMensiliPrev.reduce((s,m)=>s+m.revenue,0), fmt: v=>`€${v.toLocaleString('it-IT')}` },
+              { label:'Prenotazioni', curr: datiMensili.reduce((s,m)=>s+m.prenotazioni,0), prev: datiMensiliPrev.reduce((s,m)=>s+m.prenotazioni,0), fmt: v=>String(v) },
+              { label:'Cassa incassata', curr: datiMensili.reduce((s,m)=>s+m.cassa,0), prev: datiMensiliPrev.reduce((s,m)=>s+m.cassa,0), fmt: v=>`€${v.toLocaleString('it-IT')}` },
+            ].map(({ label, curr, prev, fmt }) => {
+              const delta = prev > 0 ? Math.round((curr - prev) / prev * 100) : null;
+              const up = curr >= prev;
+              return (
+                <div key={label} style={{ flex:1, minWidth:180, background:'var(--bg)', border:'1px solid var(--border)', borderRadius:8, padding:'14px 18px' }}>
+                  <div style={{ fontSize:11, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:6 }}>{label}</div>
+                  <div style={{ display:'flex', alignItems:'baseline', gap:10, flexWrap:'wrap' }}>
+                    <span style={{ fontSize:22, fontWeight:700, fontFamily:'var(--font-serif)', color:'var(--ink)' }}>{fmt(curr)}</span>
+                    {delta !== null && (
+                      <span style={{ fontSize:13, fontWeight:700, color: up ? '#2e6e3e' : '#b22222' }}>
+                        {up ? '▲' : '▼'} {Math.abs(delta)}%
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ fontSize:11, color:'var(--muted)', marginTop:4 }}>
+                    {prevYear}: <strong>{fmt(prev)}</strong>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Grafico barre affiancate — Revenue mensile */}
+          <div style={{ background:'var(--bg)', border:'1px solid var(--border)', borderRadius:8, padding:'20px 22px' }}>
+            <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', color:'var(--ink-2)', marginBottom:12 }}>
+              Revenue mensile · {year} vs {prevYear}
+            </div>
+            <div style={{ display:'flex', gap:3, alignItems:'flex-end', height:130, marginBottom:4 }}>
+              {(() => {
+                const maxR = Math.max(...datiMensili.map(m=>m.revenue), ...datiMensiliPrev.map(m=>m.revenue), 1);
+                return datiMensili.map((m, i) => {
+                  const mp = datiMensiliPrev[i];
+                  const hC = Math.round((m.revenue / maxR) * 100);
+                  const hP = Math.round((mp.revenue / maxR) * 100);
+                  return (
+                    <div key={m.mese} style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:2 }}>
+                      <div style={{ width:'100%', display:'flex', gap:2, alignItems:'flex-end', height:110 }}>
+                        <div title={`${prevYear}: €${mp.revenue}`} style={{ flex:1, height:`${Math.max(hP,2)}%`, background:'#b8d0ee', borderRadius:'2px 2px 0 0', minHeight:2 }} />
+                        <div title={`${year}: €${m.revenue}`} style={{ flex:1, height:`${Math.max(hC,2)}%`, background:'var(--sea)', borderRadius:'2px 2px 0 0', minHeight:2 }} />
+                      </div>
+                      <div style={{ fontSize:8, color:'var(--muted)' }}>{m.label}</div>
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+            <div style={{ display:'flex', gap:14, fontSize:10, color:'var(--muted)' }}>
+              <span><span style={{ display:'inline-block', width:10, height:10, background:'#b8d0ee', borderRadius:2, marginRight:4 }} />{prevYear}</span>
+              <span><span style={{ display:'inline-block', width:10, height:10, background:'var(--sea)', borderRadius:2, marginRight:4 }} />{year}</span>
+            </div>
+          </div>
+
+          {/* Tabella comparativa mensile */}
+          <div style={{ background:'var(--bg)', border:'1px solid var(--border)', borderRadius:8, overflow:'hidden' }}>
+            <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+              <thead>
+                <tr style={{ background:'var(--surface-2)' }}>
+                  <th style={{ padding:'8px 14px', textAlign:'left', fontSize:10, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', color:'var(--muted)' }}>Mese</th>
+                  <th style={{ padding:'8px 14px', textAlign:'right', fontSize:10, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', color:'var(--muted)' }}>Revenue {prevYear}</th>
+                  <th style={{ padding:'8px 14px', textAlign:'right', fontSize:10, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', color:'var(--muted)' }}>Revenue {year}</th>
+                  <th style={{ padding:'8px 14px', textAlign:'right', fontSize:10, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', color:'var(--muted)' }}>Δ</th>
+                  <th style={{ padding:'8px 14px', textAlign:'right', fontSize:10, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', color:'var(--muted)' }}>Pren. {prevYear}</th>
+                  <th style={{ padding:'8px 14px', textAlign:'right', fontSize:10, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', color:'var(--muted)' }}>Pren. {year}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {datiMensili.map((m, i) => {
+                  const mp = datiMensiliPrev[i];
+                  const delta = mp.revenue > 0 ? Math.round((m.revenue - mp.revenue) / mp.revenue * 100) : null;
+                  const up = m.revenue >= mp.revenue;
+                  return (
+                    <tr key={m.mese} style={{ borderTop:'1px solid var(--border)', background: i%2===0 ? 'transparent' : 'var(--surface-2)' }}>
+                      <td style={{ padding:'8px 14px', fontWeight: m.mese.endsWith('-08') ? 700 : 400 }}>{m.label}{m.mese.endsWith('-08') && ' ☀️'}</td>
+                      <td style={{ padding:'8px 14px', textAlign:'right', color:'var(--muted)' }}>{mp.revenue > 0 ? `€${mp.revenue.toLocaleString('it-IT')}` : '—'}</td>
+                      <td style={{ padding:'8px 14px', textAlign:'right', fontWeight:600, color: m.revenue > 0 ? '#2e6e3e' : 'var(--muted)' }}>{m.revenue > 0 ? `€${m.revenue.toLocaleString('it-IT')}` : '—'}</td>
+                      <td style={{ padding:'8px 14px', textAlign:'right', color: delta === null ? 'var(--muted)' : up ? '#2e6e3e' : '#b22222', fontWeight:600 }}>
+                        {delta !== null ? `${up ? '+' : ''}${delta}%` : '—'}
+                      </td>
+                      <td style={{ padding:'8px 14px', textAlign:'right', color:'var(--muted)' }}>{mp.prenotazioni || '—'}</td>
+                      <td style={{ padding:'8px 14px', textAlign:'right' }}>{m.prenotazioni || '—'}</td>
+                    </tr>
+                  );
+                })}
+                <tr style={{ borderTop:'2px solid var(--border-strong)', fontWeight:700, background:'var(--surface-2)' }}>
+                  <td style={{ padding:'10px 14px' }}>Totale</td>
+                  <td style={{ padding:'10px 14px', textAlign:'right', color:'var(--muted)' }}>€{datiMensiliPrev.reduce((s,m)=>s+m.revenue,0).toLocaleString('it-IT')}</td>
+                  <td style={{ padding:'10px 14px', textAlign:'right', color:'#2e6e3e' }}>€{datiMensili.reduce((s,m)=>s+m.revenue,0).toLocaleString('it-IT')}</td>
+                  <td style={{ padding:'10px 14px', textAlign:'right' }}>
+                    {(() => {
+                      const cp = datiMensiliPrev.reduce((s,m)=>s+m.revenue,0);
+                      const cc = datiMensili.reduce((s,m)=>s+m.revenue,0);
+                      if (!cp) return '—';
+                      const d = Math.round((cc-cp)/cp*100);
+                      return <span style={{ color: cc>=cp?'#2e6e3e':'#b22222', fontWeight:700 }}>{cc>=cp?'+':''}{d}%</span>;
+                    })()}
+                  </td>
+                  <td style={{ padding:'10px 14px', textAlign:'right', color:'var(--muted)' }}>{datiMensiliPrev.reduce((s,m)=>s+m.prenotazioni,0)}</td>
+                  <td style={{ padding:'10px 14px', textAlign:'right' }}>{datiMensili.reduce((s,m)=>s+m.prenotazioni,0)}</td>
                 </tr>
               </tbody>
             </table>
@@ -7350,7 +7929,8 @@ function exportPreventivoPDF(quote, agencyInfo, lang = 'it') {
   .highlight{background:#f5f0e8;border-radius:6px;padding:14px 16px;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center}
   .highlight .price{font-family:'Fraunces',serif;font-size:32px;font-weight:600;color:#1a1815}
   .highlight .price-label{font-size:12px;color:#6a6057;text-transform:uppercase;letter-spacing:.06em}
-  @media print{body{padding:20px}button{display:none!important}}
+  @page{size:A4;margin:1.5cm}
+  @media print{body{padding:0}button{display:none!important}}
 </style>
 </head>
 <body>
@@ -8721,9 +9301,8 @@ const PREVENTIVO_I18N = {
     settimanale:   'Settimanale (più conveniente)',
     giornaliera:   'Giornaliera',
     waText: (cat, dal, al, giorni, seas, totale, risparmio) =>
-      `Preventivo Edonoleggio Lampedusa\nMezzo: ${cat}\nDal ${dal} al ${al} (${giorni} giorni)\nStagione: ${seas}\nTotale: €${totale}` +
-      (risparmio > 0 ? ` (risparmi €${risparmio} con la tariffa settimanale)` : '') +
-      `\n\nConfermate disponibilità e prezzo? Grazie!`,
+      `Preventivo Edonoleggio Lampedusa\nMezzo: ${cat}\nDal ${dal} al ${al} (${giorni} giorni)\nTotale: €${totale}` +
+      (risparmio > 0 ? ` (risparmi €${risparmio} con la tariffa settimanale)` : ''),
   },
   en: {
     docTitle:      'QUOTE',
@@ -8745,9 +9324,8 @@ const PREVENTIVO_I18N = {
     settimanale:   'Weekly rate (best value)',
     giornaliera:   'Daily rate',
     waText: (cat, dal, al, giorni, seas, totale, risparmio) =>
-      `Quote from Edonoleggio Lampedusa\nVehicle: ${cat}\nFrom ${dal} to ${al} (${giorni} days)\nSeason: ${seas}\nTotal: €${totale}` +
-      (risparmio > 0 ? ` (save €${risparmio} with weekly rate)` : '') +
-      `\n\nCan you confirm availability and price? Thank you!`,
+      `Quote from Edonoleggio Lampedusa\nVehicle: ${cat}\nFrom ${dal} to ${al} (${giorni} days)\nTotal: €${totale}` +
+      (risparmio > 0 ? ` (save €${risparmio} with weekly rate)` : ''),
   },
   es: {
     docTitle:      'PRESUPUESTO',
@@ -8769,9 +9347,8 @@ const PREVENTIVO_I18N = {
     settimanale:   'Tarifa semanal (más económico)',
     giornaliera:   'Tarifa diaria',
     waText: (cat, dal, al, giorni, seas, totale, risparmio) =>
-      `Presupuesto Edonoleggio Lampedusa\nVehículo: ${cat}\nDel ${dal} al ${al} (${giorni} días)\nTemporada: ${seas}\nTotal: €${totale}` +
-      (risparmio > 0 ? ` (ahorra €${risparmio} con tarifa semanal)` : '') +
-      `\n\n¿Podéis confirmar disponibilidad y precio? ¡Gracias!`,
+      `Presupuesto Edonoleggio Lampedusa\nVehículo: ${cat}\nDel ${dal} al ${al} (${giorni} días)\nTotal: €${totale}` +
+      (risparmio > 0 ? ` (ahorra €${risparmio} con tarifa semanal)` : ''),
   },
 };
 
@@ -9279,7 +9856,8 @@ function useScadenzeNotifications(scadenze, fleet) {
     if (!scadenze || !fleet || fleet.length === 0) return;
 
     const today = new Date().toISOString().slice(0, 10);
-    const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+    const in7  = new Date(Date.now() + 7  * 86400000).toISOString().slice(0, 10);
+    const in30 = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
     const tipoLabel = { revisione: 'Revisione', assicurazione: 'Assicurazione', tagliando: 'Tagliando', bollo: 'Bollo' };
 
     const urgenti = [];
@@ -9288,15 +9866,17 @@ function useScadenzeNotifications(scadenze, fleet) {
       if (!vs) return;
       Object.entries(vs).forEach(([tipo, data]) => {
         if (!data) return;
-        const stato = data <= today ? 'SCADUTA' : data <= tomorrow ? 'URGENTE' : null;
-        if (!stato) return;
+        // Notifica solo se scaduta o entro 30 giorni
+        if (data > in30) return;
+        const stato = data <= today ? 'SCADUTA' : data <= in7 ? 'URGENTE' : 'in scadenza';
         const key = `${v.id}:${tipo}:${data}`;
         if (notifiedRef.current.has(key)) return;
-        urgenti.push({ v, tipo, data, stato, key });
+        urgenti.push({ v, tipo, data, stato, key, priorita: data <= today ? 0 : data <= in7 ? 1 : 2 });
       });
     });
 
     if (urgenti.length === 0) return;
+    urgenti.sort((a, b) => a.priorita - b.priorita || a.data.localeCompare(b.data));
 
     async function fire() {
       if (Notification.permission === 'default') {
@@ -9306,14 +9886,14 @@ function useScadenzeNotifications(scadenze, fleet) {
       if (Notification.permission !== 'granted') return;
       urgenti.slice(0, 5).forEach(({ v, tipo, data, stato, key }) => {
         notifiedRef.current.add(key);
-        new Notification(`⚠️ Edonoleggio — ${tipoLabel[tipo] || tipo} ${stato}`, {
-          body: `${v.targa || v.id} · scadenza ${data}`,
+        new Notification(`⚠️ Edonoleggio — ${tipoLabel[tipo] || tipo} ${stato.toUpperCase()}`, {
+          body: `${v.targa || v.label || v.id} · scadenza ${data}`,
           tag: key,
           icon: '/favicon.ico',
         });
       });
       if (urgenti.length > 5) {
-        new Notification(`⚠️ Edonoleggio — ${urgenti.length} scadenze da controllare`, {
+        new Notification(`⚠️ Edonoleggio — ${urgenti.length} scadenze nei prossimi 30 giorni`, {
           body: 'Apri la sezione Flotta per i dettagli.',
           tag: 'edo:scadenze:bulk',
         });
@@ -9323,6 +9903,58 @@ function useScadenzeNotifications(scadenze, fleet) {
     const timer = setTimeout(fire, 2000); // piccolo delay per non bloccare il bootstrap
     return () => clearTimeout(timer);
   }, [scadenze, fleet]);
+}
+
+// Notifiche push: rientri in ritardo (prenotazioni confermata/in_corso con al < oggi)
+function useRitardiNotifications(prenotazioni) {
+  const notifiedRef = useRef(new Set());
+
+  useEffect(() => {
+    if (!('Notification' in window)) return;
+    if (Notification.permission === 'denied') return;
+    if (!prenotazioni || prenotazioni.length === 0) return;
+
+    const today = new Date().toISOString().slice(0, 10);
+    const STATI_ATTIVI = new Set(['confermata', 'in_corso', 'prorogata']);
+
+    const ritardi = prenotazioni.filter(p => {
+      if (!STATI_ATTIVI.has(p.stato)) return false;
+      if (!p.al) return false;
+      return p.al < today; // scaduto
+    });
+
+    if (ritardi.length === 0) return;
+
+    async function fire() {
+      if (Notification.permission === 'default') {
+        const perm = await Notification.requestPermission();
+        if (perm !== 'granted') return;
+      }
+      if (Notification.permission !== 'granted') return;
+      const nuovi = ritardi.filter(p => !notifiedRef.current.has(p.id));
+      if (nuovi.length === 0) return;
+      if (nuovi.length === 1) {
+        const p = nuovi[0];
+        const cliente = [p.clienteCognome, p.clienteNome].filter(Boolean).join(' ') || 'Cliente';
+        notifiedRef.current.add(p.id);
+        new Notification('🔴 Edonoleggio — Rientro in ritardo', {
+          body: `${cliente} · ${p.vehicleLabel || p.vehicleId || 'mezzo'} · scaduto il ${p.al}`,
+          tag: `edo:ritardo:${p.id}`,
+          icon: '/favicon.ico',
+        });
+      } else {
+        nuovi.forEach(p => notifiedRef.current.add(p.id));
+        new Notification(`🔴 Edonoleggio — ${nuovi.length} rientri in ritardo`, {
+          body: nuovi.map(p => [p.clienteCognome, p.clienteNome].filter(Boolean).join(' ') || p.id).join(', '),
+          tag: 'edo:ritardi:bulk',
+          icon: '/favicon.ico',
+        });
+      }
+    }
+
+    const timer = setTimeout(fire, 3000);
+    return () => clearTimeout(timer);
+  }, [prenotazioni]);
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -9464,7 +10096,8 @@ function ContrattoModal({ preno, onClose }) {
   .sspace{height:72px}
   .fimg{max-width:200px;height:72px;object-fit:contain}
   .footer{font-size:10px;color:#bbb;margin-top:36px;text-align:center;border-top:1px solid #eee;padding-top:12px}
-  @media print{body{padding:20px 32px}@page{margin:1.5cm}}
+  @page{size:A4;margin:1.5cm}
+  @media print{body{padding:0 12px}}
 </style></head><body>
 <h1>${t.title}</h1>
 <div class="sub">${t.subtitle}</div>
@@ -9714,9 +10347,8 @@ function FirmaModal({ preno, onSave, onClose }) {
 // OGGI PAGE — partenze, rientri, in corso, mezzi liberi, scadenze
 // ═══════════════════════════════════════════════════════════════════
 
-function OggiPage({ prenotazioni, fleet, scadenze, customers, setPage, rentmeVehicles, setPrenotazioniPrefill, pushToast,
-  // Walk-in inline: se passati, il form si apre direttamente nella pagina
-  otazioni, operator, fermiFlotta, rentmePush, rentmeConnected, savePendingBooking }) {
+function OggiPage({ prenotazioni, setPrenotazioni, fleet, scadenze, customers, setPage, rentmeVehicles, setPrenotazioniPrefill, pushToast,
+  operator, fermiFlotta, rentmePush, rentmeConnected, manutenzioni }) {
   const [now, setNow] = useState(() => new Date());
 
   // Orologio live — aggiorna ogni minuto
@@ -9760,6 +10392,7 @@ function OggiPage({ prenotazioni, fleet, scadenze, customers, setPage, rentmeVeh
         th { background: #f5f5f0; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; padding: 6px 10px; border-bottom: 2px solid #ddd; text-align: left; }
         td { padding: 7px 10px; border-bottom: 1px solid #eee; vertical-align: top; }
         tr:last-child td { border-bottom: none; }
+        @page { size: A4; margin: 1.5cm; }
         @media print { button { display: none; } }
       </style>
     </head><body>
@@ -9828,6 +10461,12 @@ function OggiPage({ prenotazioni, fleet, scadenze, customers, setPage, rentmeVeh
     });
   });
   scadenzeAlert.sort((a, b) => a.data.localeCompare(b.data));
+
+  // Manutenzioni programmate in scadenza / scadute
+  const in30Str = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
+  const manutenzioniAlert = (manutenzioni || []).filter(m =>
+    !m.completata && m.dataScadenza && m.dataScadenza <= in30Str
+  ).sort((a, b) => a.dataScadenza.localeCompare(b.dataScadenza));
 
   // Prenotazioni domani (anticipo)
   const domani = prenoList.filter(p => p.dal === tomorrow && p.stato !== 'annullata');
@@ -10397,6 +11036,44 @@ function OggiPage({ prenotazioni, fleet, scadenze, customers, setPage, rentmeVeh
           </div>
         </>
       )}
+      {/* Manutenzioni in scadenza / scadute */}
+      {manutenzioniAlert.length > 0 && (
+        <>
+          <SectionTitle icon="🔩" label="Manutenzioni programmate" count={manutenzioniAlert.length} color="#b87333" />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {manutenzioniAlert.slice(0, 6).map(m => {
+              const veh = (fleet || []).find(v => v.id === m.vehicleId);
+              const scaduta = m.dataScadenza < today;
+              return (
+                <div key={m.id} style={{
+                  display: 'flex', alignItems: 'center', gap: 10,
+                  background: scaduta ? '#fff0f0' : '#fff8e6',
+                  border: `1px solid ${scaduta ? '#f0b0b0' : '#f0d080'}`,
+                  borderRadius: 6, padding: '8px 12px', fontSize: 12,
+                }}>
+                  <span style={{ fontWeight: 700, color: scaduta ? '#c85050' : '#b87333', minWidth: 70 }}>
+                    {scaduta ? 'SCADUTA' : 'IN SCADENZA'}
+                  </span>
+                  <span style={{ fontWeight: 600, color: 'var(--ink)' }}>
+                    {veh ? (veh.targa || veh.id) : m.vehicleId}
+                  </span>
+                  <span style={{ color: 'var(--ink-2)', flex: 1 }}>
+                    {MANUTENZIONE_TIPI?.find(t => t.id === m.tipo)?.label || m.tipo}
+                    {m.descrizione ? ` · ${m.descrizione}` : ''}
+                  </span>
+                  <span style={{ fontFamily: 'monospace', color: 'var(--ink)', fontWeight: 600 }}>{m.dataScadenza}</span>
+                </div>
+              );
+            })}
+            {manutenzioniAlert.length > 6 && (
+              <div style={{ fontSize: 12, color: 'var(--muted)', textAlign: 'center', marginTop: 4 }}>
+                + altri {manutenzioniAlert.length - 6} — vai alla sezione Flotta per i dettagli
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
       {/* Footer con link rapidi */}
       <div style={{ marginTop: 32, paddingTop: 20, borderTop: '1px solid var(--border)', display: 'flex', gap: 10, flexWrap: 'wrap' }}>
         {[
@@ -10959,12 +11636,14 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
                         {isSegTransStart && (
                           <span style={{ fontSize: 10, paddingLeft: 3, color: color, opacity: 0.85, flexShrink: 0 }}>⟶</span>
                         )}
-                        {/* Nome cliente — solo all'inizio reale o al cambio mezzo */}
-                        {(isStart && !isSegTransStart) && (
+                        {/* Nome cliente — visibile nella cella corrente (overflow:hidden) */}
+                        {!isSegTransStart && (
                           <span style={{
                             fontSize: 9, fontWeight: 700, color: color,
-                            paddingLeft: 5, whiteSpace: 'nowrap', overflow: 'hidden',
-                            textOverflow: 'ellipsis', maxWidth: '100%',
+                            paddingLeft: isStart ? 5 : 2,
+                            whiteSpace: 'nowrap', overflow: 'hidden',
+                            textOverflow: 'ellipsis', flexShrink: 1, minWidth: 0,
+                            pointerEvents: 'none',
                           }}>
                             {preno.clienteCognome || preno.clienteNome || '?'}
                           </span>
@@ -11273,13 +11952,13 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
             )}
             <button type="button"
               onClick={() => {
-                setPrenotazioniPrefill && setPrenotazioniPrefill({ focusId: sel.id });
+                setPrenotazioniPrefill && setPrenotazioniPrefill({ editId: sel.id });
                 setSelectedCell(null);
                 setPage && setPage('prenotazioni');
               }}
               style={{ padding: '7px 12px', borderRadius: 6, border: '1px solid var(--border)',
                 background: 'transparent', color: 'var(--ink-2)', cursor: 'pointer', fontSize: 12, textAlign: 'left' }}>
-              ✏️ Apri prenotazione
+              ✏️ Modifica prenotazione
             </button>
           </div>
         </div>
@@ -11631,7 +12310,7 @@ function KioskView({ prenotazioni, setPrenotazioni, fleet, rentmeVehicles, scade
           fermiFlotta={fermiFlotta}
           rentmePush={rentmePush}
           rentmeConnected={rentmeConnected}
-savePendingBooking={undefined}        />
+        />
       </div>
     </div>
   );
@@ -11644,7 +12323,7 @@ export default function App() {
       const params = new URLSearchParams(window.location.search);
       if (params.get('preventivo')) return 'preventivi';
     } catch {}
-    return 'dashboard';
+    return 'oggi';
   });
   const [wizardOpen, setWizardOpen] = useState(false);
 
@@ -11721,9 +12400,16 @@ export default function App() {
   // Fermi flotta: periodi di blocco programmati (officina, revisione, ecc.)
   // Struttura: [{ id, vehicleId, dal, al, motivo }]
   const [fermiFlotta, setFermiFlotta] = usePersistentState('edo:v1:fermiFlotta', [], sharedOpts);
+  // Manutenzioni programmate: [{ id, vehicleId, tipo, descrizione, dataScadenza, note, completata, dataCompletata }]
+  const [manutenzioni, setManutenzioni] = usePersistentState('edo:v1:manutenzioni', [], sharedOpts);
+  // Google Drive Client ID — skipRemote, specifico del dispositivo
+  const [driveClientId, setDriveClientId] = usePersistentState('edo:v1:driveClientId', '', { skipRemote: true });
+  const [driveLastBackup, setDriveLastBackup] = usePersistentState('edo:v1:driveLastBackup', null, { skipRemote: true });
 
   // Push notifications: avvisa per scadenze urgenti / scadute
   useScadenzeNotifications(scadenze, fleet);
+  // Push notifications: avvisa per rientri in ritardo
+  useRitardiNotifications(prenotazioni);
 
   // Ricerca globale: Cmd+K / Ctrl+K apre il modal
   useEffect(() => {
@@ -11778,6 +12464,90 @@ export default function App() {
     URL.revokeObjectURL(url);
     pushToast && pushToast({ tone: 'success', title: 'Backup esportato', message: `${prenotazioni.length} pren · ${fleet.length} veicoli · ${customers.length} clienti` });
   }, [prenotazioni, fleet, customers, cassa, scadenze, operators, partners, agency, listino, stagioni, pushToast]);
+
+  // Backup su Google Drive — usa GIS tokenClient (implicit flow)
+  // Il file viene caricato/aggiornato nella cartella radice di Drive dell'utente.
+  const driveBackup = useCallback(async () => {
+    if (!driveClientId) {
+      pushToast?.({ tone: 'warning', title: 'Client ID mancante', message: 'Configura il Client ID Google Drive in Impostazioni → Backup Google Drive' });
+      return;
+    }
+    // Carica GIS dinamicamente se non presente
+    const loadGIS = () => new Promise((resolve, reject) => {
+      if (window.google?.accounts?.oauth2) { resolve(); return; }
+      const s = document.createElement('script');
+      s.src = 'https://accounts.google.com/gsi/client';
+      s.onload = resolve;
+      s.onerror = reject;
+      document.head.appendChild(s);
+    });
+    try {
+      await loadGIS();
+    } catch {
+      pushToast?.({ tone: 'error', title: 'Errore rete', message: 'Impossibile caricare Google Identity Services' });
+      return;
+    }
+    // Richiede token con scope Drive
+    const getToken = () => new Promise((resolve, reject) => {
+      const client = window.google.accounts.oauth2.initTokenClient({
+        client_id: driveClientId,
+        scope: 'https://www.googleapis.com/auth/drive.file',
+        callback: (tokenResponse) => {
+          if (tokenResponse.error) { reject(new Error(tokenResponse.error)); return; }
+          resolve(tokenResponse.access_token);
+        },
+        // Scatta se l'utente chiude il popup senza autorizzare
+        error_callback: (err) => {
+          reject(new Error(err?.type === 'popup_closed' ? 'Popup chiuso senza autorizzare' : (err?.type || 'Errore autorizzazione')));
+        },
+      });
+      client.requestAccessToken();
+    });
+    let token;
+    try {
+      token = await getToken();
+    } catch (e) {
+      pushToast?.({ tone: 'error', title: 'Autorizzazione negata', message: String(e.message || e) });
+      return;
+    }
+    // Costruisce il payload backup
+    const backupObj = {
+      version: APP_VERSION.number,
+      exportedAt: new Date().toISOString(),
+      prenotazioni, fleet, customers, cassa, scadenze,
+      operators, partners, agency, listino, stagioni, manutenzioni,
+    };
+    const jsonStr  = JSON.stringify(backupObj, null, 2);
+    const fileName = `edonoleggio-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    const boundary = '-------boundary123456789';
+    const body = [
+      `--${boundary}`,
+      'Content-Type: application/json; charset=UTF-8',
+      '',
+      JSON.stringify({ name: fileName, mimeType: 'application/json', parents: [] }),
+      `--${boundary}`,
+      'Content-Type: application/json',
+      '',
+      jsonStr,
+      `--${boundary}--`,
+    ].join('\r\n');
+    try {
+      const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': `multipart/related; boundary="${boundary}"`,
+        },
+        body,
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const file = await res.json();
+      setDriveLastBackup(new Date().toISOString());
+      pushToast?.({ tone: 'success', title: '✅ Backup su Drive completato', message: `File: ${fileName} · ID: ${file.id?.slice(0, 8)}…` });
+    } catch (e) {
+      pushToast?.({ tone: 'error', title: 'Errore upload Drive', message: String(e.message || e) });
+    }
+  }, [driveClientId, prenotazioni, fleet, customers, cassa, scadenze, operators, partners, agency, listino, stagioni, manutenzioni, setDriveLastBackup, pushToast]);
 
   // Import backup JSON — ripristina tutti i dati da un file JSON esportato
   const importBackup = useCallback((file) => {
@@ -12345,15 +13115,15 @@ export default function App() {
                 il boundary si resetta automaticamente (la key cambia → nuovo mount). */}
             <ErrorBoundary key={page}>
               {page === 'calendario' && <CalendarioFlottaPage prenotazioni={prenotazioni} fleet={fleet} rentmeVehicles={rentmeVehicles} setPage={setPage} setPrenotazioniPrefill={setPrenotazioniPrefill} />}
-              {page === 'oggi'       && <OggiPage prenotazioni={prenotazioni} fleet={fleet} scadenze={scadenze} customers={customers} setPage={setPage} rentmeVehicles={rentmeVehicles} setPrenotazioniPrefill={setPrenotazioniPrefill} pushToast={pushToast} setPrenotazioni={setPrenotazioni} operator={operator} fermiFlotta={fermiFlotta} rentmePush={rentmeSync.pushBooking} rentmeConnected={rentmeSync.status === 'ok'} />}
+              {page === 'oggi'       && <OggiPage prenotazioni={prenotazioni} fleet={fleet} scadenze={scadenze} customers={customers} setPage={setPage} rentmeVehicles={rentmeVehicles} setPrenotazioniPrefill={setPrenotazioniPrefill} pushToast={pushToast} setPrenotazioni={setPrenotazioni} operator={operator} fermiFlotta={fermiFlotta} rentmePush={rentmeSync.pushBooking} rentmeConnected={rentmeSync.status === 'ok'} manutenzioni={manutenzioni} />}
               {page === 'dashboard'  && <Dashboard onNew={() => openWizard()} setPage={setPage} operator={operator} fleet={fleet} contracts={localContracts} partners={partners} onMarkReturned={markContractReturned} scadenze={scadenze} prenotazioni={prenotazioni} agency={agency} />}
               {page === 'cassa'      && <RegistroCassaPage cassa={cassa} setCassa={setCassa} prenotazioni={prenotazioni} customers={customers} operator={operator} pushToast={pushToast} />}
               {page === 'banco'      && <BancoRapidoPage rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} fleet={fleet} setPage={setPage} setPrenotazioniPrefill={setPrenotazioniPrefill} listino={listino} pushToast={pushToast} rentmeSyncStatus={rentmeSync.status} onRentmeSync={rentmeSync.sync} rentmeLastSync={rentmeSync.lastSync} />}
               {page === 'report'        && <ReportPage prenotazioni={prenotazioni} contracts={localContracts} cassa={cassa} customers={customers} fleet={fleet} operators={operators} pushToast={pushToast} />}
               {page === 'preventivi'    && <PreventiviPage setPage={setPage} setPrenotazioniPrefill={setPrenotazioniPrefill} listino={listino} fleet={fleet} rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} pushToast={pushToast} />}
-              {page === 'prenotazioni' && <PrenotazioniPage prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} setCassa={setCassa} fleet={fleet} rentmeVehicles={rentmeVehicles} customers={customers} operator={operator} onOpenWizard={openWizard} pushToast={pushToast} prefill={prenotazioniPrefill} onClearPrefill={() => setPrenotazioniPrefill(null)} fermiFlotta={fermiFlotta} rentmePush={rentmeSync.pushBooking} rentmeConnected={rentmeSync.status === 'ok'} />}
+              {page === 'prenotazioni' && <PrenotazioniPage prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} setCassa={setCassa} fleet={fleet} rentmeVehicles={rentmeVehicles} customers={customers} operator={operator} onOpenWizard={openWizard} pushToast={pushToast} prefill={prenotazioniPrefill} onClearPrefill={() => setPrenotazioniPrefill(null)} fermiFlotta={fermiFlotta} rentmePush={rentmeSync.pushBooking} rentmeConnected={rentmeSync.status === 'ok'} agency={agency} />}
               {page === 'contracts'  && <ContractsList contracts={localContracts} operators={operators} onRetry={retryContract} onMarkReturned={markContractReturned} online={online} />}
-              {page === 'fleet'      && <FleetPage fleet={fleet} prenotazioni={prenotazioni} admin={admin} onAddVehicle={() => setModal('newVehicle')} onEditVehicle={(v) => setModal({ type: 'editVehicle', vehicle: v })} onDeleteVehicle={requestDeleteVehicle} onImportCSV={() => setShowCsvImport(true)} scadenze={scadenze} setScadenze={setScadenze} fermiFlotta={fermiFlotta} setFermiFlotta={setFermiFlotta} rentmeVehicles={rentmeVehicles} />}
+              {page === 'fleet'      && <FleetPage fleet={fleet} prenotazioni={prenotazioni} admin={admin} onAddVehicle={() => setModal('newVehicle')} onEditVehicle={(v) => setModal({ type: 'editVehicle', vehicle: v })} onDeleteVehicle={requestDeleteVehicle} onImportCSV={() => setShowCsvImport(true)} scadenze={scadenze} setScadenze={setScadenze} fermiFlotta={fermiFlotta} setFermiFlotta={setFermiFlotta} rentmeVehicles={rentmeVehicles} manutenzioni={manutenzioni} setManutenzioni={setManutenzioni} />}
               {page === 'customers'  && <CustomersPage customers={customers} setCustomers={setCustomers} prenotazioni={prenotazioni} admin={admin} onShowQR={(c) => setModal({ type: 'qr', customer: c })} onNewWithCustomer={openWizard} onAddCustomer={() => setModal('newCustomer')} onEditCustomer={(c) => setModal({ type: 'editCustomer', customer: c })} onDeleteCustomer={deleteCustomer} onShowStorico={(c) => setStorioClienteId(c.id)} />}
               {page === 'partners'   && <PartnersPage partners={partners} admin={admin} onAddPartner={() => setModal('newPartner')} onEditPartner={(p) => setModal({ type: 'editPartner', partner: p })} onDeletePartner={requestDeletePartner} />}
               {page === 'listino'    && <div style={{padding:'28px 32px',maxWidth:900,margin:'0 auto'}}>
@@ -12365,7 +13135,7 @@ export default function App() {
                   <StagioniEditor stagioni={stagioni} onSave={(s)=>{setStagioni(s); pushToast && pushToast({tone:'success',title:'Stagioni aggiornate',message:'Configurazione stagionale salvata'});}} />
                 </div>
               </div>}
-              {page === 'settings'   && <SettingsPage operator={operator} operators={operators} admin={admin} cargosConfig={cargosConfig} backendStatus={backendStatus} lastCheck={lastCheck} apiBaseUrl={apiBaseUrl} syncStatus={allSyncStatus} agency={agency} customers={customers} contracts={localContracts} onSyncAll={syncAll} onExportBackup={exportBackup} onImportBackup={importBackup} pushToast={pushToast} onAddOperator={() => setModal('newOperator')} onEditOperator={(o) => setModal({ type: 'editOperator', operator: o })} onDeleteOperator={requestDeleteOperator} onEditCargos={() => setModal('cargosConfig')} onEditApiBase={() => setModal('apiBase')} onEditAgency={() => setModal('agency')} onResetCustomers={requestResetCustomers} onResetContracts={requestResetContracts} onResetEverything={requestResetEverything} onImportFleetFromRentMe={requestImportFleetFromRentMe} rentmeConfig={rentmeConfig} setRentmeConfig={setRentmeConfig} rentmeSync={rentmeSync} rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} appUsers={appUsers} setAppUsers={setAppUsers} onLogout={handleLogout} onImportStorico={({ prenotazioni: newP, clienti: newC }) => {
+              {page === 'settings'   && <SettingsPage operator={operator} operators={operators} admin={admin} cargosConfig={cargosConfig} backendStatus={backendStatus} lastCheck={lastCheck} apiBaseUrl={apiBaseUrl} syncStatus={allSyncStatus} agency={agency} customers={customers} contracts={localContracts} onSyncAll={syncAll} onExportBackup={exportBackup} onImportBackup={importBackup} pushToast={pushToast} onAddOperator={() => setModal('newOperator')} onEditOperator={(o) => setModal({ type: 'editOperator', operator: o })} onDeleteOperator={requestDeleteOperator} onEditCargos={() => setModal('cargosConfig')} onEditApiBase={() => setModal('apiBase')} onEditAgency={() => setModal('agency')} onResetCustomers={requestResetCustomers} onResetContracts={requestResetContracts} onResetEverything={requestResetEverything} onImportFleetFromRentMe={requestImportFleetFromRentMe} rentmeConfig={rentmeConfig} setRentmeConfig={setRentmeConfig} rentmeSync={rentmeSync} rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} appUsers={appUsers} setAppUsers={setAppUsers} onLogout={handleLogout} driveClientId={driveClientId} setDriveClientId={setDriveClientId} driveLastBackup={driveLastBackup} onDriveBackup={driveBackup} onImportStorico={({ prenotazioni: newP, clienti: newC }) => {
                 setPrenotazioni(prev => {
                   const existKeys = new Set(prev.map(p => p.id));
                   return [...prev, ...newP.filter(p => !existKeys.has(p.id))];
@@ -13559,9 +14329,280 @@ function ContractsList({ contracts, operators, onRetry, onMarkReturned, online }
 }
 
 // ═══════════════════════════════════════════════════════════════════
+// STATISTICHE VEICOLO — modal con km, giorni, revenue, occupazione
+// ═══════════════════════════════════════════════════════════════════
+function VeicoloStatsModal({ vehicle, prenotazioni, onClose }) {
+  const vLabel = makeVehicleLabel(vehicle);
+  const oggi = new Date().toISOString().slice(0, 10);
+  const annoCorr = new Date().getFullYear();
+  const annoPrec = annoCorr - 1;
+
+  const statsPerAnno = useCallback((anno) => {
+    const prenoVeh = (prenotazioni || []).filter(p =>
+      (p.vehicleId === vehicle.id || p.vehicleId === vehicle.targa) &&
+      p.stato !== 'annullata' && p.stato !== 'bozza' &&
+      p.dal && p.al
+    );
+    const inAnno = prenoVeh.filter(p => {
+      const year = (p.dal || '').slice(0, 4);
+      return parseInt(year, 10) === anno;
+    });
+    const giorni = inAnno.reduce((s, p) => s + Math.max(0, daysDiff(p.dal, p.al)), 0);
+    const revenue = inAnno.reduce((s, p) => s + (p.prezzo || 0), 0);
+    const occupazione = Math.min(100, Math.round(giorni / 365 * 100));
+    return { n: inAnno.length, giorni, revenue, occupazione };
+  }, [prenotazioni, vehicle]);
+
+  const curr = statsPerAnno(annoCorr);
+  const prev = statsPerAnno(annoPrec);
+
+  // Lifetime
+  const prenoTutte = (prenotazioni || []).filter(p =>
+    (p.vehicleId === vehicle.id || p.vehicleId === vehicle.targa) &&
+    p.stato !== 'annullata' && p.stato !== 'bozza'
+  );
+  const lifetimeGiorni  = prenoTutte.reduce((s, p) => s + Math.max(0, daysDiff(p.dal || '', p.al || '')), 0);
+  const lifetimeRevenue = prenoTutte.reduce((s, p) => s + (p.prezzo || 0), 0);
+
+  const card = (label, value, sub, color = 'var(--ink)') => (
+    <div style={{ background: 'var(--surface-2)', borderRadius: 8, padding: '12px 16px', flex: 1, minWidth: 0 }}>
+      <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 4 }}>{label}</div>
+      <div style={{ fontSize: 22, fontWeight: 700, fontFamily: 'var(--font-serif)', color }}>{value}</div>
+      {sub && <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{sub}</div>}
+    </div>
+  );
+
+  return (
+    <ModalShell
+      id="veicolo-stats-title"
+      title={`Statistiche · ${vLabel}`}
+      subtitle={`${vehicle.targa || vehicle.id} · analisi noleggi`}
+      onClose={onClose}
+      maxWidth="max-w-2xl"
+      footer={<button type="button" onClick={onClose} className="btn-ghost px-4 py-2 rounded text-sm">Chiudi</button>}
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+        {/* Anno corrente */}
+        <div>
+          <div className="text-[11px] uppercase tracking-widest font-semibold mb-3" style={{ color: 'var(--ink-2)' }}>
+            {annoCorr} (anno in corso)
+          </div>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            {card('Prenotazioni', curr.n)}
+            {card('Giorni noleggiati', curr.giorni, `su 365 disponibili`)}
+            {card('Occupazione', `${curr.occupazione}%`, curr.giorni > 0 ? `${curr.giorni}g / 365g` : 'nessun dato',
+              curr.occupazione >= 70 ? '#2e6e3e' : curr.occupazione >= 40 ? '#b87333' : 'var(--ink)')}
+            {card('Revenue', `€${curr.revenue.toLocaleString('it-IT')}`, curr.n > 0 ? `€${Math.round(curr.revenue / Math.max(1, curr.n))}/pren.` : '')}
+          </div>
+        </div>
+        {/* Anno precedente */}
+        <div>
+          <div className="text-[11px] uppercase tracking-widest font-semibold mb-3" style={{ color: 'var(--ink-2)' }}>
+            {annoPrec} (anno precedente)
+          </div>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            {card('Prenotazioni', prev.n)}
+            {card('Giorni noleggiati', prev.giorni)}
+            {card('Occupazione', `${prev.occupazione}%`, `${prev.giorni}g / 365g`)}
+            {card('Revenue', `€${prev.revenue.toLocaleString('it-IT')}`)}
+          </div>
+        </div>
+        {/* Confronto */}
+        {prev.revenue > 0 && (
+          <div style={{ padding: '10px 14px', borderRadius: 7, background: 'var(--surface)', border: '1px solid var(--border)', fontSize: 12 }}>
+            <span style={{ fontWeight: 600, color: 'var(--ink)' }}>YoY revenue:</span>
+            {' '}
+            <span style={{ color: curr.revenue >= prev.revenue ? '#2e6e3e' : '#b22222', fontWeight: 700 }}>
+              {curr.revenue >= prev.revenue ? '▲' : '▼'} {Math.abs(Math.round((curr.revenue - prev.revenue) / prev.revenue * 100))}%
+            </span>
+            <span style={{ color: 'var(--muted)', marginLeft: 8 }}>
+              (€{curr.revenue.toLocaleString()} vs €{prev.revenue.toLocaleString()})
+            </span>
+          </div>
+        )}
+        {/* Lifetime */}
+        <div style={{ padding: '12px 16px', borderRadius: 8, background: 'var(--surface)', border: '1px solid var(--border)' }}>
+          <div className="text-[11px] uppercase tracking-widest font-semibold mb-2" style={{ color: 'var(--ink-2)' }}>Totale storico</div>
+          <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', fontSize: 13 }}>
+            <span><strong>{prenoTutte.length}</strong> <span style={{ color: 'var(--muted)' }}>prenotazioni</span></span>
+            <span><strong>{lifetimeGiorni}</strong> <span style={{ color: 'var(--muted)' }}>giorni noleggiati</span></span>
+            <span><strong>€{lifetimeRevenue.toLocaleString('it-IT')}</strong> <span style={{ color: 'var(--muted)' }}>revenue totale</span></span>
+          </div>
+        </div>
+      </div>
+    </ModalShell>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// MANUTENZIONI PROGRAMMATE — modal per singolo veicolo
+// ═══════════════════════════════════════════════════════════════════
+const MANUTENZIONE_TIPI = [
+  { id: 'tagliando',     label: 'Tagliando' },
+  { id: 'gomme',         label: 'Cambio gomme' },
+  { id: 'freni',         label: 'Freni' },
+  { id: 'olio',          label: 'Cambio olio' },
+  { id: 'cinghia',       label: 'Cinghia distribuzione' },
+  { id: 'filtri',        label: 'Filtri (aria/carburante)' },
+  { id: 'batteria',      label: 'Batteria' },
+  { id: 'revisione',     label: 'Revisione straordinaria' },
+  { id: 'altro',         label: 'Altro' },
+];
+
+function ManutenzioniModal({ vehicle, manutenzioni, setManutenzioni, onClose }) {
+  const vLabel = makeVehicleLabel(vehicle);
+  const vId = vehicle.id;
+  const lista = (manutenzioni || []).filter(m => m.vehicleId === vId);
+  const today = todayISO();
+
+  const emptyForm = { tipo: 'tagliando', descrizione: '', dataScadenza: '', note: '' };
+  const [form, setForm] = useState(emptyForm);
+  const [showForm, setShowForm] = useState(false);
+
+  const addManutenzione = () => {
+    if (!form.dataScadenza) return;
+    const nuova = {
+      id: `man-${Date.now()}`,
+      vehicleId: vId,
+      tipo: form.tipo,
+      descrizione: form.descrizione || MANUTENZIONE_TIPI.find(t => t.id === form.tipo)?.label || form.tipo,
+      dataScadenza: form.dataScadenza,
+      note: form.note,
+      completata: false,
+      createdAt: new Date().toISOString(),
+    };
+    setManutenzioni(prev => [...(prev || []), nuova]);
+    setForm(emptyForm);
+    setShowForm(false);
+  };
+
+  const toggleCompletata = (id) => {
+    setManutenzioni(prev => (prev || []).map(m =>
+      m.id === id ? { ...m, completata: !m.completata, dataCompletata: !m.completata ? today : null } : m
+    ));
+  };
+
+  const deleteManutenzione = (id) => {
+    setManutenzioni(prev => (prev || []).filter(m => m.id !== id));
+  };
+
+  const scaduteN = lista.filter(m => !m.completata && m.dataScadenza < today).length;
+  const inScadenzaN = lista.filter(m => !m.completata && m.dataScadenza >= today &&
+    m.dataScadenza <= new Date(Date.now() + 30 * 86400000).toISOString().slice(0,10)).length;
+
+  return (
+    <ModalShell
+      id="manutenzioni-title"
+      title={`Manutenzioni · ${vLabel}`}
+      subtitle={`${vehicle.targa || vehicle.id}`}
+      onClose={onClose}
+      maxWidth="max-w-2xl"
+      footer={
+        <div style={{ display: 'flex', gap: 8, width: '100%', justifyContent: 'space-between' }}>
+          <button type="button" onClick={() => setShowForm(o => !o)} className="btn-primary px-4 py-2 rounded text-sm font-semibold flex items-center gap-2">
+            <Plus className="w-4 h-4" /> Aggiungi
+          </button>
+          <button type="button" onClick={onClose} className="btn-ghost px-4 py-2 rounded text-sm">Chiudi</button>
+        </div>
+      }
+    >
+      {(scaduteN > 0 || inScadenzaN > 0) && (
+        <div style={{ padding: '10px 14px', borderRadius: 7, marginBottom: 16,
+          background: scaduteN > 0 ? '#fff0f0' : '#fff8e1',
+          border: `1px solid ${scaduteN > 0 ? '#f5b8b8' : '#ffe082'}` }}>
+          <span style={{ fontWeight: 600, color: scaduteN > 0 ? '#b22222' : '#b87333' }}>
+            {scaduteN > 0 ? `⚠️ ${scaduteN} manutenzione${scaduteN > 1 ? 'i' : ''} scaduta${scaduteN > 1 ? 'e' : ''}` : ''}
+            {scaduteN > 0 && inScadenzaN > 0 ? ' · ' : ''}
+            {inScadenzaN > 0 ? `🔔 ${inScadenzaN} in scadenza entro 30 giorni` : ''}
+          </span>
+        </div>
+      )}
+
+      {showForm && (
+        <div style={{ padding: '14px 16px', borderRadius: 8, marginBottom: 16,
+          background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label">Tipo intervento</label>
+              <select className="input" value={form.tipo} onChange={e => setForm(f => ({ ...f, tipo: e.target.value }))}>
+                {MANUTENZIONE_TIPI.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="label">Data scadenza <span style={{ color: 'var(--accent)' }}>*</span></label>
+              <input type="date" className="input" value={form.dataScadenza}
+                onChange={e => setForm(f => ({ ...f, dataScadenza: e.target.value }))} />
+            </div>
+            <div className="col-span-2">
+              <label className="label">Descrizione (opzionale)</label>
+              <input type="text" className="input" placeholder="es. Tagliando 15.000 km" value={form.descrizione}
+                onChange={e => setForm(f => ({ ...f, descrizione: e.target.value }))} />
+            </div>
+            <div className="col-span-2">
+              <label className="label">Note</label>
+              <input type="text" className="input" value={form.note}
+                onChange={e => setForm(f => ({ ...f, note: e.target.value }))} />
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8, marginTop: 12, justifyContent: 'flex-end' }}>
+            <button type="button" onClick={() => setShowForm(false)} className="btn-ghost px-3 py-2 rounded text-sm">Annulla</button>
+            <button type="button" onClick={addManutenzione} disabled={!form.dataScadenza}
+              className="btn-primary px-4 py-2 rounded text-sm font-semibold disabled:opacity-40">
+              Salva
+            </button>
+          </div>
+        </div>
+      )}
+
+      {lista.length === 0 ? (
+        <div style={{ textAlign: 'center', color: 'var(--muted)', padding: '24px 0', fontSize: 13 }}>
+          Nessuna manutenzione programmata per questo veicolo.
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {[...lista].sort((a, b) => (a.completata ? 1 : 0) - (b.completata ? 1 : 0) || a.dataScadenza.localeCompare(b.dataScadenza)).map(m => {
+            const scaduta = !m.completata && m.dataScadenza < today;
+            const in30 = !m.completata && !scaduta && m.dataScadenza <= new Date(Date.now() + 30 * 86400000).toISOString().slice(0,10);
+            return (
+              <div key={m.id} style={{
+                display: 'flex', alignItems: 'flex-start', gap: 10, padding: '10px 12px',
+                borderRadius: 7, border: `1px solid ${scaduta ? '#f5b8b8' : in30 ? '#ffe082' : 'var(--border)'}`,
+                background: scaduta ? '#fff8f8' : in30 ? '#fffdf0' : 'var(--bg)',
+                opacity: m.completata ? 0.6 : 1,
+              }}>
+                <input type="checkbox" checked={!!m.completata} onChange={() => toggleCompletata(m.id)}
+                  style={{ marginTop: 2, cursor: 'pointer' }} title="Segna come completata" />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--ink)', textDecoration: m.completata ? 'line-through' : 'none' }}>
+                    {MANUTENZIONE_TIPI.find(t => t.id === m.tipo)?.label || m.tipo}
+                    {m.descrizione && ` · ${m.descrizione}`}
+                  </div>
+                  <div style={{ fontSize: 11, color: scaduta ? '#b22222' : in30 ? '#b87333' : 'var(--muted)', marginTop: 2 }}>
+                    {scaduta && '⚠️ Scaduta · '}
+                    {in30 && !scaduta && '🔔 In scadenza · '}
+                    {m.dataScadenza}
+                    {m.completata && m.dataCompletata && ` · completata il ${m.dataCompletata}`}
+                  </div>
+                  {m.note && <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2, fontStyle: 'italic' }}>{m.note}</div>}
+                </div>
+                <button type="button" onClick={() => deleteManutenzione(m.id)}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', padding: '2px 4px' }}
+                  title="Elimina">
+                  <Trash2 style={{ width: 14, height: 14 }} />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </ModalShell>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
 // FLEET
 // ═══════════════════════════════════════════════════════════════════
-function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, onDeleteVehicle, onImportCSV, scadenze, setScadenze, fermiFlotta, setFermiFlotta, rentmeVehicles }) {
+function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, onDeleteVehicle, onImportCSV, scadenze, setScadenze, fermiFlotta, setFermiFlotta, rentmeVehicles, manutenzioni, setManutenzioni }) {
   const [typeFilter, setTypeFilter] = useState('all');
   const [categoriaFilter, setCategoriaFilter] = useState(null);
   const [statusFilter, setStatusFilter] = useState('all');
@@ -13582,6 +14623,8 @@ function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, on
     return map;
   }, [rentmeVehicles]);
   const [scadenzeModalVeh, setScadenzeModalVeh] = useState(null);
+  const [statsModalVeh, setStatsModalVeh] = useState(null);
+  const [manutenzioniModalVeh, setManutenzioniModalVeh] = useState(null);
   const counts = useFleetCounts(fleet);
 
   // Veicoli attualmente in noleggio (oggi)
@@ -13835,10 +14878,45 @@ function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, on
                   <ScadenzaBadge stato={worstScadenza(scadenze?.[v.id])} />
                 </div>
                 {v.stato !== 'venduto' && (
-                  <button type="button" onClick={() => setScadenzeModalVeh(v)}
-                    style={{ marginTop: 10, fontSize: 11, color: 'var(--ink-2)', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 5, padding: '4px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}>
-                    🔧 Scadenze
-                  </button>
+                  <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 10 }}>
+                    <button type="button" onClick={() => setScadenzeModalVeh(v)}
+                      style={{ fontSize: 11, color: 'var(--ink-2)', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 5, padding: '4px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+                      🔧 Scadenze
+                    </button>
+                    <button type="button" onClick={() => setStatsModalVeh(v)}
+                      style={{ fontSize: 11, color: '#1f5d83', background: '#e8f0fa', border: '1px solid #b8d0ee', borderRadius: 5, padding: '4px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+                      📊 Statistiche
+                    </button>
+                    <button type="button" onClick={() => setManutenzioniModalVeh(v)}
+                      style={{ fontSize: 11, borderRadius: 5, padding: '4px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4,
+                        color: (() => {
+                          const today2 = todayISO();
+                          const in30 = new Date(Date.now() + 30 * 86400000).toISOString().slice(0,10);
+                          const vMans = (manutenzioni || []).filter(m => m.vehicleId === v.id && !m.completata);
+                          if (vMans.some(m => m.dataScadenza < today2)) return '#b22222';
+                          if (vMans.some(m => m.dataScadenza <= in30)) return '#b87333';
+                          return '#2e6e3e';
+                        })(),
+                        background: (() => {
+                          const today2 = todayISO();
+                          const in30 = new Date(Date.now() + 30 * 86400000).toISOString().slice(0,10);
+                          const vMans = (manutenzioni || []).filter(m => m.vehicleId === v.id && !m.completata);
+                          if (vMans.some(m => m.dataScadenza < today2)) return '#fff0f0';
+                          if (vMans.some(m => m.dataScadenza <= in30)) return '#fff8e1';
+                          return '#e8f5e9';
+                        })(),
+                        border: '1px solid currentColor',
+                      }}>
+                      🔩 Manutenzioni
+                      {(() => {
+                        const today2 = todayISO();
+                        const vMans = (manutenzioni || []).filter(m => m.vehicleId === v.id && !m.completata);
+                        const n = vMans.length;
+                        if (n === 0) return null;
+                        return <span style={{ fontWeight: 700, marginLeft: 2 }}>({n})</span>;
+                      })()}
+                    </button>
+                  </div>
                 )}
                 {inNoleggio[v.id] && (
                   <div style={{ marginTop: 8, padding: '5px 8px', borderRadius: 5,
@@ -13883,6 +14961,25 @@ function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, on
           scadenze={scadenze}
           onSave={(updated) => setScadenze(updated)}
           onClose={() => setScadenzeModalVeh(null)}
+        />
+      )}
+
+      {/* Modal statistiche veicolo */}
+      {statsModalVeh && (
+        <VeicoloStatsModal
+          vehicle={statsModalVeh}
+          prenotazioni={prenotazioni}
+          onClose={() => setStatsModalVeh(null)}
+        />
+      )}
+
+      {/* Modal manutenzioni veicolo */}
+      {manutenzioniModalVeh && (
+        <ManutenzioniModal
+          vehicle={manutenzioniModalVeh}
+          manutenzioni={manutenzioni}
+          setManutenzioni={setManutenzioni}
+          onClose={() => setManutenzioniModalVeh(null)}
         />
       )}
 
@@ -14066,7 +15163,8 @@ function CustomersPage({ customers, setCustomers, prenotazioni, admin, onShowQR,
           const headers = parseCSVLine(lines[0]).map(h => h.toLowerCase().replace(/\s+/g, '_'));
           const COL = (keys) => headers.findIndex(h => keys.some(k => h.includes(k)));
           const iNome     = COL(['nome']);
-          const iCognome  = COL(['cognome']);
+          const iCognome  = COL(['cognome','surname','last_name']);
+          const iRagione  = COL(['ragione_sociale','ragione','azienda','company','societa','società']);
           const iTel      = COL(['tel','phone','cellulare','mobile']);
           const iEmail    = COL(['email','mail']);
           const iDoc      = COL(['doc_num','documento','passaport','passport','codice_fis']);
@@ -14075,19 +15173,22 @@ function CustomersPage({ customers, setCustomers, prenotazioni, admin, onShowQR,
           const iNote     = COL(['note','notes']);
           const preview = lines.slice(1).map((l, idx) => {
             const cols = parseCSVLine(l);
+            const ragioneSociale = iRagione >= 0 ? cols[iRagione] || '' : '';
             return {
               id: 'imp_' + Date.now() + '_' + idx,
-              nome:         iNome    >= 0 ? cols[iNome]    || '' : '',
-              cognome:      iCognome >= 0 ? cols[iCognome] || '' : '',
-              tel:          iTel     >= 0 ? cols[iTel]     || '' : '',
-              email:        iEmail   >= 0 ? cols[iEmail]   || '' : '',
-              docNumero:    iDoc     >= 0 ? cols[iDoc]     || '' : '',
-              docTipo:      iDocTipo >= 0 ? cols[iDocTipo] || '' : '',
-              cittadinanza: iCitta   >= 0 ? cols[iCitta]  || '' : '',
-              note:         iNote    >= 0 ? cols[iNote]    || '' : '',
-              createdAt:    new Date().toISOString(),
+              nome:           iNome    >= 0 ? cols[iNome]    || '' : '',
+              cognome:        iCognome >= 0 ? cols[iCognome] || '' : '',
+              ragioneSociale: ragioneSociale,
+              tel:            iTel     >= 0 ? cols[iTel]     || '' : '',
+              email:          iEmail   >= 0 ? cols[iEmail]   || '' : '',
+              docNumero:      iDoc     >= 0 ? cols[iDoc]     || '' : '',
+              docTipo:        iDocTipo >= 0 ? cols[iDocTipo] || '' : '',
+              cittadinanza:   iCitta   >= 0 ? cols[iCitta]  || '' : '',
+              note:           iNote    >= 0 ? cols[iNote]    || '' : '',
+              createdAt:      new Date().toISOString(),
             };
-          }).filter(c => c.nome || c.cognome || c.tel);
+          // Accetta record con almeno uno tra: nome, cognome, ragione sociale o tel
+          }).filter(c => c.nome || c.cognome || c.ragioneSociale || c.tel);
           setImportModal({ preview, fileName: file.name });
         } else {
           alert('Formato non supportato. Usa CSV (UTF-8) o esporta da Excel come CSV.');
@@ -14101,12 +15202,16 @@ function CustomersPage({ customers, setCustomers, prenotazioni, admin, onShowQR,
 
   function confirmImport() {
     if (!importModal) return;
-    const existing = new Set((customers || []).map(c =>
-      `${(c.cognome||'').toLowerCase()}|${(c.tel||'').replace(/\s/g,'')}`.trim()
-    ));
+    // Chiave duplicato: usa ragione sociale se cognome è vuoto
+    function dupKey(c) {
+      const ident = (c.cognome || c.ragioneSociale || '').toLowerCase().trim();
+      const tel   = (c.tel || '').replace(/\s/g, '');
+      return `${ident}|${tel}`;
+    }
+    const existing = new Set((customers || []).map(dupKey));
     const toAdd = importModal.preview.filter(c => {
-      const key = `${(c.cognome||'').toLowerCase()}|${(c.tel||'').replace(/\s/g,'')}`.trim();
-      return key && !existing.has(key);
+      const key = dupKey(c);
+      return key !== '|' && !existing.has(key);
     });
     if (toAdd.length === 0) { alert('Nessun cliente nuovo da importare (tutti già presenti).'); setImportModal(null); return; }
     setCustomers(prev => [...prev, ...toAdd]);
@@ -14154,11 +15259,9 @@ function CustomersPage({ customers, setCustomers, prenotazioni, admin, onShowQR,
             style={{ padding:'7px 14px', borderRadius:6, border:'1px solid var(--border)', background:'transparent', color:'var(--ink-2)', fontSize:13, cursor:'pointer', display:'flex', alignItems:'center', gap:6 }}>
             ⬆ Importa
           </button>
-          {admin && (
-            <button type="button" onClick={onAddCustomer} className="btn-primary px-4 py-2 rounded text-sm font-semibold flex items-center gap-2">
-              <Plus className="w-4 h-4" /> Nuovo
-            </button>
-          )}
+          <button type="button" onClick={onAddCustomer} className="btn-primary px-4 py-2 rounded text-sm font-semibold flex items-center gap-2">
+            <Plus className="w-4 h-4" /> Nuovo
+          </button>
         </div>
       </div>
 
@@ -14675,7 +15778,7 @@ function SecuritySection({ appUsers, setAppUsers, onLogout, pushToast }) {
   );
 }
 
-function SettingsPage({ operator, operators, cargosConfig, admin, backendStatus, lastCheck, apiBaseUrl, syncStatus, agency, onSyncAll, onExportBackup, onImportBackup, pushToast, onAddOperator, onEditOperator, onDeleteOperator, onEditCargos, onEditApiBase, onEditAgency, onResetCustomers, onResetContracts, onResetEverything, onImportFleetFromRentMe, customers, contracts, rentmeConfig, setRentmeConfig, rentmeSync, rentmeVehicles, prenotazioni, onImportStorico, appUsers, setAppUsers, onLogout }) {
+function SettingsPage({ operator, operators, cargosConfig, admin, backendStatus, lastCheck, apiBaseUrl, syncStatus, agency, onSyncAll, onExportBackup, onImportBackup, pushToast, onAddOperator, onEditOperator, onDeleteOperator, onEditCargos, onEditApiBase, onEditAgency, onResetCustomers, onResetContracts, onResetEverything, onImportFleetFromRentMe, customers, contracts, rentmeConfig, setRentmeConfig, rentmeSync, rentmeVehicles, prenotazioni, onImportStorico, appUsers, setAppUsers, onLogout, driveClientId, setDriveClientId, driveLastBackup, onDriveBackup }) {
   const importInputRef = useRef();
   const [showCargosSecrets, setShowCargosSecrets] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -15047,6 +16150,43 @@ function SettingsPage({ operator, operators, cargosConfig, admin, backendStatus,
             <Upload className="w-4 h-4" />
             Importa backup JSON
           </button>
+        </div>
+      </section>
+
+      {/* ── Google Drive Backup ─────────────────────────────────────── */}
+      <section className="card-paper p-6 mt-4" aria-labelledby="drive-heading">
+        <div className="flex items-center gap-2 mb-3">
+          <span style={{ fontSize: 18 }}>☁️</span>
+          <span className="font-semibold text-sm" id="drive-heading">Backup Google Drive</span>
+        </div>
+        <p className="text-xs mb-4" style={{ color: 'var(--ink-2)' }}>
+          Carica un backup JSON su Google Drive. Richiede un <strong>Client ID</strong> OAuth2 dalla Google Cloud Console (tipo "Web application" con origine autorizzata = URL di questa app).
+          Ultimo backup: <strong>{driveLastBackup ? new Date(driveLastBackup).toLocaleString('it-IT') : '—'}</strong>
+        </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input
+              type="text"
+              className="input mono"
+              placeholder="Google Client ID (es. 123456789-xxx.apps.googleusercontent.com)"
+              value={driveClientId || ''}
+              onChange={e => setDriveClientId(e.target.value.trim())}
+              style={{ flex: 1, fontSize: 12 }}
+            />
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button type="button"
+              onClick={onDriveBackup}
+              disabled={!driveClientId}
+              className="flex items-center gap-2 px-4 py-2 rounded text-sm border font-medium disabled:opacity-40"
+              style={{ border: 'none', background: driveClientId ? '#4285f4' : 'var(--surface-2)',
+                color: driveClientId ? 'white' : 'var(--muted)', cursor: driveClientId ? 'pointer' : 'default' }}>
+              ☁️ Backup su Drive ora
+            </button>
+            <div style={{ fontSize: 11, color: 'var(--muted)', alignSelf: 'center' }}>
+              Il file JSON viene caricato su Drive con il nome <code className="mono">edonoleggio-backup-{new Date().toISOString().slice(0,10)}.json</code>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -15780,9 +16920,16 @@ function Step2Customer({ data, update, customers }) {
       {mode === 'scan' && (
         <DocumentScanner
           mode="document"
-          onUpload={(file, dataUrl) => {
-            // In produzione: OCR MRZ del documento → pre-compilazione campi anagrafica.
-            // L'immagine acquisita verrà inviata al backend.
+          onOcrResult={(parsed) => {
+            // Pre-compila i campi anagrafica con i dati estratti dall'MRZ
+            if (parsed.cognome)      updateForm('cognome',      parsed.cognome);
+            if (parsed.nome)         updateForm('nome',         parsed.nome);
+            if (parsed.nascita)      updateForm('nascita',      parsed.nascita);
+            if (parsed.cittadinanza) updateForm('cittadinanza', parsed.cittadinanza);
+            if (parsed.docNum)       updateForm('docNum',       parsed.docNum);
+            if (parsed.docTipo)      updateForm('docTipo',      parsed.docTipo);
+            // Passa alla vista form dopo l'OCR
+            setMode('new');
           }}
         />
       )}
@@ -15814,7 +16961,18 @@ function Step2Customer({ data, update, customers }) {
                 {Object.entries(TIPO_DOC).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </select>
             </div>
-            <FormField id="cf-docNum"      label="Numero documento" req value={form.docNum}      onChange={v => updateForm('docNum', v)}      mono />
+            <div>
+              <FormField id="cf-docNum" label="Numero documento" req value={form.docNum} onChange={v => updateForm('docNum', v)} mono />
+              {(() => {
+                const dv = validateDocNum(form.docTipo, form.docNum);
+                if (!dv || !form.docNum) return null;
+                return (
+                  <div style={{ marginTop: 3, fontSize: 10, fontWeight: 600, color: dv.ok ? '#2e6e3e' : '#c85050' }}>
+                    {dv.msg}
+                  </div>
+                );
+              })()}
+            </div>
             <FormField id="cf-docLuogoRil" label="Luogo rilascio"   req value={form.docLuogoRil} onChange={v => updateForm('docLuogoRil', v)} />
           </div>
         </FormSection>
@@ -17085,6 +18243,15 @@ function AgencyConfigModal({ current, onClose, onSave }) {
         { k: 'questuraPec', label: 'PEC Questura',    wide: true,  mono: true, helper: 'Destinatario fallback CARGOS via PEC' },
       ],
     },
+    {
+      title: 'Pagamenti',
+      fields: [
+        { k: 'iban',         label: 'IBAN',                  wide: true,  mono: true, helper: 'Usato per generare la causale bonifico nel flusso prenotazione' },
+        { k: 'intestatario', label: 'Intestatario c/c',      wide: false },
+        { k: 'bic',          label: 'BIC / SWIFT',           wide: false, mono: true },
+        { k: 'paypalMe',     label: 'PayPal.me (solo user)', wide: false, helper: 'es. "edonoleggio" → paypal.me/edonoleggio/importo' },
+      ],
+    },
   ];
 
   return (
@@ -17234,8 +18401,19 @@ function NewCustomerModal({ customer, onClose, onSave }) {
                 {Object.entries(TIPO_DOC).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </select>
             </div>
-            <FormField id="nc-docNum"  label="Numero documento" req value={form.docNum}  onChange={v => upd('docNum', v)}  mono />
-            <FormField id="nc-patente" label="Numero patente"      value={form.patente}  onChange={v => upd('patente', v)} mono />
+            <div>
+              <FormField id="nc-docNum" label="Numero documento" req value={form.docNum} onChange={v => upd('docNum', v)} mono />
+              {(() => {
+                const dv = validateDocNum(form.docTipo, form.docNum);
+                if (!dv || !form.docNum) return null;
+                return (
+                  <div style={{ marginTop: 3, fontSize: 10, fontWeight: 600, color: dv.ok ? '#2e6e3e' : '#c85050' }}>
+                    {dv.msg}
+                  </div>
+                );
+              })()}
+            </div>
+            <FormField id="nc-patente" label="Numero patente" value={form.patente} onChange={v => upd('patente', v)} mono />
           </div>
         </FormSection>
         <div className="divider-dotted" />
@@ -17289,24 +18467,27 @@ function PlateScanModal({ fleet, onClose }) {
       setStage('notfound');
     }
   };
-const [ocrRunning, setOcrRunning] = useState(false);
+  const [ocrRunning, setOcrRunning] = useState(false);
 
   const runOcr = async (dataUrl) => {
     setOcrRunning(true);
+    let worker;
     try {
-      const result = await Tesseract.recognize(dataUrl, 'eng', {
+      worker = await Tesseract.createWorker('eng', 1);
+      await worker.setParameters({
         tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789',
+        tessedit_pageseg_mode: 7, // riga singola di testo (targa)
       });
-      const text = result.data.text
-        .toUpperCase()
-        .replace(/[^A-Z0-9]/g, '')
-        .trim();
-      if (text.length >= 5) {
-        setPlateInput(text.slice(0, 8));
+      const { data: { text } } = await worker.recognize(dataUrl);
+      const clean = text.toUpperCase().replace(/[^A-Z0-9]/g, '').trim();
+      // Targa italiana: 2 lettere + 3 cifre + 2 lettere (7 char), oppure vecchio formato
+      if (clean.length >= 5) {
+        setPlateInput(clean.slice(0, 8));
       }
     } catch (e) {
-      // OCR fallito, inserimento manuale
+      // OCR fallito → l'utente corregge manualmente
     } finally {
+      if (worker) await worker.terminate().catch(() => {});
       setOcrRunning(false);
     }
   };
