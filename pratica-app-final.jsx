@@ -21,13 +21,15 @@ import Tesseract from 'tesseract.js';
 // Convenzione: x.y.z dove x = major rewrite, y = feature, z = fix.
 // La data accanto aiuta a verificare al volo che il deploy sia andato a buon fine.
 const APP_VERSION = {
-  number: '0.40.4',
-  codename: 'Fix quad: canonicalTipo normalizza mxu/xwolf/atv→quad (alias RentMe) + targa-match QUAD150/300',
+  number: '0.40.5',
+  codename: 'Fix quad: salta fast path per quad (categoria stale in localStorage) → targa-match funziona',
   date: '2026-05-26',
   changelog: [
+    // v0.40.5 — 2026-05-26
+    'Fix quad DEFINITIVO: fast path (if v?.categoria) bypassata per i quad — le flotte importate prima di v0.39.8 avevano categoria="QUAD50" per tutti i quad (50/150/300cc), bloccando il targa-check. Ora i quad vengono sempre ricalcolati da targa/idRentme/cc',
     // v0.40.4 — 2026-05-26
-    'Fix quad: canonicalTipo ora normalizza mxu/xwolf/atv/kymco → "quad" — se RentMe manda tipo="mxu" o "xwolf" invece di "quad", i veicoli ora entrano nel filtro stessoTipo e nel branch quad di getVehicleCategoria',
-    'Fix quad: targa-matching come primo criterio in getVehicleCategoria (EF82687/DC06822/DW08528→QUAD150, FS23036→QUAD300)',
+    'Fix quad: canonicalTipo ora normalizza mxu/xwolf/atv/kymco → "quad"',
+    'Fix quad: targa-matching come primo criterio in getVehicleCategoria',
     // v0.40.3 — 2026-05-26
     'Fix quad 150cc/300cc: getVehicleCategoria ora usa targa-matching come primo criterio (EF82687/DC06822/DW08528 → QUAD150, FS23036 → QUAD300) — indipendente da idRentme/cc — risolve badge mancanti',
     // v0.40.2 — 2026-05-26
@@ -428,9 +430,13 @@ const CATEGORIA_KEYWORDS = {
   'QUAD50':     ['mxu'],
 };
 function getVehicleCategoria(v) {
-  // Fast path: campo già salvato durante l'import
-  if (v?.categoria) return v.categoria;
   const tipo = (v.tipo || '').toLowerCase();
+  // Fast path: campo già salvato durante l'import.
+  // ECCEZIONE: per i quad saltiamo il fast path perché le flotte importate
+  // prima di v0.39.8 hanno categoria='QUAD50' per TUTTI i quad (50/150/300cc
+  // indistintamente). Lasciamo che il targa-check sotto distingua correttamente.
+  const isQuad = tipo === 'quad' || ['mxu', 'xwolf', 'atv', 'kymco'].includes(tipo);
+  if (v?.categoria && !isQuad) return v.categoria;
   // idRentme può essere vuoto per import vecchi — usa modello come fallback
   // (il parser vecchio salvava il codice RentMe in modello anziché idRentme)
   const rmId = (v.idRentme || v.rentmeId || v.modello || '').toLowerCase().trim();
