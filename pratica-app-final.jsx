@@ -21,10 +21,13 @@ import Tesseract from 'tesseract.js';
 // Convenzione: x.y.z dove x = major rewrite, y = feature, z = fix.
 // La data accanto aiuta a verificare al volo che il deploy sia andato a buon fine.
 const APP_VERSION = {
-  number: '0.40.5',
-  codename: 'Fix quad: salta fast path per quad (categoria stale in localStorage) → targa-match funziona',
+  number: '0.40.6',
+  codename: 'Fix quad/bici: sorgente mista RentMe+fleet; tipo/categoria listino sempre da master',
   date: '2026-05-26',
   changelog: [
+    // v0.40.6 — 2026-05-26
+    'Fix quad 150/300 badge: disponibilita ora usa sorgente mista (RentMe + fleet complementare) — i quad 150cc/300cc non presenti nel sync RentMe vengono trovati nel fleet locale',
+    'Fix bici muscolare stesso conteggio di e-bike: listinoCats ora aggiorna SEMPRE tipo e categoria dalla costante LISTINO (non dalla versione persistita in localStorage che poteva avere tipo="ebike" obsoleto)',
     // v0.40.5 — 2026-05-26
     'Fix quad DEFINITIVO: fast path (if v?.categoria) bypassata per i quad — le flotte importate prima di v0.39.8 avevano categoria="QUAD50" per tutti i quad (50/150/300cc), bloccando il targa-check. Ora i quad vengono sempre ricalcolati da targa/idRentme/cc',
     // v0.40.4 — 2026-05-26
@@ -4865,13 +4868,22 @@ function QuoteCard({ cat, dal, al, onPrenota, fleet, rentmeVehicles, prenotazion
       const t = canonicalTipo(v);
       return t === ct || (t === 'moto' && ct === 'scooter') || (t === 'scooter' && ct === 'moto');
     };
-    // Scegli sorgente: rentmeVehicles se ha veicoli di questo tipo, altrimenti fleet locale
-    const rmVehicles = (rentmeVehicles && rentmeVehicles.length > 0) ? rentmeVehicles : [];
-    const hasRmForTipo = rmVehicles.some(tipoMatch);
-    const source = hasRmForTipo ? rmVehicles : (fleet || []);
-    if (!source.length) return null;
+    // Sorgente mista: RentMe (primaria) + fleet (complementare per veicoli assenti da RentMe).
+    // Motivo: RentMe sincronizza solo alcune categorie (es. quad 50cc ma non 150/300cc).
+    // Il fleet locale integra i veicoli mancanti, deduplicando per targa.
+    const rmVehicles = rentmeVehicles || [];
+    const fleetVehicles = fleet || [];
+    const rmTarghe = new Set(rmVehicles.map(v => (v.targa || '').toUpperCase()).filter(Boolean));
+    const allVehicles = [
+      ...rmVehicles,
+      ...fleetVehicles.filter(v => {
+        const t = (v.targa || v.id || '').toUpperCase().trim();
+        return t && !rmTarghe.has(t);  // includi solo se non già presente in RentMe
+      }),
+    ];
+    if (!allVehicles.length) return null;
     // Primo filtro: stesso tipo (usa canonicalTipo per alias moto→scooter, bicicletta→ebike)
-    let stessoTipo = source.filter(tipoMatch);
+    let stessoTipo = allVehicles.filter(tipoMatch);
     // Secondo filtro: sottocategoria (cc/categoria) se la card ha un campo categoria
     if (cat.categoria && stessoTipo.length > 0) {
       stessoTipo = stessoTipo.filter(v => getVehicleCategoria(v) === cat.categoria);
@@ -5272,10 +5284,12 @@ function ListinoTable({ filter }) {
 // ── PreventiviPage ───────────────────────────────────────────────────
 function PreventiviPage({ setPage, setPrenotazioniPrefill, listino: listinoProps, fleet, rentmeVehicles, prenotazioni, pushToast }) {
   // Merge: recupera 'categoria' dalla costante LISTINO se mancante nel dato persistito
+  // Aggiorna sempre tipo e categoria dalla costante LISTINO per evitare valori obsoleti in localStorage
+  // (es. bici_muscolare.tipo era 'ebike' nelle versioni precedenti a v0.40.x)
   const listinoCats = (listinoProps || LISTINO).map(cat => {
-    if (cat.categoria) return cat;
     const master = LISTINO.find(l => l.id === cat.id);
-    return master?.categoria ? { ...cat, categoria: master.categoria } : cat;
+    if (!master) return cat;
+    return { ...cat, tipo: master.tipo, categoria: master.categoria };
   });
   const today = new Date().toISOString().slice(0, 10);
   const [dal, setDal] = useState(today);
