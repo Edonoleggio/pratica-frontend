@@ -437,8 +437,11 @@ function getVehicleCategoria(v) {
 
   // ── Quad ─────────────────────────────────────────────────────────
   if (tipo === 'quad') {
-    if (text.includes('xwolf') || (cc > 0 && cc >= 250)) return 'QUAD300';
-    if ((cc > 0 && cc >= 100) || text.includes('mxu 168') || text.includes('mxu 169') || text.includes('mxu 312')) return 'QUAD150';
+    // xwolf 300cc — rmId può essere "xwolf 311" o solo "311"
+    if (text.includes('xwolf') || rmId === '311' || (cc > 0 && cc >= 250)) return 'QUAD300';
+    // mxu 150cc — rmId può essere "mxu 168" o solo "168"
+    const q150 = ['168', '169', '312'];
+    if ((cc > 0 && cc >= 100) || q150.some(id => rmId === id || rmId === 'mxu ' + id) || q150.some(id => text.includes('mxu ' + id))) return 'QUAD150';
     return 'QUAD50';
   }
 
@@ -4710,7 +4713,7 @@ function isAugust(dateStr) {
 
 // ── Listino prezzi (da edonoleggio.com) ─────────────────────────────
 const LISTINO = [
-  { id: 'auto_chiusa',     nome: 'Auto chiusa',          tipo: 'auto',    categoria: 'CHIUSA',
+  { id: 'auto_chiusa',     nome: 'Auto chiusa',          tipo: 'auto',    categoria: 'BASE',
     bassa:{daily:30,weekly:200}, media:{daily:30,weekly:200}, alta:{daily:30,weekly:300} },
   { id: 'auto_cabrio',     nome: 'Auto cabrio',           tipo: 'auto',    categoria: 'CABRIO',
     bassa:{daily:45,weekly:250}, media:{daily:45,weekly:270}, alta:{daily:45,weekly:370} },
