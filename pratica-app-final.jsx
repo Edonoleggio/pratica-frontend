@@ -389,7 +389,8 @@ const CATEGORIA_LABEL = {
   'SERIE2':     'Serie 2',
   'AUTOMATICA': 'Automatica',
   'STANDARD':   'Standard',
-  'CHIUSA':     ['chiusa'],
+  'CHIUSA':     'Chiusa',
+  'MEHARI':     'Mehari',
   'SCOOTER50':  '50 cc',
   'QUAD50':     'Base 50 cc',
   'QUAD150':    '150 cc',
@@ -402,9 +403,11 @@ const CATEGORIA_KEYWORDS = {
   '7POSTI':     ['7posti', '7 posti', '7posto'],
   '6POSTI':     ['6posti', '6 posti', '6posto'],
   '5POSTI':     ['5posti', '5 posti', '5posto'],
+  'MEHARI':     ['mehari', 'diane'],
   'CABRIO':     ['cabrio'],
   'APERTA':     ['aperta'],
   'SUPERIOR':   ['superior'],
+  'CHIUSA':     ['chiusa'],
   'STANDARD':   ['standard'],
   'BASE':       ['base'],
   'SCOOTER50':  ['liberty'],
@@ -421,7 +424,8 @@ function getVehicleCategoria(v) {
   const rmId = (v.idRentme || v.rentmeId || v.modello || '').toLowerCase().trim();
   const cc   = parseInt(v.cc || 0, 10);
   const vr   = resolveVehicleDisplay(v);
-  const text = `${vr.modello || ''} ${vr.marca || ''} ${rmId}`.toLowerCase();
+  // Include v.nome e v.slug (campi RentMe live, es. "auto fiat newpanda superior")
+  const text = `${vr.modello || ''} ${vr.marca || ''} ${rmId} ${v.nome || ''} ${v.slug || ''}`.toLowerCase();
 
   // ── Scooter ──────────────────────────────────────────────────────
   if (tipo === 'scooter' || tipo === 'moto') {
