@@ -21,10 +21,14 @@ import Tesseract from 'tesseract.js';
 // Convenzione: x.y.z dove x = major rewrite, y = feature, z = fix.
 // La data accanto aiuta a verificare al volo che il deploy sia andato a buon fine.
 const APP_VERSION = {
-  number: '0.40.1',
-  codename: 'Fix classificazione bici/ebike/quad, ♻️ ripristino idRentme, subcategorie quad',
-  date: '2026-05-25',
+  number: '0.40.2',
+  codename: 'Fix badge quad 150/300 e bici muscolare: idRentme+cc in mappa RentMe, fallback fleet per tipo',
+  date: '2026-05-26',
   changelog: [
+    // v0.40.2 — 2026-05-26
+    'Fix quad 150cc/300cc: veicoli mappati da RentMe ora includono idRentme (=codice RentMe es. "mxu 168") e cc (cilindrata numerica) — getVehicleCategoria può ora distinguere QUAD50/150/300',
+    'Fix bici muscolare: disponibilita ora sceglie la sorgente (rentmeVehicles vs fleet) per tipo — se rentmeVehicles non ha bici (tipo=bici), ricade sul fleet locale invece di restituire null',
+    // v0.40.1 — 2026-05-25
     // v0.40.0 — 2026-05-25
     'calcPreventivo multi-stagione: periodi a cavallo di mesi calcolano n giorni per ogni stagione — es. 28 lug→5 ago = 4g luglio (media) + 5g agosto (alta), con tariffe separate e totale sommato',
     'Rincaro +€5 calcolato sul totale soggiorno (non sul singolo segmento) — un 6gg lug→ago ha rincaro sui giorni di luglio ma non su quelli di agosto',
@@ -4829,19 +4833,23 @@ function QuoteCard({ cat, dal, al, onPrenota, fleet, rentmeVehicles, prenotazion
 
   // Mini disponibilità per le date selezionate
   // Preferisce rentmeVehicles (tipo già normalizzato da normalizzaTipoEdox)
-  // su fleet locale che può avere tipo='auto' come fallback per tutti i veicoli
+  // su fleet locale che può avere tipo='auto' come fallback per tutti i veicoli.
+  // Se rentmeVehicles non contiene veicoli di questo tipo (es. bici muscolari),
+  // ricade automaticamente sul fleet locale per quel tipo.
   const disponibilita = useMemo(() => {
     if (!dal || !al) return null;
-    const source = (rentmeVehicles && rentmeVehicles.length > 0)
-      ? rentmeVehicles
-      : (fleet || []);
-    if (!source.length) return null;
     const ct = (cat.tipo || '').toLowerCase();
-    // Primo filtro: stesso tipo (usa canonicalTipo per alias moto→scooter, bicicletta→ebike)
-    let stessoTipo = source.filter(v => {
+    const tipoMatch = v => {
       const t = canonicalTipo(v);
       return t === ct || (t === 'moto' && ct === 'scooter') || (t === 'scooter' && ct === 'moto');
-    });
+    };
+    // Scegli sorgente: rentmeVehicles se ha veicoli di questo tipo, altrimenti fleet locale
+    const rmVehicles = (rentmeVehicles && rentmeVehicles.length > 0) ? rentmeVehicles : [];
+    const hasRmForTipo = rmVehicles.some(tipoMatch);
+    const source = hasRmForTipo ? rmVehicles : (fleet || []);
+    if (!source.length) return null;
+    // Primo filtro: stesso tipo (usa canonicalTipo per alias moto→scooter, bicicletta→ebike)
+    let stessoTipo = source.filter(tipoMatch);
     // Secondo filtro: sottocategoria (cc/categoria) se la card ha un campo categoria
     if (cat.categoria && stessoTipo.length > 0) {
       stessoTipo = stessoTipo.filter(v => getVehicleCategoria(v) === cat.categoria);
@@ -7977,11 +7985,13 @@ function useRentMeSync({ fleet, rentmeVehicles, setRentmeVehicles, setPrenotazio
         const realTar = rentmeToTarga[rmCode.toLowerCase()] || rentmeToTarga[rmCode.trim().split(' ').pop()?.toLowerCase()] || rmCode;
         return {
         rentmeCode:          rmCode,             // codice interno RentMe (quello che torna dall'API)
+        idRentme:            rmCode,             // alias usato da getVehicleCategoria per matching (es. "mxu 168", "xwolf 311")
         targa:               realTar,            // targa reale (da fleet locale o codice RentMe come fallback)
         uuidDittaAssociata:  v.uuidDittaAssociata,
         nome:                [v.tipo, v.marca, v.modello, v.cilindrata].filter(Boolean).join(' '),
         slug:                [v.tipo, v.marca, v.modello, v.cilindrata].join('-').toLowerCase().replace(/\s+/g,'').replace(/[^a-z0-9-]/g,''),
         tipo:                canonicalTipo({ tipo: v.tipo, modello: v.modello }),
+        cc:                  parseInt(v.cilindrata || 0, 10),  // cilindrata → numero per filtro QUAD150/QUAD300
         impegni:             (v.dateImpegno || []).map(di => {
           const p = di.split('|');
           return p.length >= 2 ? { dal: p[0], al: p[1], cliente: (p[2]||'').trim(), acconto: parseFloat(p[3])||0, importo: parseFloat(p[4])||0, note: (p[5]||'').trim() } : null;
