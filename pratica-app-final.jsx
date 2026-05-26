@@ -429,15 +429,16 @@ function getVehicleCategoria(v) {
 
   // ── Scooter ──────────────────────────────────────────────────────
   if (tipo === 'scooter' || tipo === 'moto') {
-    if (rmId.startsWith('liberty') || cc <= 50) return 'SCOOTER50';
-    if (rmId.startsWith('superior')) return 'SUPERIOR';
+    // Usa text (include v.nome/slug da RentMe) + cc solo se impostato (>0)
+    if (text.includes('liberty') || (cc > 0 && cc <= 50)) return 'SCOOTER50';
+    if (text.includes('superior')) return 'SUPERIOR';
     return 'STANDARD';
   }
 
   // ── Quad ─────────────────────────────────────────────────────────
   if (tipo === 'quad') {
-    if (rmId.startsWith('xwolf') || cc >= 250) return 'QUAD300';
-    if (cc >= 100 || rmId === 'mxu 168' || rmId === 'mxu 169' || rmId === 'mxu 312') return 'QUAD150';
+    if (text.includes('xwolf') || (cc > 0 && cc >= 250)) return 'QUAD300';
+    if ((cc > 0 && cc >= 100) || text.includes('mxu 168') || text.includes('mxu 169') || text.includes('mxu 312')) return 'QUAD150';
     return 'QUAD50';
   }
 
@@ -4833,9 +4834,9 @@ function QuoteCard({ cat, dal, al, onPrenota, fleet, rentmeVehicles, prenotazion
       : (fleet || []);
     if (!source.length) return null;
     const ct = (cat.tipo || '').toLowerCase();
-    // Primo filtro: stesso tipo
+    // Primo filtro: stesso tipo (usa canonicalTipo per alias moto→scooter, bicicletta→ebike)
     let stessoTipo = source.filter(v => {
-      const t = (v.tipo || '').toLowerCase();
+      const t = canonicalTipo(v);
       return t === ct || (t === 'moto' && ct === 'scooter') || (t === 'scooter' && ct === 'moto');
     });
     // Secondo filtro: sottocategoria (cc/categoria) se la card ha un campo categoria
