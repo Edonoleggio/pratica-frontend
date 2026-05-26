@@ -21,10 +21,13 @@ import Tesseract from 'tesseract.js';
 // Convenzione: x.y.z dove x = major rewrite, y = feature, z = fix.
 // La data accanto aiuta a verificare al volo che il deploy sia andato a buon fine.
 const APP_VERSION = {
-  number: '0.40.3',
-  codename: 'Fix badge quad: targa-matching per QUAD150/QUAD300 (EF82687/DC06822/DW08528/FS23036)',
+  number: '0.40.4',
+  codename: 'Fix quad: canonicalTipo normalizza mxu/xwolf/atv→quad (alias RentMe) + targa-match QUAD150/300',
   date: '2026-05-26',
   changelog: [
+    // v0.40.4 — 2026-05-26
+    'Fix quad: canonicalTipo ora normalizza mxu/xwolf/atv/kymco → "quad" — se RentMe manda tipo="mxu" o "xwolf" invece di "quad", i veicoli ora entrano nel filtro stessoTipo e nel branch quad di getVehicleCategoria',
+    'Fix quad: targa-matching come primo criterio in getVehicleCategoria (EF82687/DC06822/DW08528→QUAD150, FS23036→QUAD300)',
     // v0.40.3 — 2026-05-26
     'Fix quad 150cc/300cc: getVehicleCategoria ora usa targa-matching come primo criterio (EF82687/DC06822/DW08528 → QUAD150, FS23036 → QUAD300) — indipendente da idRentme/cc — risolve badge mancanti',
     // v0.40.2 — 2026-05-26
@@ -372,6 +375,9 @@ function canonicalTipo(v) {
   const t = (v?.tipo || '').toLowerCase().trim();
   if (t === 'moto') return 'scooter';       // alias RentMe
   if (t === 'bicicletta') return 'ebike';   // bici assistita generica → ebike
+  // Alias quad da RentMe: alcuni veicoli arrivano con tipo='mxu', 'xwolf', 'atv'
+  // invece di 'quad' — normalizziamo tutti a 'quad' per filtri e getVehicleCategoria
+  if (['mxu', 'xwolf', 'atv', 'kymco'].includes(t)) return 'quad';
   // 'bici' = muscolare/piega (senza motore) → rimane 'bici'
   // 'ebike' (fat, city) rimane 'ebike'
   return t;
