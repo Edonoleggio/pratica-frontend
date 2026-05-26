@@ -21,10 +21,12 @@ import Tesseract from 'tesseract.js';
 // Convenzione: x.y.z dove x = major rewrite, y = feature, z = fix.
 // La data accanto aiuta a verificare al volo che il deploy sia andato a buon fine.
 const APP_VERSION = {
-  number: '0.40.2',
-  codename: 'Fix badge quad 150/300 e bici muscolare: idRentme+cc in mappa RentMe, fallback fleet per tipo',
+  number: '0.40.3',
+  codename: 'Fix badge quad: targa-matching per QUAD150/QUAD300 (EF82687/DC06822/DW08528/FS23036)',
   date: '2026-05-26',
   changelog: [
+    // v0.40.3 — 2026-05-26
+    'Fix quad 150cc/300cc: getVehicleCategoria ora usa targa-matching come primo criterio (EF82687/DC06822/DW08528 → QUAD150, FS23036 → QUAD300) — indipendente da idRentme/cc — risolve badge mancanti',
     // v0.40.2 — 2026-05-26
     'Fix quad 150cc/300cc: veicoli mappati da RentMe ora includono idRentme (=codice RentMe es. "mxu 168") e cc (cilindrata numerica) — getVehicleCategoria può ora distinguere QUAD50/150/300',
     'Fix bici muscolare: disponibilita ora sceglie la sorgente (rentmeVehicles vs fleet) per tipo — se rentmeVehicles non ha bici (tipo=bici), ricade sul fleet locale invece di restituire null',
@@ -441,8 +443,16 @@ function getVehicleCategoria(v) {
 
   // ── Quad ─────────────────────────────────────────────────────────
   if (tipo === 'quad') {
+    const targa = (v.targa || '').toUpperCase().trim();
+    // Targhe note (fonte: censimento EDOX)
+    const QUAD300_TARGHE = ['FS23036'];
+    const QUAD150_TARGHE = ['EF82687', 'DC06822', 'DW08528'];
+    // 1) Targa nota → identificazione certa
+    if (QUAD300_TARGHE.includes(targa)) return 'QUAD300';
+    if (QUAD150_TARGHE.includes(targa)) return 'QUAD150';
+    // 2) Codice RentMe / text (rmId include idRentme = rmCode da RentMe)
     // xwolf 300cc — rmId può essere "xwolf 311" o solo "311"
-    if (text.includes('xwolf') || rmId === '311' || (cc > 0 && cc >= 250)) return 'QUAD300';
+    if (text.includes('xwolf') || rmId === '311' || rmId === 'xwolf 311' || (cc > 0 && cc >= 250)) return 'QUAD300';
     // mxu 150cc — rmId può essere "mxu 168" o solo "168"
     const q150 = ['168', '169', '312'];
     if ((cc > 0 && cc >= 100) || q150.some(id => rmId === id || rmId === 'mxu ' + id) || q150.some(id => text.includes('mxu ' + id))) return 'QUAD150';
