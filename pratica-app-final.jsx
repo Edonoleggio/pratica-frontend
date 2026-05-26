@@ -21,10 +21,13 @@ import Tesseract from 'tesseract.js';
 // Convenzione: x.y.z dove x = major rewrite, y = feature, z = fix.
 // La data accanto aiuta a verificare al volo che il deploy sia andato a buon fine.
 const APP_VERSION = {
-  number: '0.40.6',
-  codename: 'Fix quad/bici: sorgente mista RentMe+fleet; tipo/categoria listino sempre da master',
+  number: '0.40.7',
+  codename: 'Fix quad/bici: RentMe manda tipo=quad150/quad300/bicicletta — canonicalTipo e getVehicleCategoria ora li gestiscono',
   date: '2026-05-26',
   changelog: [
+    // v0.40.7 — 2026-05-26
+    'Fix quad 150/300 badge: RentMe invia tipo="quad150"/"quad300" — canonicalTipo ora li normalizza a "quad"; getVehicleCategoria riconosce isQuad per qualsiasi tipo che inizia con "quad" e ha shortcut diretti quad150→QUAD150, quad300→QUAD300',
+    'Fix bici muscolare: RentMe invia tipo="bicicletta" per tutti i tipi di bici — canonicalTipo ora controlla v.modello per distinguere muscolare/mountain (→bici) da ebike fat/city (→ebike)',
     // v0.40.6 — 2026-05-26
     'Fix quad 150/300 badge: disponibilita ora usa sorgente mista (RentMe + fleet complementare) — i quad 150cc/300cc non presenti nel sync RentMe vengono trovati nel fleet locale',
     'Fix bici muscolare stesso conteggio di e-bike: listinoCats ora aggiorna SEMPRE tipo e categoria dalla costante LISTINO (non dalla versione persistita in localStorage che poteva avere tipo="ebike" obsoleto)',
@@ -373,18 +376,24 @@ const VEHICLE_TYPES = {
 // ── canonicalTipo(v) ─────────────────────────────────────────────────
 // Funzione centralizzata che normalizza il tipo di un veicolo per UI,
 // filtri, contatori e logica interna.
-//   'moto'        → 'scooter'   (alias RentMe)
-//   'bicicletta'  → 'ebike'     (e-bike da RentMe)
-//                   ECCEZIONE: MUSCOLARE e PIEGA sono bici tradizionali → 'bici'
+//   'moto'               → 'scooter'
+//   'bicicletta'+muscolare/mountain → 'bici'
+//   'bicicletta'+altro   → 'ebike'
+//   'quad50/150/300','mxu','xwolf','atv','kymco' → 'quad'
 function canonicalTipo(v) {
   const t = (v?.tipo || '').toLowerCase().trim();
-  if (t === 'moto') return 'scooter';       // alias RentMe
-  if (t === 'bicicletta') return 'ebike';   // bici assistita generica → ebike
-  // Alias quad da RentMe: alcuni veicoli arrivano con tipo='mxu', 'xwolf', 'atv'
-  // invece di 'quad' — normalizziamo tutti a 'quad' per filtri e getVehicleCategoria
-  if (['mxu', 'xwolf', 'atv', 'kymco'].includes(t)) return 'quad';
-  // 'bici' = muscolare/piega (senza motore) → rimane 'bici'
-  // 'ebike' (fat, city) rimane 'ebike'
+  if (t === 'moto') return 'scooter';
+  if (t === 'bicicletta') {
+    // RentMe manda tipo='bicicletta' per tutti: controlla modello per distinguere
+    // bici muscolari (muscolare/mountain) da e-bike assistite (ebike/fat/city)
+    const mod = `${v?.modello || ''} ${v?.nome || ''}`.toLowerCase();
+    if (mod.includes('muscolare') || mod.includes('mountain')) return 'bici';
+    return 'ebike';
+  }
+  // RentMe può inviare tipo='quad150', 'quad300', 'quad50' come tipo diretto,
+  // oppure alias brand ('mxu', 'xwolf', 'atv', 'kymco') — tutti → 'quad'
+  if (['quad', 'quad50', 'quad150', 'quad300', 'mxu', 'xwolf', 'atv', 'kymco'].includes(t)) return 'quad';
+  // 'bici' (muscolare) ed 'ebike' rimangono invariati
   return t;
 }
 
@@ -438,7 +447,8 @@ function getVehicleCategoria(v) {
   // ECCEZIONE: per i quad saltiamo il fast path perché le flotte importate
   // prima di v0.39.8 hanno categoria='QUAD50' per TUTTI i quad (50/150/300cc
   // indistintamente). Lasciamo che il targa-check sotto distingua correttamente.
-  const isQuad = tipo === 'quad' || ['mxu', 'xwolf', 'atv', 'kymco'].includes(tipo);
+  // isQuad: gestisce anche i tipi diretti di RentMe ('quad150', 'quad300', 'quad50')
+  const isQuad = tipo === 'quad' || tipo.startsWith('quad') || ['mxu', 'xwolf', 'atv', 'kymco'].includes(tipo);
   if (v?.categoria && !isQuad) return v.categoria;
   // idRentme può essere vuoto per import vecchi — usa modello come fallback
   // (il parser vecchio salvava il codice RentMe in modello anziché idRentme)
@@ -457,7 +467,11 @@ function getVehicleCategoria(v) {
   }
 
   // ── Quad ─────────────────────────────────────────────────────────
-  if (tipo === 'quad') {
+  if (isQuad) {
+    // Shortcut per tipo diretto da RentMe ('quad150', 'quad300', 'quad50')
+    if (tipo === 'quad150') return 'QUAD150';
+    if (tipo === 'quad300') return 'QUAD300';
+    if (tipo === 'quad50')  return 'QUAD50';
     const targa = (v.targa || '').toUpperCase().trim();
     // Targhe note (fonte: censimento EDOX)
     const QUAD300_TARGHE = ['FS23036'];
