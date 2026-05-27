@@ -21,10 +21,12 @@ import Tesseract from 'tesseract.js';
 // Convenzione: x.y.z dove x = major rewrite, y = feature, z = fix.
 // La data accanto aiuta a verificare al volo che il deploy sia andato a buon fine.
 const APP_VERSION = {
-  number: '0.40.9',
-  codename: 'Backup automatico Google Drive ogni 3 ore — token silenzioso via GIS prompt:none, intervallo 15 min, toggle UI in Impostazioni',
+  number: '0.41.0',
+  codename: 'Backup automatico doppio: Render backend (zero auth, sempre attivo) + Google Drive (token cache + prompt:none) — ogni 3 ore, completamente hands-off',
   date: '2026-05-27',
   changelog: [
+    // v0.41.0 — 2026-05-27
+    'Backup automatico doppio ogni 3 ore: (1) Render backend /api/backup — nessuna auth, funziona sempre finché il server è up; (2) Google Drive — prima prova token dalla cache (valido ~55 min), poi prompt:none silenzioso. Token Drive cachato in ref dopo backup manuale. UI Impostazioni aggiornata con sezione server separata.',
     // v0.40.9 — 2026-05-27
     'Backup automatico Google Drive ogni 3 ore: controlla ogni 15 min tramite setInterval, tenta token silenzioso GIS (prompt:none) senza popup, notifica toast al completamento — toggle on/off in Impostazioni → Backup Google Drive',
     // v0.40.8 — 2026-05-26
@@ -13264,6 +13266,10 @@ export default function App() {
   const [driveClientId, setDriveClientId] = usePersistentState('edo:v1:driveClientId', '', { skipRemote: true });
   const [driveLastBackup, setDriveLastBackup] = usePersistentState('edo:v1:driveLastBackup', null, { skipRemote: true });
   const [driveAutoEnabled, setDriveAutoEnabled] = usePersistentState('edo:v1:driveAutoEnabled', false, { skipRemote: true });
+  // Backup automatico Render — timestamp ultimo backup sul backend (nessun auth necessario)
+  const [renderLastBackup, setRenderLastBackup] = usePersistentState('edo:v1:renderLastBackup', null, { skipRemote: true });
+  // Cache token Drive: { token, expiresAt } — evita popup per backup automatico entro ~55 min
+  const driveTokenCacheRef = useRef(null);
 
   // Push notifications: avvisa per scadenze urgenti / scadute
   useScadenzeNotifications(scadenze, fleet);
@@ -13374,6 +13380,8 @@ export default function App() {
       pushToast?.({ tone: 'error', title: 'Autorizzazione negata', message: String(e.message || e) });
       return;
     }
+    // Salva il token in cache (valido ~55 min) per i backup automatici successivi
+    driveTokenCacheRef.current = { token, expiresAt: Date.now() + 55 * 60 * 1000 };
     // Costruisce il payload backup
     const backupObj = {
       version: APP_VERSION.number,
@@ -13413,82 +13421,156 @@ export default function App() {
     }
   }, [driveClientId, prenotazioni, fleet, customers, cassa, scadenze, operators, partners, agency, listino, stagioni, manutenzioni, setDriveLastBackup, pushToast]);
 
-  // ── Auto-backup Google Drive ──────────────────────────────────────────────
+  // ── Backup su Render backend ───────────────────────────────────────────────
+  // Zero autenticazione: usa lo stesso apiBaseUrl del sync dati, funziona sempre.
+  const backupToRender = useCallback(async (silent = false) => {
+    if (!apiBaseUrl) return false;
+    const backupObj = {
+      version: APP_VERSION.number,
+      exportedAt: new Date().toISOString(),
+      prenotazioni, fleet, customers, cassa, scadenze,
+      operators, partners, agency, listino, stagioni, manutenzioni,
+    };
+    try {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 15000);
+      const res = await fetch(`${apiBaseUrl}/api/backup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(backupObj),
+        signal: ctrl.signal,
+      });
+      clearTimeout(t);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setRenderLastBackup(new Date().toISOString());
+      if (!silent) pushToast?.({ tone: 'success', title: '🖥️ Backup su server completato', message: `Salvato su ${apiBaseUrl}/api/backup` });
+      return true;
+    } catch (e) {
+      if (!silent) pushToast?.({ tone: 'error', title: 'Errore backup server', message: String(e.message || e) });
+      return false;
+    }
+  }, [apiBaseUrl, prenotazioni, fleet, customers, cassa, scadenze, operators, partners, agency, listino, stagioni, manutenzioni, setRenderLastBackup, pushToast]);
+
+  // ── Auto-backup Drive + Render ────────────────────────────────────────────
   // Refs per evitare stale closures nell'intervallo (aggiornati ad ogni render)
-  const driveAutoRef = useRef({ enabled: false, clientId: '', lastBackup: null });
+  const driveAutoRef = useRef({ enabled: false, clientId: '', lastBackup: null, apiBaseUrl: '' });
   useEffect(() => {
-    driveAutoRef.current = { enabled: driveAutoEnabled, clientId: driveClientId, lastBackup: driveLastBackup };
-  }, [driveAutoEnabled, driveClientId, driveLastBackup]);
+    // lastBackup = il più recente tra Drive e Render (qualunque backup conti)
+    const lastDrive  = driveLastBackup  ? new Date(driveLastBackup).getTime()  : 0;
+    const lastRender = renderLastBackup ? new Date(renderLastBackup).getTime() : 0;
+    const lastBackup = lastDrive || lastRender
+      ? new Date(Math.max(lastDrive, lastRender)).toISOString()
+      : null;
+    driveAutoRef.current = { enabled: driveAutoEnabled, clientId: driveClientId, lastBackup, apiBaseUrl };
+  }, [driveAutoEnabled, driveClientId, driveLastBackup, renderLastBackup, apiBaseUrl]);
 
   const backupDataRef = useRef(null);
   useEffect(() => {
     backupDataRef.current = { prenotazioni, fleet, customers, cassa, scadenze, operators, partners, agency, listino, stagioni, manutenzioni };
   }, [prenotazioni, fleet, customers, cassa, scadenze, operators, partners, agency, listino, stagioni, manutenzioni]);
 
-  // Controlla ogni 15 minuti se sono passate 3 ore dall'ultimo backup — se sì, tenta backup silenzioso
+  // Controlla ogni 15 minuti se sono passate 3 ore dall'ultimo backup.
+  // Esegue SEMPRE backup su Render (zero auth) + tenta Drive silenzioso se abilitato.
   useEffect(() => {
-    const INTERVAL_MS  = 15 * 60 * 1000; // 15 minuti
-    const THREE_HOURS  = 3  * 60 * 60 * 1000;
+    const INTERVAL_MS = 15 * 60 * 1000; // check ogni 15 min
+    const THREE_HOURS = 3  * 60 * 60 * 1000;
 
     const doSilentBackup = async () => {
-      const { enabled, clientId, lastBackup } = driveAutoRef.current;
-      if (!enabled || !clientId) return;
+      const { enabled, clientId, lastBackup, apiBaseUrl: base } = driveAutoRef.current;
+      // Controlla se sono passate 3 ore (usa driveLastBackup come riferimento comune)
       if (lastBackup && Date.now() - new Date(lastBackup).getTime() < THREE_HOURS) return;
-
-      // Carica GIS se non presente
-      try {
-        await new Promise((resolve, reject) => {
-          if (window.google?.accounts?.oauth2) { resolve(); return; }
-          const s = document.createElement('script');
-          s.src = 'https://accounts.google.com/gsi/client';
-          s.onload = resolve; s.onerror = reject;
-          document.head.appendChild(s);
-        });
-      } catch { return; }
-
-      // Tenta token silenzioso (prompt: 'none') — fallisce senza popup se sessione scaduta
-      const token = await new Promise((resolve) => {
-        try {
-          const client = window.google.accounts.oauth2.initTokenClient({
-            client_id: clientId,
-            scope: 'https://www.googleapis.com/auth/drive.file',
-            callback: (r) => resolve(r.error ? null : r.access_token),
-            error_callback: () => resolve(null),
-          });
-          client.requestAccessToken({ prompt: 'none' });
-        } catch { resolve(null); }
-      });
-      if (!token) return; // Sessione non disponibile — skip silenzioso
 
       const data = backupDataRef.current;
       if (!data) return;
       const backupObj = { version: APP_VERSION.number, exportedAt: new Date().toISOString(), ...data };
-      const jsonStr   = JSON.stringify(backupObj, null, 2);
-      const fileName  = `edonoleggio-backup-${new Date().toISOString().slice(0, 10)}.json`;
-      const boundary  = '-------boundary123456789';
-      const body = [
-        `--${boundary}`, 'Content-Type: application/json; charset=UTF-8', '',
-        JSON.stringify({ name: fileName, mimeType: 'application/json', parents: [] }),
-        `--${boundary}`, 'Content-Type: application/json', '',
-        jsonStr, `--${boundary}--`,
-      ].join('\r\n');
+      const now = new Date().toLocaleTimeString('it-IT');
+      const results = [];
 
-      try {
-        const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${token}`, 'Content-Type': `multipart/related; boundary="${boundary}"` },
-          body,
-        });
-        if (res.ok) {
-          setDriveLastBackup(new Date().toISOString());
-          pushToast?.({ tone: 'success', title: '☁️ Backup automatico Drive', message: `Completato · ${new Date().toLocaleTimeString('it-IT')}` });
+      // ── 1. Backup Render (sempre, nessuna auth) ──────────────────────────
+      if (base) {
+        try {
+          const ctrl = new AbortController();
+          const t = setTimeout(() => ctrl.abort(), 15000);
+          const r = await fetch(`${base}/api/backup`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(backupObj),
+            signal: ctrl.signal,
+          });
+          clearTimeout(t);
+          if (r.ok) {
+            setRenderLastBackup(new Date().toISOString());
+            results.push('🖥️ server');
+          }
+        } catch { /* silenzioso */ }
+      }
+
+      // ── 2. Backup Drive (solo se abilitato) ─────────────────────────────
+      if (enabled && clientId) {
+        let token = null;
+        // a) Prova token dalla cache (valido ~55 min)
+        const cached = driveTokenCacheRef.current;
+        if (cached && cached.expiresAt > Date.now()) {
+          token = cached.token;
+        } else {
+          // b) Tenta token silenzioso via GIS (prompt:none)
+          try {
+            await new Promise((resolve, reject) => {
+              if (window.google?.accounts?.oauth2) { resolve(); return; }
+              const s = document.createElement('script');
+              s.src = 'https://accounts.google.com/gsi/client';
+              s.onload = resolve; s.onerror = reject;
+              document.head.appendChild(s);
+            });
+            token = await new Promise((resolve) => {
+              try {
+                const client = window.google.accounts.oauth2.initTokenClient({
+                  client_id: clientId,
+                  scope: 'https://www.googleapis.com/auth/drive.file',
+                  callback: (r) => {
+                    if (!r.error) driveTokenCacheRef.current = { token: r.access_token, expiresAt: Date.now() + 55 * 60 * 1000 };
+                    resolve(r.error ? null : r.access_token);
+                  },
+                  error_callback: () => resolve(null),
+                });
+                client.requestAccessToken({ prompt: 'none' });
+              } catch { resolve(null); }
+            });
+          } catch { /* GIS non caricabile */ }
         }
-      } catch { /* fallimento silenzioso */ }
+
+        if (token) {
+          const jsonStr  = JSON.stringify(backupObj, null, 2);
+          const fileName = `edonoleggio-backup-${new Date().toISOString().slice(0, 10)}.json`;
+          const boundary = '-------boundary123456789';
+          const body = [
+            `--${boundary}`, 'Content-Type: application/json; charset=UTF-8', '',
+            JSON.stringify({ name: fileName, mimeType: 'application/json', parents: [] }),
+            `--${boundary}`, 'Content-Type: application/json', '',
+            jsonStr, `--${boundary}--`,
+          ].join('\r\n');
+          try {
+            const r = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${token}`, 'Content-Type': `multipart/related; boundary="${boundary}"` },
+              body,
+            });
+            if (r.ok) {
+              setDriveLastBackup(new Date().toISOString());
+              results.push('☁️ Drive');
+            }
+          } catch { /* silenzioso */ }
+        }
+      }
+
+      if (results.length > 0) {
+        pushToast?.({ tone: 'success', title: `Backup automatico · ${now}`, message: results.join(' + ') + ' completato' });
+      }
     };
 
     const id = setInterval(doSilentBackup, INTERVAL_MS);
     return () => clearInterval(id);
-  }, [setDriveLastBackup, pushToast]); // solo dep stabili — lo stato viene letto dai ref
+  }, [setDriveLastBackup, setRenderLastBackup, pushToast]); // solo dep stabili — lo stato è letto dai ref
 
   // Import backup JSON — ripristina tutti i dati da un file JSON esportato
   const importBackup = useCallback((file) => {
@@ -14077,7 +14159,7 @@ export default function App() {
                   <StagioniEditor stagioni={stagioni} onSave={(s)=>{setStagioni(s); pushToast && pushToast({tone:'success',title:'Stagioni aggiornate',message:'Configurazione stagionale salvata'});}} />
                 </div>
               </div>}
-              {page === 'settings'   && <SettingsPage operator={operator} operators={operators} admin={admin} cargosConfig={cargosConfig} backendStatus={backendStatus} lastCheck={lastCheck} apiBaseUrl={apiBaseUrl} syncStatus={allSyncStatus} agency={agency} customers={customers} contracts={localContracts} onSyncAll={syncAll} onExportBackup={exportBackup} onImportBackup={importBackup} pushToast={pushToast} onAddOperator={() => setModal('newOperator')} onEditOperator={(o) => setModal({ type: 'editOperator', operator: o })} onDeleteOperator={requestDeleteOperator} onEditCargos={() => setModal('cargosConfig')} onEditApiBase={() => setModal('apiBase')} onEditAgency={() => setModal('agency')} onResetCustomers={requestResetCustomers} onResetContracts={requestResetContracts} onResetEverything={requestResetEverything} onImportFleetFromRentMe={requestImportFleetFromRentMe} rentmeConfig={rentmeConfig} setRentmeConfig={setRentmeConfig} rentmeSync={rentmeSync} rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} appUsers={appUsers} setAppUsers={setAppUsers} onLogout={handleLogout} driveClientId={driveClientId} setDriveClientId={setDriveClientId} driveLastBackup={driveLastBackup} onDriveBackup={driveBackup} driveAutoEnabled={driveAutoEnabled} setDriveAutoEnabled={setDriveAutoEnabled} onImportStorico={({ prenotazioni: newP, clienti: newC }) => {
+              {page === 'settings'   && <SettingsPage operator={operator} operators={operators} admin={admin} cargosConfig={cargosConfig} backendStatus={backendStatus} lastCheck={lastCheck} apiBaseUrl={apiBaseUrl} syncStatus={allSyncStatus} agency={agency} customers={customers} contracts={localContracts} onSyncAll={syncAll} onExportBackup={exportBackup} onImportBackup={importBackup} pushToast={pushToast} onAddOperator={() => setModal('newOperator')} onEditOperator={(o) => setModal({ type: 'editOperator', operator: o })} onDeleteOperator={requestDeleteOperator} onEditCargos={() => setModal('cargosConfig')} onEditApiBase={() => setModal('apiBase')} onEditAgency={() => setModal('agency')} onResetCustomers={requestResetCustomers} onResetContracts={requestResetContracts} onResetEverything={requestResetEverything} onImportFleetFromRentMe={requestImportFleetFromRentMe} rentmeConfig={rentmeConfig} setRentmeConfig={setRentmeConfig} rentmeSync={rentmeSync} rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} appUsers={appUsers} setAppUsers={setAppUsers} onLogout={handleLogout} driveClientId={driveClientId} setDriveClientId={setDriveClientId} driveLastBackup={driveLastBackup} onDriveBackup={driveBackup} driveAutoEnabled={driveAutoEnabled} setDriveAutoEnabled={setDriveAutoEnabled} renderLastBackup={renderLastBackup} onRenderBackup={backupToRender} onImportStorico={({ prenotazioni: newP, clienti: newC }) => {
                 setPrenotazioni(prev => {
                   const existKeys = new Set(prev.map(p => p.id));
                   return [...prev, ...newP.filter(p => !existKeys.has(p.id))];
@@ -16796,7 +16878,7 @@ function SecuritySection({ appUsers, setAppUsers, onLogout, pushToast }) {
   );
 }
 
-function SettingsPage({ operator, operators, cargosConfig, admin, backendStatus, lastCheck, apiBaseUrl, syncStatus, agency, onSyncAll, onExportBackup, onImportBackup, pushToast, onAddOperator, onEditOperator, onDeleteOperator, onEditCargos, onEditApiBase, onEditAgency, onResetCustomers, onResetContracts, onResetEverything, onImportFleetFromRentMe, customers, contracts, rentmeConfig, setRentmeConfig, rentmeSync, rentmeVehicles, prenotazioni, onImportStorico, appUsers, setAppUsers, onLogout, driveClientId, setDriveClientId, driveLastBackup, onDriveBackup, driveAutoEnabled, setDriveAutoEnabled }) {
+function SettingsPage({ operator, operators, cargosConfig, admin, backendStatus, lastCheck, apiBaseUrl, syncStatus, agency, onSyncAll, onExportBackup, onImportBackup, pushToast, onAddOperator, onEditOperator, onDeleteOperator, onEditCargos, onEditApiBase, onEditAgency, onResetCustomers, onResetContracts, onResetEverything, onImportFleetFromRentMe, customers, contracts, rentmeConfig, setRentmeConfig, rentmeSync, rentmeVehicles, prenotazioni, onImportStorico, appUsers, setAppUsers, onLogout, driveClientId, setDriveClientId, driveLastBackup, onDriveBackup, driveAutoEnabled, setDriveAutoEnabled, renderLastBackup, onRenderBackup }) {
   const importInputRef = useRef();
   const [showCargosSecrets, setShowCargosSecrets] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -17168,6 +17250,31 @@ function SettingsPage({ operator, operators, cargosConfig, admin, backendStatus,
             <Upload className="w-4 h-4" />
             Importa backup JSON
           </button>
+        </div>
+      </section>
+
+      {/* ── Backup automatico sul server Render ─────────────────────── */}
+      <section className="card-paper p-6 mt-4" aria-labelledby="render-backup-heading">
+        <div className="flex items-center gap-2 mb-3">
+          <span style={{ fontSize: 18 }}>🖥️</span>
+          <span className="font-semibold text-sm" id="render-backup-heading">Backup automatico sul server</span>
+          <span style={{ fontSize: 10, background: 'var(--accent)', color: 'white', borderRadius: 4, padding: '1px 6px', marginLeft: 4 }}>SEMPRE ATTIVO</span>
+        </div>
+        <p className="text-xs mb-4" style={{ color: 'var(--ink-2)' }}>
+          Ogni 3 ore il backup viene salvato automaticamente sul backend Render — nessuna autorizzazione Google richiesta. Fino a 20 snapshot vengono conservati (ultimi ~2,5 giorni).
+          Ultimo backup: <strong>{renderLastBackup ? new Date(renderLastBackup).toLocaleString('it-IT') : '—'}</strong>
+        </p>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <button type="button"
+            onClick={() => onRenderBackup?.(false)}
+            className="flex items-center gap-2 px-4 py-2 rounded text-sm font-medium"
+            style={{ border: 'none', background: 'var(--surface-3)', color: 'var(--ink-1)', cursor: 'pointer' }}>
+            🖥️ Backup su server ora
+          </button>
+          <a href="#" onClick={e => { e.preventDefault(); window.open(`${window.location.origin}/api/backup/list`); }}
+            style={{ fontSize: 11, color: 'var(--muted)', textDecoration: 'underline' }}>
+            Vedi lista backup
+          </a>
         </div>
       </section>
 
