@@ -21,10 +21,12 @@ import Tesseract from 'tesseract.js';
 // Convenzione: x.y.z dove x = major rewrite, y = feature, z = fix.
 // La data accanto aiuta a verificare al volo che il deploy sia andato a buon fine.
 const APP_VERSION = {
-  number: '0.40.7',
-  codename: 'Fix quad/bici: RentMe manda tipo=quad150/quad300/bicicletta — canonicalTipo e getVehicleCategoria ora li gestiscono',
+  number: '0.40.8',
+  codename: 'Fix raddoppio conteggi: rimossa sorgente mista RentMe+fleet (causa duplicati), canonicalTipo basta per trovare quad150/300 e bici muscolari in RentMe',
   date: '2026-05-26',
   changelog: [
+    // v0.40.8 — 2026-05-26
+    'Fix raddoppio conteggi: la sorgente mista RentMe+fleet (v0.40.6) causava duplicati quando fleet e RentMe avevano le stesse targhe sotto chiavi diverse — rimossa, si usa solo RentMe (o fleet come fallback se RentMe non ha quel tipo)',
     // v0.40.7 — 2026-05-26
     'Fix quad 150/300 badge: RentMe invia tipo="quad150"/"quad300" — canonicalTipo ora li normalizza a "quad"; getVehicleCategoria riconosce isQuad per qualsiasi tipo che inizia con "quad" e ha shortcut diretti quad150→QUAD150, quad300→QUAD300',
     'Fix bici muscolare: RentMe invia tipo="bicicletta" per tutti i tipi di bici — canonicalTipo ora controlla v.modello per distinguere muscolare/mountain (→bici) da ebike fat/city (→ebike)',
@@ -4882,22 +4884,14 @@ function QuoteCard({ cat, dal, al, onPrenota, fleet, rentmeVehicles, prenotazion
       const t = canonicalTipo(v);
       return t === ct || (t === 'moto' && ct === 'scooter') || (t === 'scooter' && ct === 'moto');
     };
-    // Sorgente mista: RentMe (primaria) + fleet (complementare per veicoli assenti da RentMe).
-    // Motivo: RentMe sincronizza solo alcune categorie (es. quad 50cc ma non 150/300cc).
-    // Il fleet locale integra i veicoli mancanti, deduplicando per targa.
-    const rmVehicles = rentmeVehicles || [];
-    const fleetVehicles = fleet || [];
-    const rmTarghe = new Set(rmVehicles.map(v => (v.targa || '').toUpperCase()).filter(Boolean));
-    const allVehicles = [
-      ...rmVehicles,
-      ...fleetVehicles.filter(v => {
-        const t = (v.targa || v.id || '').toUpperCase().trim();
-        return t && !rmTarghe.has(t);  // includi solo se non già presente in RentMe
-      }),
-    ];
-    if (!allVehicles.length) return null;
-    // Primo filtro: stesso tipo (usa canonicalTipo per alias moto→scooter, bicicletta→ebike)
-    let stessoTipo = allVehicles.filter(tipoMatch);
+    // Scegli sorgente: RentMe se ha veicoli di questo tipo (canonicalTipo gestisce quad150/300/bicicletta),
+    // altrimenti fleet locale. Con i fix canonicalTipo, quad150/300 e bici muscolari sono trovati in RentMe.
+    const rmVehicles = (rentmeVehicles && rentmeVehicles.length > 0) ? rentmeVehicles : [];
+    const hasRmForTipo = rmVehicles.some(tipoMatch);
+    const source = hasRmForTipo ? rmVehicles : (fleet || []);
+    if (!source.length) return null;
+    // Primo filtro: stesso tipo (usa canonicalTipo per alias moto→scooter, bicicletta→ebike/bici, quad150→quad)
+    let stessoTipo = source.filter(tipoMatch);
     // Secondo filtro: sottocategoria (cc/categoria) se la card ha un campo categoria
     if (cat.categoria && stessoTipo.length > 0) {
       stessoTipo = stessoTipo.filter(v => getVehicleCategoria(v) === cat.categoria);
