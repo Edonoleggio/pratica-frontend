@@ -21,10 +21,27 @@ import Tesseract from 'tesseract.js';
 // Convenzione: x.y.z dove x = major rewrite, y = feature, z = fix.
 // La data accanto aiuta a verificare al volo che il deploy sia andato a buon fine.
 const APP_VERSION = {
-  number: '0.41.3',
-  codename: 'Contratto: targa corretta ovunque, condizioni legali complete 9 articoli',
+  number: '0.42.1',
+  codename: 'Wizard unificato: contratto da prenotazioni = ContractPdfModal; firma in Step 5; date prima veicolo; filtro disponibilità',
   date: '2026-05-27',
   changelog: [
+    // v0.42.1 — 2026-05-27 (fix pre-deploy)
+    'Fix Wizard: cambio date in Step Periodo ora resetta data.veicolo → impossibile confermare un veicolo non disponibile per il nuovo periodo',
+    'Fix Wizard: cambio tipo veicolo in Step Tipo ora resetta data.veicolo → nessun veicolo di tipo sbagliato in conferma',
+    'Fix Step5Confirm: pag = TIPO_PAGAMENTO[data.pagamento] || TIPO_PAGAMENTO[\'C\'] — crash guard aggiunto (era senza fallback, a differenza di ContractPdfModal)',
+    'Fix Step5Confirm: partners?.find → (partners||[]).find — guard consistente con ContractPdfModal',
+    'Fix Wizard prefillCustomer: data.cliente ora include .full = prefillCustomer — Step5Confirm e ContractPdfModal mostrano dati cliente corretti quando il wizard viene aperto da Clienti (saltando Step2)',
+    // v0.42.0 — 2026-05-27
+    'Unificazione contratti: clic "Contratto" da lista prenotazioni apre lo stesso ContractPdfModal del wizard (prenoToContractData converte formato booking → formato pratica); contractId dinamico EDO-{anno}-{codice} — codice prenotazione e pratica ora coincidono',
+    'ContractPdfModal: contractId e contractDate ora dinamici (prop); nessun valore hardcoded; accetta partners=[] senza crash',
+    'Firma cliente in nuova pratica: bottone "Firma cliente" in Step 5 (Conferma) apre FirmaModal; firma salvata in data.firma e visibile come "Firma acquisita ✓"; passata al ContractPdfModal',
+    'Wizard — ordine step invertito: ora Tipo → Cliente → Periodo → Veicolo → Conferma; le date vengono inserite prima della selezione del veicolo',
+    'Step Veicolo: filtra per disponibilità in base al periodo inserito — esclude veicoli con prenotazione attiva sovrapposta; header mostra "N liberi su M per il periodo"; messaggio dedicato se nessun veicolo disponibile',
+    'Wizard: bookingCode generato una sola volta per sessione (useState lazy); contractId = EDO-{year}-{bookingCode} passato a ContractPdfModal e ResultScreen',
+    'Wizard: prenotazioni passate come prop da App — necessario per filtro disponibilità; partners passato anche a PrenotazioniPage',
+    // v0.41.5 — 2026-05-27
+    'Fix sistemico vehicleTarga (root-cause): PrenoForm ora include vehicleTarga in empty+stato iniziale; handleVehicleChange e selectVehicleFromTarga usano resolveVehicleDisplay per salvare la targa reale al momento della selezione; handleConsegna ora la propaga al record; doConfirm (combo+singolo) e applySostituzione usano resolveVehicleDisplay — targa corretta su tutto il ciclo di vita prenotazione, non solo nel contratto',
+    'ContrattoModal: enrichedPreno come rete di sicurezza per booking vecchi senza vehicleTarga — usa resolveVehicleDisplay poi fleet lookup poi split label',
     // v0.41.3 — 2026-05-27
     'Fix root-cause vehicleTarga: ora salvata correttamente in tutti i flussi (confirm singolo, combo, calendario Gantt, sostituzione guasto) — prima era vuota o conteneva l\'ID invece della targa reale',
     'Fix sostituzione guasto: vehicleTarga e vehicleType ora presi dal veicolo sostituto, non dal vecchio mezzo',
@@ -2465,6 +2482,7 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
   const empty = {
     clienteNome: '', clienteCognome: '', clienteTel: '',
     vehicleId: pv.vehicleId || '', vehicleLabel: pv.vehicleLabel || '',
+    vehicleTarga: pv.vehicleTarga || '',
     vehicleType: pv.vehicleType || 'auto',
     dal: pv.dal || todayISO(), al: pv.al || '',
     stato: 'attesa', fonte: pv.fonte || 'diretto',
@@ -2481,6 +2499,7 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
     clienteTel: initial.clienteTel || '',
     vehicleId: initial.vehicleId || '',
     vehicleLabel: initial.vehicleLabel || '',
+    vehicleTarga: initial.vehicleTarga || '',
     vehicleType: initial.vehicleType || 'auto',
     dal: initial.dal || todayISO(),
     al: initial.al || '',
@@ -2597,15 +2616,18 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
     // Usa allVehicles (già unifica RentMe + fleet locale con targa normalizzata)
     const v = allVehicles.find(x => x.id === id);
     if (v) {
+      const vr = resolveVehicleDisplay(v);
       set('vehicleId', id);
-      // makeVehicleLabel include sia modello che targa reale → es. "Mehari 130 · AB123CD"
       set('vehicleLabel', makeVehicleLabel(v));
+      set('vehicleTarga', vr.targa || v.targa || v.plate || '');
       set('vehicleType', v.tipo || 'auto');
     } else {
       // fallback: cerca direttamente in fleet locale per id interno
       const fv = (fleet || []).find(x => x.id === id);
+      const fvr = fv ? resolveVehicleDisplay(fv) : null;
       set('vehicleId', id);
       set('vehicleLabel', fv ? makeVehicleLabel(fv) : id);
+      set('vehicleTarga', fvr?.targa || fv?.targa || fv?.plate || '');
       set('vehicleType', fv ? fv.tipo : 'auto');
     }
   }
@@ -2693,8 +2715,10 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
   }, [targaSearch, allVehicles]);
 
   function selectVehicleFromTarga(v) {
+    const vr = resolveVehicleDisplay(v);
     set('vehicleId', v.id);
     set('vehicleLabel', makeVehicleLabel(v));
+    set('vehicleTarga', vr.targa || v.targa || v.plate || '');
     set('vehicleType', v.tipo || 'auto');
     setTargaSearch('');
     setVehicleSchedule(null);
@@ -3170,7 +3194,7 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
 }
 
 // ── PrenotazioniPage ─────────────────────────────────────────────────
-function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rentmeVehicles, customers, operator, onOpenWizard, pushToast, prefill, onClearPrefill, fermiFlotta, rentmePush, rentmeConnected, agency }) {
+function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rentmeVehicles, customers, partners, operator, onOpenWizard, pushToast, prefill, onClearPrefill, fermiFlotta, rentmePush, rentmeConnected, agency }) {
   const [form, setForm] = useState(null); // null | 'new' | {record}
   const [showDisp, setShowDisp] = useState(false);
 
@@ -3303,13 +3327,14 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rent
       message: `${[p.clienteCognome, p.clienteNome].filter(Boolean).join(' ')} — ${p.vehicleLabel || 'mezzo'}` });
   }
 
-  function handleConsegna({ vehicleId, vehicleLabel, vehicleSchedule, kmPartenza, carburante, noteConsegna }) {
+  function handleConsegna({ vehicleId, vehicleLabel, vehicleTarga, vehicleSchedule, kmPartenza, carburante, noteConsegna }) {
     const p = consegnaPreno;
     setPrenotazioni(ps => ps.map(x => x.id === p.id ? {
       ...x,
       stato:           'in_corso',
       vehicleId:       vehicleId       || x.vehicleId    || null,
       vehicleLabel:    vehicleLabel    || x.vehicleLabel || '',
+      vehicleTarga:    vehicleTarga    || x.vehicleTarga || '',
       vehicleSchedule: vehicleSchedule || x.vehicleSchedule || null,
       kmPartenza:      kmPartenza      != null ? kmPartenza : (x.kmPartenza ?? null),
       carburante:      carburante      || null,
@@ -3393,7 +3418,7 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rent
         vehicleId:      mezzoNuovo,
         vehicleLabel:   labelSost,
         vehicleType:    sostituto?.tipo || p.vehicleType,
-        vehicleTarga:   sostituto?.targa || sostituto?.plate || '',
+        vehicleTarga:   (sostituto ? resolveVehicleDisplay(sostituto)?.targa : null) || sostituto?.targa || sostituto?.plate || '',
         dal:   dataGuasto,
         al:    p.al,
         stato: 'in_corso',
@@ -3872,8 +3897,13 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rent
         />
       )}
       {contrattoPreno && (
-        <ContrattoModal
-          preno={contrattoPreno}
+        <ContractPdfModal
+          data={prenoToContractData(contrattoPreno, fleet, customers)}
+          operator={operator}
+          partners={partners || []}
+          agency={agency}
+          contractId={`EDO-${new Date(contrattoPreno.dal || Date.now()).getFullYear()}-${contrattoPreno.codice || '?'}`}
+          contractDate={formatDate(contrattoPreno.dal)}
           onClose={() => setContrattoPreno(null)}
         />
       )}
@@ -4286,10 +4316,11 @@ function ConsegnaModal({ preno, prenotazioni, fleet, rentmeVehicles, onConfirm, 
       const first = smartCombo[0];
       const fv = candidati.find(v => v.id === first.vehicleId);
       const label = fv ? makeVehicleLabel(fv) : first.vehicleId;
+      const fvr = fv ? resolveVehicleDisplay(fv) : null;
       onConfirm({
         vehicleId: first.vehicleId,
         vehicleLabel: label,
-        vehicleTarga: fv?.targa || fv?.plate || '',
+        vehicleTarga: fvr?.targa || fv?.targa || fv?.plate || '',
         vehicleSchedule: smartCombo.map(s => ({ vehicleId: s.vehicleId, dal: s.dal, al: s.al })),
         kmPartenza: kmPartenza !== '' ? Number(kmPartenza) : null,
         carburante,
@@ -4297,10 +4328,11 @@ function ConsegnaModal({ preno, prenotazioni, fleet, rentmeVehicles, onConfirm, 
       });
     } else {
       const label = selVehicle ? makeVehicleLabel(selVehicle) : selectedId;
+      const svr = selVehicle ? resolveVehicleDisplay(selVehicle) : null;
       onConfirm({
         vehicleId: selectedId,
         vehicleLabel: label,
-        vehicleTarga: selVehicle?.targa || selVehicle?.plate || '',
+        vehicleTarga: svr?.targa || selVehicle?.targa || selVehicle?.plate || '',
         vehicleSchedule: null,
         kmPartenza: kmPartenza !== '' ? Number(kmPartenza) : null,
         carburante,
@@ -10817,18 +10849,34 @@ const CONTRATTO_I18N = {
   },
 };
 
-function ContrattoModal({ preno, onClose }) {
+function ContrattoModal({ preno, fleet, onClose }) {
   const [lang, setLang] = useState('it');
   const t = CONTRATTO_I18N[lang];
   const f = t.fields;
   const s = t.sections;
 
-  const cliente = [preno.clienteCognome, preno.clienteNome].filter(Boolean).join(' ') || '—';
-  const giorni = daysDiff(preno.dal, preno.al);
-  const saldo = (preno.prezzo || 0) - (preno.acconto || 0);
+  // Risolve la targa con la stessa logica usata da makeVehicleLabel / booking card:
+  // 1. vehicleTarga già presente sul booking (booking nuovi)
+  // 2. resolveVehicleDisplay con vehicleId (lookup RENTME_TARGA_MAP — booking RentMe)
+  // 3. fleet lookup per vehicleId
+  // 4. split vehicleLabel ' · ' come ultimo fallback
+  const enrichedPreno = React.useMemo(() => {
+    if (preno.vehicleTarga) return preno;
+    const resolved = resolveVehicleDisplay({ id: preno.vehicleId, idRentme: preno.vehicleId });
+    const targa = resolved?.targa
+      || (fleet || []).find(x => x.id === preno.vehicleId)?.targa
+      || preno.vehicleLabel?.split(' · ')[1]?.trim()
+      || '';
+    return { ...preno, vehicleTarga: targa };
+  }, [preno, fleet]);
+
+  const cliente = [enrichedPreno.clienteCognome, enrichedPreno.clienteNome].filter(Boolean).join(' ') || '—';
+  const giorni = daysDiff(enrichedPreno.dal, enrichedPreno.al);
+  const saldo = (enrichedPreno.prezzo || 0) - (enrichedPreno.acconto || 0);
   const typeLabel = { auto: 'Autovettura / Car / Coche', scooter: 'Scooter', quad: 'Quad / ATV', ebike: 'E-Bike' };
 
   function printContratto() {
+    const preno = enrichedPreno; // usa versione arricchita (vehicleTarga garantita)
     const w = window.open('', '_blank', 'width=820,height=960');
     if (!w) { alert('Abilita i popup per stampare'); return; }
     w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8">
@@ -10968,14 +11016,14 @@ ${preno.codice ? `<div style="text-align:center;margin:-16px 0 20px;"><span styl
           <div style={{ fontWeight: 700, marginBottom: 8, fontSize: 12, textTransform: 'uppercase', letterSpacing: '1px', color: 'var(--muted)' }}>{t.title}</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 16px', fontSize: 12 }}>
             <div><span style={{ color: 'var(--muted)' }}>{f.name}: </span><strong>{cliente}</strong></div>
-            <div><span style={{ color: 'var(--muted)' }}>{f.plate}: </span><strong>{preno.vehicleTarga || (preno.vehicleLabel?.split(' · ')[1]?.trim()) || '—'}</strong></div>
-            <div><span style={{ color: 'var(--muted)' }}>{f.from}: </span><strong>{formatDate(preno.dal)}</strong></div>
-            <div><span style={{ color: 'var(--muted)' }}>{f.to}: </span><strong>{formatDate(preno.al)}</strong></div>
-            <div><span style={{ color: 'var(--muted)' }}>{f.total}: </span><strong>€{preno.prezzo ?? '—'}</strong></div>
+            <div><span style={{ color: 'var(--muted)' }}>{f.plate}: </span><strong>{enrichedPreno.vehicleTarga || '—'}</strong></div>
+            <div><span style={{ color: 'var(--muted)' }}>{f.from}: </span><strong>{formatDate(enrichedPreno.dal)}</strong></div>
+            <div><span style={{ color: 'var(--muted)' }}>{f.to}: </span><strong>{formatDate(enrichedPreno.al)}</strong></div>
+            <div><span style={{ color: 'var(--muted)' }}>{f.total}: </span><strong>€{enrichedPreno.prezzo ?? '—'}</strong></div>
             <div><span style={{ color: 'var(--muted)' }}>{f.balance}: </span><strong>€{saldo >= 0 ? saldo : '—'}</strong></div>
           </div>
-          {preno.firma && <div style={{ marginTop: 10, fontSize: 11, color: '#2e6e3e', fontWeight: 600 }}>✍️ Firma digitale presente nel contratto</div>}
-          {!preno.firma && <div style={{ marginTop: 10, fontSize: 11, color: 'var(--muted)' }}>Nessuna firma — usa "Firma" per raccoglierla prima di stampare</div>}
+          {enrichedPreno.firma && <div style={{ marginTop: 10, fontSize: 11, color: '#2e6e3e', fontWeight: 600 }}>✍️ Firma digitale presente nel contratto</div>}
+          {!enrichedPreno.firma && <div style={{ marginTop: 10, fontSize: 11, color: 'var(--muted)' }}>Nessuna firma — usa "Firma" per raccoglierla prima di stampare</div>}
         </div>
 
         <div style={{ display: 'flex', gap: 10 }}>
@@ -14192,7 +14240,7 @@ export default function App() {
               {page === 'banco'      && <BancoRapidoPage rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} fleet={fleet} setPage={setPage} setPrenotazioniPrefill={setPrenotazioniPrefill} listino={listino} pushToast={pushToast} rentmeSyncStatus={rentmeSync.status} onRentmeSync={rentmeSync.sync} rentmeLastSync={rentmeSync.lastSync} />}
               {page === 'report'        && <ReportPage prenotazioni={prenotazioni} contracts={localContracts} cassa={cassa} customers={customers} fleet={fleet} operators={operators} pushToast={pushToast} />}
               {page === 'preventivi'    && <PreventiviPage setPage={setPage} setPrenotazioniPrefill={setPrenotazioniPrefill} listino={listino} fleet={fleet} rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} pushToast={pushToast} />}
-              {page === 'prenotazioni' && <PrenotazioniPage prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} setCassa={setCassa} fleet={fleet} rentmeVehicles={rentmeVehicles} customers={customers} operator={operator} onOpenWizard={openWizard} pushToast={pushToast} prefill={prenotazioniPrefill} onClearPrefill={() => setPrenotazioniPrefill(null)} fermiFlotta={fermiFlotta} rentmePush={rentmeSync.pushBooking} rentmeConnected={rentmeSync.status === 'ok'} agency={agency} />}
+              {page === 'prenotazioni' && <PrenotazioniPage prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} setCassa={setCassa} fleet={fleet} rentmeVehicles={rentmeVehicles} customers={customers} partners={partners} operator={operator} onOpenWizard={openWizard} pushToast={pushToast} prefill={prenotazioniPrefill} onClearPrefill={() => setPrenotazioniPrefill(null)} fermiFlotta={fermiFlotta} rentmePush={rentmeSync.pushBooking} rentmeConnected={rentmeSync.status === 'ok'} agency={agency} />}
               {page === 'contracts'  && <ContractsList contracts={localContracts} operators={operators} onRetry={retryContract} onMarkReturned={markContractReturned} online={online} />}
               {page === 'fleet'      && <FleetPage fleet={fleet} prenotazioni={prenotazioni} admin={admin} onAddVehicle={() => setModal('newVehicle')} onEditVehicle={(v) => setModal({ type: 'editVehicle', vehicle: v })} onDeleteVehicle={requestDeleteVehicle} onImportCSV={() => setShowCsvImport(true)} onResetFleet={() => setModal({ type: 'confirm', title: 'Azzera flotta?', message: <><strong>Tutti i {fleet.length} veicoli</strong> verranno eliminati dalla flotta. Le prenotazioni esistenti restano invariate. Dopo puoi reimportare con un CSV aggiornato. <strong>Azione irreversibile.</strong></>, confirmLabel: '🗑 Azzera flotta', variant: 'danger', onConfirm: () => { setFleet([]); pushToast({ tone: 'info', title: 'Flotta azzerata', message: 'Tutti i veicoli rimossi. Importa un nuovo CSV per ricaricare.' }); } })} onSetFleet={setFleet} scadenze={scadenze} setScadenze={setScadenze} fermiFlotta={fermiFlotta} setFermiFlotta={setFermiFlotta} rentmeVehicles={rentmeVehicles} manutenzioni={manutenzioni} setManutenzioni={setManutenzioni} />}
               {page === 'customers'  && <CustomersPage customers={customers} setCustomers={setCustomers} prenotazioni={prenotazioni} admin={admin} onShowQR={(c) => setModal({ type: 'qr', customer: c })} onNewWithCustomer={openWizard} onAddCustomer={() => setModal('newCustomer')} onEditCustomer={(c) => setModal({ type: 'editCustomer', customer: c })} onDeleteCustomer={deleteCustomer} onShowStorico={(c) => setStorioClienteId(c.id)} />}
@@ -14227,6 +14275,7 @@ export default function App() {
             fleet={fleet}
             customers={customers}
             partners={partners}
+            prenotazioni={prenotazioni}
             onSubmit={submitContract}
             agency={agency}
           />
@@ -17788,19 +17837,22 @@ const Field = memo(function Field({ label, value, mono, wide }) {
 // ═══════════════════════════════════════════════════════════════════
 // WIZARD
 // ═══════════════════════════════════════════════════════════════════
-function Wizard({ onClose, prefillCustomer, operator, fleet, customers, partners, onSubmit, agency }) {
+function Wizard({ onClose, prefillCustomer, operator, fleet, customers, partners, prenotazioni, onSubmit, agency }) {
   const [step, setStep] = useState(prefillCustomer ? 3 : 1);
   const [data, setData] = useState({
     tipoVeicolo: prefillCustomer ? 'auto' : null,
-    cliente: prefillCustomer || null,
+    // Se prefillCustomer è un oggetto raw dal DB customers, costruiamo subito .full
+    // così Step5Confirm e ContractPdfModal trovano dati cliente corretti senza passare per Step2.
+    cliente: prefillCustomer ? { ...prefillCustomer, full: prefillCustomer } : null,
     veicolo: null,
-    ritiroData: '08/05/2026 17:00',
-    consegnaData: '11/05/2026 10:00',
+    ritiroData: '',
+    consegnaData: '',
     ritiroStruttura: 's3',
     ritiroIndirizzo: '',
     consegnaStruttura: 's3',
     consegnaIndirizzo: '',
     pagamento: 'C',
+    firma: null,
     // Override CARGOS: 'auto' = decide il tipo veicolo (auto→invia, scooter→no)
     //                  'off'  = forzato OFF dall'operatore (solo archivio, no invio)
     // L'override è significativo solo per veicoli normalmente soggetti a CARGOS.
@@ -17808,9 +17860,14 @@ function Wizard({ onClose, prefillCustomer, operator, fleet, customers, partners
     cargosOverride: 'auto',
   });
   const [pdfOpen, setPdfOpen] = useState(false);
+  const [firmaOpen, setFirmaOpen] = useState(false);
   const [sent, setSent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitResult, setSubmitResult] = useState(null);
+  // Codice pratica univoco — corrisponde a p.codice della prenotazione generata
+  const [bookingCode] = useState(() => generateBookingCode());
+  const contractId = `EDO-${new Date().getFullYear()}-${bookingCode}`;
+  const contractDate = new Date().toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric' }) + ' · ore ' + new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
 
   const update = useCallback((k, v) => setData(d => ({ ...d, [k]: v })), []);
   const t = data.tipoVeicolo ? (VEHICLE_TYPES[data.tipoVeicolo] || VEHICLE_TYPES.auto) : null;
@@ -17818,24 +17875,28 @@ function Wizard({ onClose, prefillCustomer, operator, fleet, customers, partners
   // Se override = 'off', il contratto viene salvato come 'paper' anche per le auto.
   const isCargosBound = t?.cargosRequired === true && data.cargosOverride !== 'off';
 
-  const STEPS = ['Tipo', 'Cliente', 'Veicolo', 'Periodo', 'Conferma'];
+  // Step 3 = Periodo (date prima), Step 4 = Veicolo (filtrato per disponibilità)
+  const STEPS = ['Tipo', 'Cliente', 'Periodo', 'Veicolo', 'Conferma'];
 
   const canProceed = useMemo(() => {
     if (step === 1) return data.tipoVeicolo !== null;
     if (step === 2) return data.cliente !== null;
-    if (step === 3) return data.veicolo !== null;
+    if (step === 3) return !!(data.ritiroData && data.consegnaData); // date obbligatorie prima
+    if (step === 4) return data.veicolo !== null;
     return true;
-  }, [step, data.tipoVeicolo, data.cliente, data.veicolo]);
+  }, [step, data.tipoVeicolo, data.cliente, data.ritiroData, data.consegnaData, data.veicolo]);
 
   // Conferma finale: chiama submitContract dall'App, mostra spinner, poi ResultScreen
+  // Inietta contractId e contractDate nel payload — submitContract li legge da data.contractId/contractDate
   const handleConfirm = useCallback(async () => {
     if (submitting) return;
     setSubmitting(true);
-    const result = onSubmit ? await onSubmit(data) : { ok: true, status: 'paper' };
+    const payload = { ...data, contractId, contractDate };
+    const result = onSubmit ? await onSubmit(payload) : { ok: true, status: 'paper', contractId };
     setSubmitResult(result);
     setSubmitting(false);
     setSent(true);
-  }, [onSubmit, data, submitting]);
+  }, [onSubmit, data, contractId, contractDate, submitting]);
 
   // Close on Escape
   useEffect(() => {
@@ -17891,14 +17952,14 @@ function Wizard({ onClose, prefillCustomer, operator, fleet, customers, partners
           {/* Body — fade-in animato al cambio step tramite key */}
           <div className="flex-1 overflow-y-auto px-8 py-8">
             {sent
-              ? <ResultScreen data={data} onClose={onClose} operator={operator} submitResult={submitResult} onShowPdf={() => setPdfOpen(true)} />
+              ? <ResultScreen data={data} onClose={onClose} operator={operator} submitResult={submitResult} contractId={contractId} onShowPdf={() => setPdfOpen(true)} />
               : (
                 <div key={step} className="fade-in">
                   {step === 1 && <Step1Type data={data} update={update} />}
                   {step === 2 && <Step2Customer data={data} update={update} customers={customers} />}
-                  {step === 3 && <Step3Vehicle data={data} update={update} fleet={fleet} />}
-                  {step === 4 && <Step4Period data={data} update={update} partners={partners} />}
-                  {step === 5 && <Step5Confirm data={data} operator={operator} partners={partners} onShowPdf={() => setPdfOpen(true)} update={update} agency={agency} />}
+                  {step === 3 && <Step4Period data={data} update={update} partners={partners} />}
+                  {step === 4 && <Step3Vehicle data={data} update={update} fleet={fleet} prenotazioni={prenotazioni} />}
+                  {step === 5 && <Step5Confirm data={data} operator={operator} partners={partners} onShowPdf={() => setPdfOpen(true)} onShowFirma={() => setFirmaOpen(true)} update={update} agency={agency} contractId={contractId} contractDate={contractDate} />}
                 </div>
               )
             }
@@ -17954,7 +18015,21 @@ function Wizard({ onClose, prefillCustomer, operator, fleet, customers, partners
         </div>
       </div>
 
-      {pdfOpen && <ContractPdfModal data={data} operator={operator} partners={partners} onClose={() => setPdfOpen(false)} agency={agency} />}
+      {pdfOpen && <ContractPdfModal data={data} operator={operator} partners={partners} onClose={() => setPdfOpen(false)} agency={agency} contractId={contractId} contractDate={contractDate} />}
+      {firmaOpen && (
+        <FirmaModal
+          preno={{
+            id: bookingCode,
+            clienteNome: data.cliente?.nome || '',
+            clienteCognome: data.cliente?.cognome || '',
+            vehicleLabel: data.veicolo ? `${data.veicolo.marca} ${data.veicolo.modello}` : '',
+            dal: data.ritiroData || new Date().toISOString().slice(0, 10),
+            firma: data.firma || null,
+          }}
+          onSave={(result) => { update('firma', result.firma); setFirmaOpen(false); }}
+          onClose={() => setFirmaOpen(false)}
+        />
+      )}
     </>
   );
 }
@@ -17976,7 +18051,7 @@ function Step1Type({ data, update }) {
               type="button"
               role="radio"
               aria-checked={selected}
-              onClick={() => update('tipoVeicolo', key)}
+              onClick={() => { update('tipoVeicolo', key); update('veicolo', null); }}
               className={`vehicle-card card-paper p-5 text-left ${selected ? 'selected' : ''}`}
             >
               <VehicleIcon type={key} className="w-8 h-8 mb-3" />
@@ -18207,7 +18282,7 @@ function Step2Customer({ data, update, customers }) {
 }
 
 // ─── Step 3 — Veicolo ─────────────────────────────────────────────
-function Step3Vehicle({ data, update, fleet }) {
+function Step3Vehicle({ data, update, fleet, prenotazioni }) {
   const [query, setQuery] = useState('');
   // Nel wizard mostriamo solo i veicoli noleggiabili (disponibili).
   // Quelli fermi, incidentati o venduti sono visibili solo nella pagina Flotta.
@@ -18215,20 +18290,62 @@ function Step3Vehicle({ data, update, fleet }) {
     () => fleet.filter(v => v.tipo === data.tipoVeicolo && (!v.stato || v.stato === 'available')),
     [fleet, data.tipoVeicolo]
   );
-  const filtered = useMemo(() => {
-    if (!query.trim()) return typeFleet;
-    const q = query.toLowerCase();
+
+  // Parsing date pratica (formato "DD/MM/YYYY HH:MM") → Date per filtro disponibilità
+  const fromDate = useMemo(() => {
+    const s = data.ritiroData;
+    if (!s) return null;
+    const [datePart, timePart] = s.split(' ');
+    if (!datePart) return null;
+    const [dd, mm, yyyy] = datePart.split('/');
+    if (!yyyy || !mm || !dd) return null;
+    return new Date(`${yyyy}-${mm}-${dd}T${timePart || '00:00'}:00`);
+  }, [data.ritiroData]);
+
+  const toDate = useMemo(() => {
+    const s = data.consegnaData;
+    if (!s) return null;
+    const [datePart, timePart] = s.split(' ');
+    if (!datePart) return null;
+    const [dd, mm, yyyy] = datePart.split('/');
+    if (!yyyy || !mm || !dd) return null;
+    return new Date(`${yyyy}-${mm}-${dd}T${timePart || '00:00'}:00`);
+  }, [data.consegnaData]);
+
+  // Filtra per disponibilità: escludi veicoli con prenotazione attiva nel periodo
+  const availableFleet = useMemo(() => {
+    if (!fromDate || !toDate || isNaN(fromDate) || isNaN(toDate) || !(prenotazioni?.length)) return typeFleet;
     return typeFleet.filter(v =>
-      v.targa.toLowerCase().includes(q) || v.modello.toLowerCase().includes(q) ||
-      v.marca.toLowerCase().includes(q) || v.colore.toLowerCase().includes(q)
+      !(prenotazioni || []).some(p => {
+        if (p.vehicleId !== v.id) return false;
+        if (['cancellata', 'completata'].includes(p.stato)) return false;
+        const pFrom = new Date(p.dal);
+        const pTo = new Date(p.al || p.dal);
+        return fromDate < pTo && toDate > pFrom; // sovrapposizione
+      })
     );
-  }, [typeFleet, query]);
+  }, [typeFleet, fromDate, toDate, prenotazioni]);
+
+  const filtered = useMemo(() => {
+    if (!query.trim()) return availableFleet;
+    const q = query.toLowerCase();
+    return availableFleet.filter(v =>
+      (v.targa || '').toLowerCase().includes(q) || (v.modello || '').toLowerCase().includes(q) ||
+      (v.marca || '').toLowerCase().includes(q) || (v.colore || '').toLowerCase().includes(q)
+    );
+  }, [availableFleet, query]);
+
+  const datesSet = !!(fromDate && toDate && !isNaN(fromDate) && !isNaN(toDate));
 
   return (
     <div className="max-w-4xl mx-auto">
       <h3 className="serif text-2xl font-medium mb-2">Seleziona il veicolo</h3>
       <p className="text-sm mb-4" style={{ color: 'var(--muted)' }}>
-        {(VEHICLE_TYPES[data.tipoVeicolo] || VEHICLE_TYPES.auto).label} · {typeFleet.length} disponibili nella flotta
+        {(VEHICLE_TYPES[data.tipoVeicolo] || VEHICLE_TYPES.auto).label}
+        {datesSet
+          ? ` · ${availableFleet.length} liberi su ${typeFleet.length} (${data.ritiroData?.slice(0, 10)} → ${data.consegnaData?.slice(0, 10)})`
+          : ` · ${typeFleet.length} disponibili nella flotta`
+        }
       </p>
 
       <div className="relative mb-5">
@@ -18251,7 +18368,11 @@ function Step3Vehicle({ data, update, fleet }) {
 
       {filtered.length === 0 ? (
         <div className="card-paper p-8 text-center text-sm" style={{ color: 'var(--muted)' }}>
-          Nessun veicolo trovato per "{query}"
+          {query
+            ? `Nessun veicolo trovato per "${query}"`
+            : datesSet
+            ? 'Nessun veicolo libero per il periodo selezionato — controlla il calendario o modifica le date'
+            : 'Nessun veicolo disponibile per questo tipo'}
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-3" role="radiogroup" aria-label="Scegli veicolo">
@@ -18298,14 +18419,14 @@ function Step4Period({ data, update, partners }) {
       <div className="card-paper p-6 space-y-5">
         <FormSection title="Ritiro">
           <div className="grid grid-cols-2 gap-3">
-            <FormField id="p4-ritiroData" label="Data e ora ritiro" req mono value={data.ritiroData} onChange={v => update('ritiroData', v)} placeholder="DD/MM/AAAA HH:MM" />
+            <FormField id="p4-ritiroData" label="Data e ora ritiro" req mono value={data.ritiroData} onChange={v => { update('ritiroData', v); update('veicolo', null); }} placeholder="DD/MM/AAAA HH:MM" />
             <StructureSelect label="Luogo di ritiro" req partners={partners} structureId={data.ritiroStruttura} onStructureChange={v => update('ritiroStruttura', v)} freeText={data.ritiroIndirizzo} onFreeTextChange={v => update('ritiroIndirizzo', v)} />
           </div>
         </FormSection>
         <div className="divider-dotted" />
         <FormSection title="Consegna">
           <div className="grid grid-cols-2 gap-3">
-            <FormField id="p4-consegnaData" label="Data e ora consegna" req mono value={data.consegnaData} onChange={v => update('consegnaData', v)} placeholder="DD/MM/AAAA HH:MM" />
+            <FormField id="p4-consegnaData" label="Data e ora consegna" req mono value={data.consegnaData} onChange={v => { update('consegnaData', v); update('veicolo', null); }} placeholder="DD/MM/AAAA HH:MM" />
             <StructureSelect label="Luogo di consegna" req partners={partners} structureId={data.consegnaStruttura} onStructureChange={v => update('consegnaStruttura', v)} freeText={data.consegnaIndirizzo} onFreeTextChange={v => update('consegnaIndirizzo', v)} />
           </div>
         </FormSection>
@@ -18411,7 +18532,7 @@ function StructureSelect({ label, req, partners, structureId, onStructureChange,
 }
 
 // ─── Step 5 — Conferma ────────────────────────────────────────────
-function Step5Confirm({ data, operator, partners, onShowPdf, update, agency }) {
+function Step5Confirm({ data, operator, partners, onShowPdf, onShowFirma, update, agency, contractId, contractDate }) {
   const t = VEHICLE_TYPES[data.tipoVeicolo] || VEHICLE_TYPES.auto;
   // Disponibilità CARGOS: lo permette la normativa per questo tipo veicolo?
   const cargosAllowed = t.cargosRequired;
@@ -18421,15 +18542,15 @@ function Step5Confirm({ data, operator, partners, onShowPdf, update, agency }) {
   const cargosManuallyOff = cargosAllowed && data.cargosOverride === 'off';
   const c = data.cliente?.full || {};
   const v = data.veicolo || {};
-  const pag = TIPO_PAGAMENTO[data.pagamento];
-  const ritiroPartner = partners.find(s => s.id === data.ritiroStruttura);
-  const consegnaPartner = partners.find(s => s.id === data.consegnaStruttura);
+  const pag = TIPO_PAGAMENTO[data.pagamento] || TIPO_PAGAMENTO['C'];
+  const ritiroPartner = (partners || []).find(s => s.id === data.ritiroStruttura);
+  const consegnaPartner = (partners || []).find(s => s.id === data.consegnaStruttura);
   const ritiroAddr = data.ritiroIndirizzo || ritiroPartner?.indirizzo || '';
   const consegnaAddr = data.consegnaIndirizzo || consegnaPartner?.indirizzo || '';
 
   const payload = useMemo(() => ({
-    CONTRATTO_ID: 'EDO-2026-0423',
-    CONTRATTO_DATA: '08/05/2026 16:42',
+    CONTRATTO_ID: contractId || 'EDO-?',
+    CONTRATTO_DATA: contractDate || '',
     CONTRATTO_TIPOP: pag.cargosMap,
     CONTRATTO_CHECKOUT_DATA: data.ritiroData,
     CONTRATTO_CHECKOUT_LUOGO_COD: agency.istatLuogo,
@@ -18529,9 +18650,26 @@ function Step5Confirm({ data, operator, partners, onShowPdf, update, agency }) {
           </div>
         )}
 
-        <button type="button" onClick={onShowPdf} className="mt-4 btn-ghost w-full px-4 py-3 rounded text-sm font-semibold flex items-center justify-center gap-2 border" style={{ borderColor: 'var(--border)' }}>
-          <Eye className="w-4 h-4" aria-hidden="true" /> Anteprima contratto PDF
-        </button>
+        <div className="mt-4 flex gap-2">
+          <button type="button" onClick={onShowPdf} className="flex-1 btn-ghost px-4 py-3 rounded text-sm font-semibold flex items-center justify-center gap-2 border" style={{ borderColor: 'var(--border)' }}>
+            <Eye className="w-4 h-4" aria-hidden="true" /> Anteprima PDF
+          </button>
+          <button
+            type="button"
+            onClick={onShowFirma}
+            className="flex-1 px-4 py-3 rounded text-sm font-semibold flex items-center justify-center gap-2 border transition-all"
+            style={{
+              borderColor: data.firma ? 'var(--success)' : 'var(--border)',
+              color: data.firma ? 'var(--success)' : 'var(--ink)',
+              background: data.firma ? 'var(--success-soft)' : 'transparent',
+            }}
+          >
+            {data.firma
+              ? <><Check className="w-4 h-4" aria-hidden="true" /> Firma acquisita</>
+              : <><Pencil className="w-4 h-4" aria-hidden="true" /> Firma cliente</>
+            }
+          </button>
+        </div>
       </div>
 
       <div className="col-span-2">
@@ -18586,7 +18724,7 @@ const SummaryRow = memo(function SummaryRow({ icon: Icon, label, value, sub }) {
 });
 
 // ─── Result screen ────────────────────────────────────────────────
-function ResultScreen({ data, onClose, operator, submitResult, onShowPdf }) {
+function ResultScreen({ data, onClose, operator, submitResult, onShowPdf, contractId: contractIdProp }) {
   const t = VEHICLE_TYPES[data.tipoVeicolo] || VEHICLE_TYPES.auto;
   const isCargosBound = t.cargosRequired;
 
@@ -18599,7 +18737,7 @@ function ResultScreen({ data, onClose, operator, submitResult, onShowPdf }) {
   const status   = submitResult?.status || (isCargosBound ? 'sent' : 'paper');
   const failed   = submitResult?.ok === false;
   const queued   = status === 'queued';
-  const contractId = submitResult?.contractId || 'EDO-2026-0423';
+  const contractId = submitResult?.contractId || contractIdProp || 'EDO-?';
 
   // Visuale dinamica
   const visual = failed
@@ -18667,18 +18805,72 @@ function ResultScreen({ data, onClose, operator, submitResult, onShowPdf }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
+// HELPER — converte prenotazione (formato booking) in data-format
+// compatibile con ContractPdfModal (formato wizard/pratica)
+// ═══════════════════════════════════════════════════════════════════
+function prenoToContractData(preno, fleet, customers) {
+  // Risolvi veicolo dalla flotta
+  const fv = (fleet || []).find(x => x.id === preno.vehicleId) || {};
+  const fvr = resolveVehicleDisplay({ ...fv, id: preno.vehicleId, idRentme: preno.vehicleId });
+  const vehicle = {
+    marca: fv.marca || preno.vehicleLabel?.split(' · ')[0]?.trim() || '',
+    modello: fv.modello || '',
+    targa: preno.vehicleTarga || fvr.targa || fv.targa || preno.vehicleLabel?.split(' · ')[1]?.trim() || '',
+    colore: fv.colore || '',
+    cilindrata: fv.cilindrata || '',
+    anno: fv.anno || '',
+  };
+  // Risolvi cliente — usa dati della prenotazione, integra dal DB clienti se disponibile
+  const cFull = (customers || []).find(x => x.id === preno.clienteId) || {};
+  const clienteFull = {
+    nome: preno.clienteNome || cFull.nome || '',
+    cognome: preno.clienteCognome || cFull.cognome || '',
+    tel: preno.clienteTel || cFull.tel || '',
+    nascita: cFull.nascita || '',
+    luogoNascita: cFull.luogoNascita || '',
+    cittadinanza: cFull.cittadinanza || 'Italia',
+    docTipo: cFull.docTipo || 'CI',
+    docNum: cFull.docNum || '',
+    docLuogoRil: cFull.docLuogoRil || '',
+    patenteNum: cFull.patenteNum || '',
+    patenteLuogoRil: cFull.patenteLuogoRil || '',
+    email: cFull.email || '',
+    fatturazione: cFull.fatturazione || null,
+  };
+  // Mappa metodoPagamento (PrenoForm) → chiave TIPO_PAGAMENTO (C=Carta, T=Contante, B=Bonifico, P=PayPal)
+  const pagoMap = { contanti: 'T', carta: 'C', bonifico: 'B', paypal: 'P', altro: 'T' };
+  return {
+    tipoVeicolo: preno.vehicleType || 'auto',
+    cliente: { full: clienteFull, nome: clienteFull.nome, cognome: clienteFull.cognome },
+    veicolo: vehicle,
+    ritiroData: formatDate(preno.dal),
+    consegnaData: formatDate(preno.al),
+    ritiroStruttura: '',
+    ritiroIndirizzo: '',
+    consegnaStruttura: '',
+    consegnaIndirizzo: '',
+    pagamento: pagoMap[preno.metodoPagamento] || 'T',
+    firma: preno.firma || null, // propaga firma digitale se già acquisita sulla prenotazione
+    cargosOverride: 'auto',
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════
 // CONTRACT PDF MODAL
 // ═══════════════════════════════════════════════════════════════════
-function ContractPdfModal({ data, operator, partners, onClose, agency }) {
+function ContractPdfModal({ data, operator, partners, onClose, agency, contractId: contractIdProp, contractDate: contractDateProp }) {
   const printRef = useRef(null);
   const t = VEHICLE_TYPES[data.tipoVeicolo] || VEHICLE_TYPES.auto;
   const c = data.cliente?.full || {};
   const v = data.veicolo || {};
-  const pag = TIPO_PAGAMENTO[data.pagamento];
-  const ritiroPartner  = partners.find(s => s.id === data.ritiroStruttura);
-  const consegnaPartner = partners.find(s => s.id === data.consegnaStruttura);
+  const pag = TIPO_PAGAMENTO[data.pagamento] || TIPO_PAGAMENTO['C'];
+  const ritiroPartner  = (partners || []).find(s => s.id === data.ritiroStruttura);
+  const consegnaPartner = (partners || []).find(s => s.id === data.consegnaStruttura);
   const ritiroAddr  = data.ritiroIndirizzo  || ritiroPartner?.indirizzo  || '';
   const consegnaAddr = data.consegnaIndirizzo || consegnaPartner?.indirizzo || '';
+  // contractId dinamico — dalla prenotazione (EDO-YYYY-codice) oppure generato dal wizard
+  const contractId = contractIdProp || 'EDO-2026-?';
+  const contractDate = contractDateProp || new Date().toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric' }) + ' · ore ' + new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
 
   useEffect(() => {
     const h = (e) => { if (e.key === 'Escape') onClose(); };
@@ -18692,7 +18884,7 @@ function ContractPdfModal({ data, operator, partners, onClose, agency }) {
 <html lang="it">
 <head>
 <meta charset="utf-8">
-<title>Contratto Edonoleggio EDO-2026-0423</title>
+<title>Contratto Edonoleggio ${contractId}</title>
 <style>
   @page { size: A4; margin: 18mm 16mm; }
   * { box-sizing: border-box; }
@@ -18716,7 +18908,7 @@ function ContractPdfModal({ data, operator, partners, onClose, agency }) {
     const w = window.open(url, '_blank');
     if (!w) {
       const a = document.createElement('a');
-      a.href = url; a.download = 'Contratto-EDO-2026-0423.html'; a.click();
+      a.href = url; a.download = `Contratto-${contractId}.html`; a.click();
     }
     setTimeout(() => URL.revokeObjectURL(url), 60_000);
   }, []);
@@ -18742,7 +18934,7 @@ function ContractPdfModal({ data, operator, partners, onClose, agency }) {
         <div className="flex-1">
           <div className="text-[11px] uppercase tracking-widest" style={{ color: 'rgba(255,255,255,0.55)' }}>Anteprima contratto · A4</div>
           <div id="pdf-modal-title" className="serif text-lg font-medium" style={{ color: 'white' }}>
-            EDO-2026-0423 · {data.cliente?.cognome} {data.cliente?.nome}
+            {contractId} · {data.cliente?.cognome || c.cognome} {data.cliente?.nome || c.nome}
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -18780,8 +18972,8 @@ function ContractPdfModal({ data, operator, partners, onClose, agency }) {
               </div>
               <div style={{ textAlign: 'right' }}>
                 <div style={{ fontSize: 9, color: '#8a847b', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Contratto n.</div>
-                <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 14, fontWeight: 600 }}>EDO-2026-0423</div>
-                <div style={{ fontSize: 10.5, color: '#3a352e', marginTop: 4 }}>08/05/2026 · ore 16:42</div>
+                <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 14, fontWeight: 600 }}>{contractId}</div>
+                <div style={{ fontSize: 10.5, color: '#3a352e', marginTop: 4 }}>{contractDate}</div>
                 {t.cargosRequired && (
                   <div style={{ display: 'inline-block', marginTop: 8, padding: '3px 8px', borderRadius: 3, background: '#f5e3df', color: '#9c2424', fontSize: 9, fontWeight: 700 }}>
                     CARGOS · RIC-A8F4-2026
@@ -18905,6 +19097,9 @@ function ContractPdfModal({ data, operator, partners, onClose, agency }) {
             {/* Firme */}
             <div style={{ marginTop: 30, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16mm' }}>
               <div>
+                {data.firma && (
+                  <img src={data.firma} alt="Firma conducente" style={{ height: 48, maxWidth: '100%', display: 'block', marginBottom: 4, objectFit: 'contain', objectPosition: 'left bottom' }} />
+                )}
                 <div style={{ borderTop: '1px solid #1a1815', paddingTop: 4, fontSize: 9, color: '#8a847b' }}>Firma del Conducente</div>
                 <div style={{ fontSize: 8, color: '#8a847b', marginTop: 2 }}>per accettazione delle Condizioni Generali</div>
               </div>
