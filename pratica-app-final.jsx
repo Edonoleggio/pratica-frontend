@@ -13434,7 +13434,7 @@ export default function App() {
     try {
       const ctrl = new AbortController();
       const t = setTimeout(() => ctrl.abort(), 15000);
-      const res = await fetch(`${apiBaseUrl}/api/backup`, {
+      const res = await fetch(`${apiBaseUrl}/backup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(backupObj),
@@ -13443,7 +13443,7 @@ export default function App() {
       clearTimeout(t);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setRenderLastBackup(new Date().toISOString());
-      if (!silent) pushToast?.({ tone: 'success', title: '🖥️ Backup su server completato', message: `Salvato su ${apiBaseUrl}/api/backup` });
+      if (!silent) pushToast?.({ tone: 'success', title: '🖥️ Backup su server completato', message: `Salvato su ${apiBaseUrl}/backup` });
       return true;
     } catch (e) {
       if (!silent) pushToast?.({ tone: 'error', title: 'Errore backup server', message: String(e.message || e) });
