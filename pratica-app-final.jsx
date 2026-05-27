@@ -21,10 +21,13 @@ import Tesseract from 'tesseract.js';
 // Convenzione: x.y.z dove x = major rewrite, y = feature, z = fix.
 // La data accanto aiuta a verificare al volo che il deploy sia andato a buon fine.
 const APP_VERSION = {
-  number: '0.41.2',
-  codename: 'Contratto: targa corretta, condizioni legali complete 9 articoli',
+  number: '0.41.3',
+  codename: 'Contratto: targa corretta ovunque, condizioni legali complete 9 articoli',
   date: '2026-05-27',
   changelog: [
+    // v0.41.3 — 2026-05-27
+    'Fix root-cause vehicleTarga: ora salvata correttamente in tutti i flussi (confirm singolo, combo, calendario Gantt, sostituzione guasto) — prima era vuota o conteneva l\'ID invece della targa reale',
+    'Fix sostituzione guasto: vehicleTarga e vehicleType ora presi dal veicolo sostituto, non dal vecchio mezzo',
     // v0.41.2 — 2026-05-27
     'Fix contratto TARGA: estrazione da vehicleLabel.split(" · ")[1] invece di split(" ")[0] — ora mostra la targa corretta (es. XB8W8M) e non il primo token del nome del mezzo',
     'Fix contratto MODELLO: mostra solo il nome del mezzo senza la targa (vehicleLabel.split(" · ")[0])',
@@ -3389,8 +3392,8 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rent
         clienteTel:     p.clienteTel,
         vehicleId:      mezzoNuovo,
         vehicleLabel:   labelSost,
-        vehicleType:    p.vehicleType,
-        vehicleTarga:   mezzoNuovo,
+        vehicleType:    sostituto?.tipo || p.vehicleType,
+        vehicleTarga:   sostituto?.targa || sostituto?.plate || '',
         dal:   dataGuasto,
         al:    p.al,
         stato: 'in_corso',
@@ -4286,6 +4289,7 @@ function ConsegnaModal({ preno, prenotazioni, fleet, rentmeVehicles, onConfirm, 
       onConfirm({
         vehicleId: first.vehicleId,
         vehicleLabel: label,
+        vehicleTarga: fv?.targa || fv?.plate || '',
         vehicleSchedule: smartCombo.map(s => ({ vehicleId: s.vehicleId, dal: s.dal, al: s.al })),
         kmPartenza: kmPartenza !== '' ? Number(kmPartenza) : null,
         carburante,
@@ -4296,6 +4300,7 @@ function ConsegnaModal({ preno, prenotazioni, fleet, rentmeVehicles, onConfirm, 
       onConfirm({
         vehicleId: selectedId,
         vehicleLabel: label,
+        vehicleTarga: selVehicle?.targa || selVehicle?.plate || '',
         vehicleSchedule: null,
         kmPartenza: kmPartenza !== '' ? Number(kmPartenza) : null,
         carburante,
@@ -12506,6 +12511,7 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
                         setPrenotazioniPrefill && setPrenotazioniPrefill({
                           vehicleId:    v.id,
                           vehicleLabel: makeVehicleLabel(v),
+                          vehicleTarga: v.targa || v.plate || '',
                           vehicleType:  v.tipo || 'auto',
                           dal: d,
                           al:  d,
