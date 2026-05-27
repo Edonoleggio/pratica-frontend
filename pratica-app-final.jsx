@@ -21,10 +21,20 @@ import Tesseract from 'tesseract.js';
 // Convenzione: x.y.z dove x = major rewrite, y = feature, z = fix.
 // La data accanto aiuta a verificare al volo che il deploy sia andato a buon fine.
 const APP_VERSION = {
-  number: '0.41.0',
-  codename: 'Backup automatico doppio: Render backend (zero auth, sempre attivo) + Google Drive (token cache + prompt:none) — ogni 3 ore, completamente hands-off',
+  number: '0.41.2',
+  codename: 'Contratto: targa corretta, condizioni legali complete 9 articoli',
   date: '2026-05-27',
   changelog: [
+    // v0.41.2 — 2026-05-27
+    'Fix contratto TARGA: estrazione da vehicleLabel.split(" · ")[1] invece di split(" ")[0] — ora mostra la targa corretta (es. XB8W8M) e non il primo token del nome del mezzo',
+    'Fix contratto MODELLO: mostra solo il nome del mezzo senza la targa (vehicleLabel.split(" · ")[0])',
+    'Condizioni della locazione: sostituite 8 bullet generici con il testo legale completo (9 articoli numerati, riferimenti art. 1587 / 1588 / 1341-1342 C.C., clausola approvazione specifica, luogo + firma)',
+    // v0.41.1 — 2026-05-27
+    'Fix auto-backup 3h: URL ${base}/api/backup → ${base}/backup (apiBaseUrl già include /api — eliminato doppio /api che causava 404 silenzioso ogni 3 ore)',
+    'Fix backup/list backend: filename non definito → f (ReferenceError sul GET /api/backup/list — ora restituisce nome file corretto)',
+    'Guard calcPreventivo: weeklyRate || 0 + skip se 0 → mai prezzi NaN anche se listino parzialmente corrotto',
+    'formatDate robusta: controlla lunghezza parts e valori undefined prima di formattare — nessun "undefined/undefined/2026"',
+    'fmtEuro helper: formatta importi sicuro — restituisce "—" per NaN/null/undefined invece di mostrarli in UI',
     // v0.41.0 — 2026-05-27
     'Backup automatico doppio ogni 3 ore: (1) Render backend /api/backup — nessuna auth, funziona sempre finché il server è up; (2) Google Drive — prima prova token dalla cache (valido ~55 min), poi prompt:none silenzioso. Token Drive cachato in ref dopo backup manuale. UI Impostazioni aggiornata con sezione server separata.',
     // v0.40.9 — 2026-05-27
@@ -1942,14 +1952,24 @@ function clienteColorHash(key) {
 }
 
 function formatDate(d) {
-  if (!d) return '—';
-  const [y, m, g] = d.split('-');
+  if (!d || typeof d !== 'string') return '—';
+  const parts = d.split('-');
+  if (parts.length < 3) return d; // data malformata: mostra così com'è
+  const [y, m, g] = parts;
+  if (!y || !m || !g) return d;
   return `${g}/${m}/${y}`;
 }
 
 function daysDiff(dal, al) {
   if (!dal || !al) return 0;
   return Math.max(1, Math.round((new Date(al) - new Date(dal)) / 86400000) + 1);
+}
+
+// Formatta un numero come importo euro — restituisce '—' se il valore è NaN/null/undefined
+function fmtEuro(n) {
+  const num = typeof n === 'string' ? parseFloat(n) : n;
+  if (num == null || isNaN(num)) return '—';
+  return num % 1 === 0 ? String(num) : num.toFixed(2);
 }
 
 function todayISO() {
@@ -4828,10 +4848,12 @@ function calcPreventivo(cat, dal, al) {
   for (const seg of segments) {
     const rates = cat[seg.season];
     if (!rates) continue;
+    const weeklyRate = rates.weekly || 0; // guard su weekly mancante → mai NaN
+    if (weeklyRate === 0) continue;       // categoria non configurata per questa stagione
     let segCosto;
     if (seg.agosto) {
       // Agosto: weekly/7 × giorni (senza maggiorazione)
-      const dailyAgo = rates.weekly / 7;
+      const dailyAgo = weeklyRate / 7;
       segCosto = Math.round(seg.giorni * dailyAgo);
       righe.push({
         desc: `${seg.giorni}g agosto × €${dailyAgo.toFixed(2)}/g`,
@@ -4839,8 +4861,8 @@ function calcPreventivo(cat, dal, al) {
       });
     } else {
       const effectiveDaily = conRincaro
-        ? Math.ceil(rates.weekly / 7 + 5)
-        : Math.ceil(rates.weekly / 7);
+        ? Math.ceil(weeklyRate / 7 + 5)
+        : Math.ceil(weeklyRate / 7);
       segCosto = seg.giorni * effectiveDaily;
       const stagLabel = multiSeason ? ` (${EDO_SEASONS[seg.season]?.label || seg.season})` : '';
       righe.push({
@@ -10707,7 +10729,7 @@ const CONTRATTO_I18N = {
       vehicle: 'VEICOLO NOLEGGIATO',
       period: 'PERIODO DI NOLEGGIO',
       price: 'CORRISPETTIVO',
-      conditions: 'CONDIZIONI GENERALI',
+      conditions: 'CONDIZIONI DELLA LOCAZIONE',
       signature: 'FIRME',
     },
     fields: {
@@ -10719,16 +10741,9 @@ const CONTRATTO_I18N = {
       signDate: 'Data e luogo', clientSig: 'Firma del conducente / Renter signature',
       agencySig: 'Per Edonoleggio',
     },
-    conditions: [
-      'Il conducente si impegna a riconsegnare il veicolo nelle stesse condizioni di ritiro, pulito e con il serbatoio al livello di consegna.',
-      'Il veicolo non può essere guidato da persone non indicate nel presente contratto.',
-      'Sono vietati l\'uso off-road, il trasporto di merci o carichi non consentiti e l\'uscita dall\'isola senza autorizzazione scritta.',
-      'In caso di incidente, guasto o furto, il conducente deve avvisare immediatamente l\'agenzia e non spostare il veicolo prima dell\'arrivo dei soccorsi.',
-      'Il deposito cauzionale sarà restituito entro 48h dalla riconsegna del veicolo in buono stato, previa verifica dei danni.',
-      'Il carburante è a carico del conducente: il veicolo deve essere riconsegnato con lo stesso livello di carburante.',
-      'In caso di danni non segnalati al ritiro, il conducente risponde per l\'intero importo di riparazione a insindacabile giudizio dell\'agenzia.',
-      'Velocità massima consentita: nel rispetto del Codice della Strada in vigore.',
-    ],
+    // Le condizioni italiane sono rese direttamente in printContratto (HTML numerato)
+    // per preservare la struttura legale (articoli C.C., checkbox punto 2, clausola finale).
+    conditions: [],
     print: 'Stampa contratto',
   },
   en: {
@@ -10828,6 +10843,12 @@ function ContrattoModal({ preno, onClose }) {
   .cond{font-size:11.5px;line-height:1.75;padding-left:0}
   .cond li{margin-bottom:5px;list-style:none;padding-left:16px;position:relative}
   .cond li::before{content:"→";position:absolute;left:0;color:#888}
+  .cond-num{font-size:11px;line-height:1.7;padding-left:18px;margin:6px 0 10px 0}
+  .cond-num li{margin-bottom:6px}
+  .check-row{display:flex;gap:24px;margin:4px 0}
+  .check-item{font-size:11px;font-weight:600}
+  .cond-place{font-size:11px;margin-top:10px;border-bottom:1px solid #aaa;padding-bottom:4px;color:#222}
+  .cond-approval{font-size:10.5px;margin:8px 0 4px 0;font-style:italic;color:#333}
   .srow{display:grid;grid-template-columns:1fr 1fr;gap:48px;margin-top:44px}
   .sbox{border-top:2px solid #1a1a1a;padding-top:10px}
   .slbl{font-size:10px;color:#666;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px}
@@ -10851,8 +10872,8 @@ ${preno.codice ? `<div style="text-align:center;margin:-16px 0 20px;"><span styl
 
 <div class="sec">${s.vehicle}</div>
 <div class="g3">
-  <div class="fld"><div class="lbl">${f.plate}</div><div class="val">${preno.vehicleTarga || preno.vehicleLabel?.split(' ')[0] || '&nbsp;'}</div></div>
-  <div class="fld"><div class="lbl">${f.model}</div><div class="val">${preno.vehicleLabel || '&nbsp;'}</div></div>
+  <div class="fld"><div class="lbl">${f.plate}</div><div class="val">${preno.vehicleTarga || (preno.vehicleLabel?.split(' · ')[1]?.trim()) || '&nbsp;'}</div></div>
+  <div class="fld"><div class="lbl">${f.model}</div><div class="val">${(preno.vehicleLabel?.split(' · ')[0]?.trim()) || preno.vehicleLabel || '&nbsp;'}</div></div>
   <div class="fld"><div class="lbl">${f.type}</div><div class="val">${typeLabel[preno.tipo] || preno.tipo || '&nbsp;'}</div></div>
 </div>
 
@@ -10874,7 +10895,27 @@ ${preno.codice ? `<div style="text-align:center;margin:-16px 0 20px;"><span styl
 </div>
 
 <div class="sec">${s.conditions}</div>
-<ul class="cond">${t.conditions.map(c => `<li>${c}</li>`).join('')}</ul>
+<ol class="cond-num">
+  <li>Il conduttore si obbliga ai sensi dell'art. 1587 C.C. punto 1 ad osservare la diligenza del buon padre di famiglia nell'uso del veicolo locato, a non cedere la guida a terze persone non autorizzate e in caso contrario sarà tenuto al pagamento di un indennizzo giornaliero pari al prezzo della locazione convenuta per ogni giorno di ritardo nella riconsegna del veicolo.</li>
+  <li>
+    <div>Il sottoscritto dichiara di aver ricevuto in locazione il veicolo:</div>
+    <div class="check-row">
+      <span class="check-item">☐ AUTOVEICOLO</span>
+      <span class="check-item">☐ SCOOTER</span>
+    </div>
+    <div>in buone condizioni di pulizia e privo di danni visibili, salvo quelli eventualmente indicati sul presente contratto.</div>
+  </li>
+  <li>Il conduttore è tenuto al pagamento di tutte le contravvenzioni al codice della strada nonché al risarcimento dei danni eventualmente causati a terzi durante il periodo di locazione.</li>
+  <li>In caso di incidente stradale il conduttore è obbligato a presentare denuncia alle autorità competenti e a consegnare copia della stessa al locatore entro 24 ore dall'evento.</li>
+  <li>Il veicolo locato NON è coperto da polizza KASCO. Qualsiasi danno riportato dal veicolo durante il periodo di locazione sarà addebitato integralmente al conduttore.</li>
+  <li>Il carburante è a totale carico del sottoscritto. Il veicolo dovrà essere riconsegnato con lo stesso livello di carburante con cui è stato consegnato.</li>
+  <li>Ai sensi dell'art. 1588 C.C. il conduttore è responsabile della perdita e del deterioramento del veicolo avvenuti nel corso della locazione, anche se derivanti da incendio, qualora non provi che siano stati determinati da causa a lui non imputabile.</li>
+  <li>Il conduttore è obbligato al pagamento del prezzo pattuito per l'intera durata della locazione, anche in caso di mancato utilizzo del veicolo per cause a lui imputabili.</li>
+  <li>Per qualsiasi controversia derivante dal presente contratto è competente in via esclusiva il Foro di Agrigento.</li>
+</ol>
+<div class="cond-place">Lampedusa, li _____________ &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Firma ___________________________</div>
+<div class="cond-approval">Ai sensi e per gli effetti degli artt. 1341 e 1342 C.C. il conduttore dichiara di approvare specificamente le clausole di cui ai punti 1, 2, 3, 4, 5, 6, 7, 8, 9 del presente contratto.</div>
+<div class="cond-place">Lampedusa, li _____________ &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Firma ___________________________</div>
 
 <div class="sec">${s.signature}</div>
 <div class="srow">
@@ -10922,7 +10963,7 @@ ${preno.codice ? `<div style="text-align:center;margin:-16px 0 20px;"><span styl
           <div style={{ fontWeight: 700, marginBottom: 8, fontSize: 12, textTransform: 'uppercase', letterSpacing: '1px', color: 'var(--muted)' }}>{t.title}</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 16px', fontSize: 12 }}>
             <div><span style={{ color: 'var(--muted)' }}>{f.name}: </span><strong>{cliente}</strong></div>
-            <div><span style={{ color: 'var(--muted)' }}>{f.plate}: </span><strong>{preno.vehicleTarga || preno.vehicleLabel?.split(' ')[0] || '—'}</strong></div>
+            <div><span style={{ color: 'var(--muted)' }}>{f.plate}: </span><strong>{preno.vehicleTarga || (preno.vehicleLabel?.split(' · ')[1]?.trim()) || '—'}</strong></div>
             <div><span style={{ color: 'var(--muted)' }}>{f.from}: </span><strong>{formatDate(preno.dal)}</strong></div>
             <div><span style={{ color: 'var(--muted)' }}>{f.to}: </span><strong>{formatDate(preno.al)}</strong></div>
             <div><span style={{ color: 'var(--muted)' }}>{f.total}: </span><strong>€{preno.prezzo ?? '—'}</strong></div>
@@ -13491,7 +13532,7 @@ export default function App() {
         try {
           const ctrl = new AbortController();
           const t = setTimeout(() => ctrl.abort(), 15000);
-          const r = await fetch(`${base}/api/backup`, {
+          const r = await fetch(`${base}/backup`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(backupObj),
