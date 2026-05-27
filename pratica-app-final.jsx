@@ -21,10 +21,12 @@ import Tesseract from 'tesseract.js';
 // Convenzione: x.y.z dove x = major rewrite, y = feature, z = fix.
 // La data accanto aiuta a verificare al volo che il deploy sia andato a buon fine.
 const APP_VERSION = {
-  number: '0.40.8',
-  codename: 'Fix raddoppio conteggi: rimossa sorgente mista RentMe+fleet (causa duplicati), canonicalTipo basta per trovare quad150/300 e bici muscolari in RentMe',
-  date: '2026-05-26',
+  number: '0.40.9',
+  codename: 'Backup automatico Google Drive ogni 3 ore — token silenzioso via GIS prompt:none, intervallo 15 min, toggle UI in Impostazioni',
+  date: '2026-05-27',
   changelog: [
+    // v0.40.9 — 2026-05-27
+    'Backup automatico Google Drive ogni 3 ore: controlla ogni 15 min tramite setInterval, tenta token silenzioso GIS (prompt:none) senza popup, notifica toast al completamento — toggle on/off in Impostazioni → Backup Google Drive',
     // v0.40.8 — 2026-05-26
     'Fix raddoppio conteggi: la sorgente mista RentMe+fleet (v0.40.6) causava duplicati quando fleet e RentMe avevano le stesse targhe sotto chiavi diverse — rimossa, si usa solo RentMe (o fleet come fallback se RentMe non ha quel tipo)',
     // v0.40.7 — 2026-05-26
@@ -13261,6 +13263,7 @@ export default function App() {
   // Google Drive Client ID — skipRemote, specifico del dispositivo
   const [driveClientId, setDriveClientId] = usePersistentState('edo:v1:driveClientId', '', { skipRemote: true });
   const [driveLastBackup, setDriveLastBackup] = usePersistentState('edo:v1:driveLastBackup', null, { skipRemote: true });
+  const [driveAutoEnabled, setDriveAutoEnabled] = usePersistentState('edo:v1:driveAutoEnabled', false, { skipRemote: true });
 
   // Push notifications: avvisa per scadenze urgenti / scadute
   useScadenzeNotifications(scadenze, fleet);
@@ -13409,6 +13412,83 @@ export default function App() {
       pushToast?.({ tone: 'error', title: 'Errore upload Drive', message: String(e.message || e) });
     }
   }, [driveClientId, prenotazioni, fleet, customers, cassa, scadenze, operators, partners, agency, listino, stagioni, manutenzioni, setDriveLastBackup, pushToast]);
+
+  // ── Auto-backup Google Drive ──────────────────────────────────────────────
+  // Refs per evitare stale closures nell'intervallo (aggiornati ad ogni render)
+  const driveAutoRef = useRef({ enabled: false, clientId: '', lastBackup: null });
+  useEffect(() => {
+    driveAutoRef.current = { enabled: driveAutoEnabled, clientId: driveClientId, lastBackup: driveLastBackup };
+  }, [driveAutoEnabled, driveClientId, driveLastBackup]);
+
+  const backupDataRef = useRef(null);
+  useEffect(() => {
+    backupDataRef.current = { prenotazioni, fleet, customers, cassa, scadenze, operators, partners, agency, listino, stagioni, manutenzioni };
+  }, [prenotazioni, fleet, customers, cassa, scadenze, operators, partners, agency, listino, stagioni, manutenzioni]);
+
+  // Controlla ogni 15 minuti se sono passate 3 ore dall'ultimo backup — se sì, tenta backup silenzioso
+  useEffect(() => {
+    const INTERVAL_MS  = 15 * 60 * 1000; // 15 minuti
+    const THREE_HOURS  = 3  * 60 * 60 * 1000;
+
+    const doSilentBackup = async () => {
+      const { enabled, clientId, lastBackup } = driveAutoRef.current;
+      if (!enabled || !clientId) return;
+      if (lastBackup && Date.now() - new Date(lastBackup).getTime() < THREE_HOURS) return;
+
+      // Carica GIS se non presente
+      try {
+        await new Promise((resolve, reject) => {
+          if (window.google?.accounts?.oauth2) { resolve(); return; }
+          const s = document.createElement('script');
+          s.src = 'https://accounts.google.com/gsi/client';
+          s.onload = resolve; s.onerror = reject;
+          document.head.appendChild(s);
+        });
+      } catch { return; }
+
+      // Tenta token silenzioso (prompt: 'none') — fallisce senza popup se sessione scaduta
+      const token = await new Promise((resolve) => {
+        try {
+          const client = window.google.accounts.oauth2.initTokenClient({
+            client_id: clientId,
+            scope: 'https://www.googleapis.com/auth/drive.file',
+            callback: (r) => resolve(r.error ? null : r.access_token),
+            error_callback: () => resolve(null),
+          });
+          client.requestAccessToken({ prompt: 'none' });
+        } catch { resolve(null); }
+      });
+      if (!token) return; // Sessione non disponibile — skip silenzioso
+
+      const data = backupDataRef.current;
+      if (!data) return;
+      const backupObj = { version: APP_VERSION.number, exportedAt: new Date().toISOString(), ...data };
+      const jsonStr   = JSON.stringify(backupObj, null, 2);
+      const fileName  = `edonoleggio-backup-${new Date().toISOString().slice(0, 10)}.json`;
+      const boundary  = '-------boundary123456789';
+      const body = [
+        `--${boundary}`, 'Content-Type: application/json; charset=UTF-8', '',
+        JSON.stringify({ name: fileName, mimeType: 'application/json', parents: [] }),
+        `--${boundary}`, 'Content-Type: application/json', '',
+        jsonStr, `--${boundary}--`,
+      ].join('\r\n');
+
+      try {
+        const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': `multipart/related; boundary="${boundary}"` },
+          body,
+        });
+        if (res.ok) {
+          setDriveLastBackup(new Date().toISOString());
+          pushToast?.({ tone: 'success', title: '☁️ Backup automatico Drive', message: `Completato · ${new Date().toLocaleTimeString('it-IT')}` });
+        }
+      } catch { /* fallimento silenzioso */ }
+    };
+
+    const id = setInterval(doSilentBackup, INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [setDriveLastBackup, pushToast]); // solo dep stabili — lo stato viene letto dai ref
 
   // Import backup JSON — ripristina tutti i dati da un file JSON esportato
   const importBackup = useCallback((file) => {
@@ -13997,7 +14077,7 @@ export default function App() {
                   <StagioniEditor stagioni={stagioni} onSave={(s)=>{setStagioni(s); pushToast && pushToast({tone:'success',title:'Stagioni aggiornate',message:'Configurazione stagionale salvata'});}} />
                 </div>
               </div>}
-              {page === 'settings'   && <SettingsPage operator={operator} operators={operators} admin={admin} cargosConfig={cargosConfig} backendStatus={backendStatus} lastCheck={lastCheck} apiBaseUrl={apiBaseUrl} syncStatus={allSyncStatus} agency={agency} customers={customers} contracts={localContracts} onSyncAll={syncAll} onExportBackup={exportBackup} onImportBackup={importBackup} pushToast={pushToast} onAddOperator={() => setModal('newOperator')} onEditOperator={(o) => setModal({ type: 'editOperator', operator: o })} onDeleteOperator={requestDeleteOperator} onEditCargos={() => setModal('cargosConfig')} onEditApiBase={() => setModal('apiBase')} onEditAgency={() => setModal('agency')} onResetCustomers={requestResetCustomers} onResetContracts={requestResetContracts} onResetEverything={requestResetEverything} onImportFleetFromRentMe={requestImportFleetFromRentMe} rentmeConfig={rentmeConfig} setRentmeConfig={setRentmeConfig} rentmeSync={rentmeSync} rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} appUsers={appUsers} setAppUsers={setAppUsers} onLogout={handleLogout} driveClientId={driveClientId} setDriveClientId={setDriveClientId} driveLastBackup={driveLastBackup} onDriveBackup={driveBackup} onImportStorico={({ prenotazioni: newP, clienti: newC }) => {
+              {page === 'settings'   && <SettingsPage operator={operator} operators={operators} admin={admin} cargosConfig={cargosConfig} backendStatus={backendStatus} lastCheck={lastCheck} apiBaseUrl={apiBaseUrl} syncStatus={allSyncStatus} agency={agency} customers={customers} contracts={localContracts} onSyncAll={syncAll} onExportBackup={exportBackup} onImportBackup={importBackup} pushToast={pushToast} onAddOperator={() => setModal('newOperator')} onEditOperator={(o) => setModal({ type: 'editOperator', operator: o })} onDeleteOperator={requestDeleteOperator} onEditCargos={() => setModal('cargosConfig')} onEditApiBase={() => setModal('apiBase')} onEditAgency={() => setModal('agency')} onResetCustomers={requestResetCustomers} onResetContracts={requestResetContracts} onResetEverything={requestResetEverything} onImportFleetFromRentMe={requestImportFleetFromRentMe} rentmeConfig={rentmeConfig} setRentmeConfig={setRentmeConfig} rentmeSync={rentmeSync} rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} appUsers={appUsers} setAppUsers={setAppUsers} onLogout={handleLogout} driveClientId={driveClientId} setDriveClientId={setDriveClientId} driveLastBackup={driveLastBackup} onDriveBackup={driveBackup} driveAutoEnabled={driveAutoEnabled} setDriveAutoEnabled={setDriveAutoEnabled} onImportStorico={({ prenotazioni: newP, clienti: newC }) => {
                 setPrenotazioni(prev => {
                   const existKeys = new Set(prev.map(p => p.id));
                   return [...prev, ...newP.filter(p => !existKeys.has(p.id))];
@@ -16716,7 +16796,7 @@ function SecuritySection({ appUsers, setAppUsers, onLogout, pushToast }) {
   );
 }
 
-function SettingsPage({ operator, operators, cargosConfig, admin, backendStatus, lastCheck, apiBaseUrl, syncStatus, agency, onSyncAll, onExportBackup, onImportBackup, pushToast, onAddOperator, onEditOperator, onDeleteOperator, onEditCargos, onEditApiBase, onEditAgency, onResetCustomers, onResetContracts, onResetEverything, onImportFleetFromRentMe, customers, contracts, rentmeConfig, setRentmeConfig, rentmeSync, rentmeVehicles, prenotazioni, onImportStorico, appUsers, setAppUsers, onLogout, driveClientId, setDriveClientId, driveLastBackup, onDriveBackup }) {
+function SettingsPage({ operator, operators, cargosConfig, admin, backendStatus, lastCheck, apiBaseUrl, syncStatus, agency, onSyncAll, onExportBackup, onImportBackup, pushToast, onAddOperator, onEditOperator, onDeleteOperator, onEditCargos, onEditApiBase, onEditAgency, onResetCustomers, onResetContracts, onResetEverything, onImportFleetFromRentMe, customers, contracts, rentmeConfig, setRentmeConfig, rentmeSync, rentmeVehicles, prenotazioni, onImportStorico, appUsers, setAppUsers, onLogout, driveClientId, setDriveClientId, driveLastBackup, onDriveBackup, driveAutoEnabled, setDriveAutoEnabled }) {
   const importInputRef = useRef();
   const [showCargosSecrets, setShowCargosSecrets] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -17124,6 +17204,37 @@ function SettingsPage({ operator, operators, cargosConfig, admin, backendStatus,
             <div style={{ fontSize: 11, color: 'var(--muted)', alignSelf: 'center' }}>
               Il file JSON viene caricato su Drive con il nome <code className="mono">edonoleggio-backup-{new Date().toISOString().slice(0,10)}.json</code>
             </div>
+          </div>
+          {/* Toggle backup automatico */}
+          <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: driveClientId ? 'pointer' : 'default', opacity: driveClientId ? 1 : 0.45 }}>
+              <div
+                role="switch"
+                aria-checked={driveAutoEnabled}
+                tabIndex={driveClientId ? 0 : -1}
+                onClick={() => driveClientId && setDriveAutoEnabled(v => !v)}
+                onKeyDown={e => (e.key === ' ' || e.key === 'Enter') && driveClientId && setDriveAutoEnabled(v => !v)}
+                style={{
+                  width: 40, height: 22, borderRadius: 11, flexShrink: 0,
+                  background: driveAutoEnabled ? '#4285f4' : 'var(--surface-3)',
+                  position: 'relative', transition: 'background .2s', border: '1px solid var(--border)',
+                }}
+              >
+                <span style={{
+                  position: 'absolute', top: 2,
+                  left: driveAutoEnabled ? 20 : 2,
+                  width: 16, height: 16, borderRadius: '50%',
+                  background: 'white', transition: 'left .2s',
+                  boxShadow: '0 1px 3px rgba(0,0,0,.25)',
+                }} />
+              </div>
+              <span style={{ fontSize: 13, fontWeight: 500 }}>Backup automatico ogni 3 ore</span>
+            </label>
+            <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4, paddingLeft: 50 }}>
+              {driveAutoEnabled
+                ? '✅ Attivo — la pagina deve restare aperta. Il backup avviene silenziosamente se la sessione Google è ancora valida (~1 ora dal ultimo accesso manuale).'
+                : 'Esegui prima un backup manuale per autorizzare la sessione Google, poi attiva il backup automatico.'}
+            </p>
           </div>
         </div>
       </section>
