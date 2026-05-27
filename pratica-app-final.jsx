@@ -21,10 +21,28 @@ import Tesseract from 'tesseract.js';
 // Convenzione: x.y.z dove x = major rewrite, y = feature, z = fix.
 // La data accanto aiuta a verificare al volo che il deploy sia andato a buon fine.
 const APP_VERSION = {
-  number: '0.42.1',
+  number: '0.42.8',
   codename: 'Wizard unificato: contratto da prenotazioni = ContractPdfModal; firma in Step 5; date prima veicolo; filtro disponibilità',
   date: '2026-05-27',
   changelog: [
+    // v0.42.8 — 2026-05-27
+    'Aggiunta struttura: Il Maestro di Nodi (s24) — Salita Thaon De Revel, 92010 Lampedusa (AG)',
+    // v0.42.7 — 2026-05-27
+    'Aggiunta struttura: Rifugio dei Naviganti (s23) — Via Sanvisente 23, 92031 Lampedusa (AG)',
+    // v0.42.6 — 2026-05-27
+    'Indirizzi strutture partner: completati tutti gli indirizzi reali (via + civico) di 16 strutture in INITIAL_PARTNERS — Nautic Hotel, U\'Piddu, Moresco, Villaggio del Mago, Villa Giulia, 7 Palazzi, Le Barche Volanti, Perla del Sud, Dimora Spugnara, Farchikalà, Alba e Tramonto, Nino Paranzoto, Brezza Marina, da Ivan, di Manuela, da Nino, Casette di Sara',
+    // v0.42.5 — 2026-05-27
+    'Fix PrenoForm: availableVehicles ora filtra per tipo mezzo scelto (f.vehicleType) — mostra solo i mezzi della categoria selezionata, non tutti i 280; f.vehicleType aggiunto alla dependency array del useMemo',
+    // v0.42.4 — 2026-05-27
+    'Fix sync RentMe: filtro uuidDittaAssociata === RENTME_USER_ID — l\'API /getVeicoli restituiva tutti i mezzi dell\'account (397 da più aziende), ora mostra solo i 280 di Edonoleggio; stesso filtro applicato al secondo call-site (calcolo disponibilità)',
+    // v0.42.3 — 2026-05-27
+    'Fix codice prenotazioni RentMe: il sync ora preserva il codice già assegnato (era rigenerato ad ogni sync rompendo il link contractId EDO-YYYY-{codice}); nuovi booking RentMe ricevono generateBookingCode() al primo sync',
+    'Migrazione one-shot all\'avvio: assegna codice a tutte le prenotazioni esistenti (locali e RentMe) che ne erano prive — contractId non mostra più "?" nel contratto stampato',
+    // v0.42.2 — 2026-05-27
+    'Fix Step Veicolo: targa mostrata tramite resolveVehicleDisplay (RENTME_TARGA_MAP) — non più vuota per i mezzi RentMe; veicolo salvato con targa risolta così ContractPdfModal la riceve corretta',
+    'Fix Step Veicolo: ricerca per targa ora usa la targa risolta reale, non v.targa (che potrebbe essere vuota)',
+    'Fix Step Veicolo: card veicolo ridisegnata — marca+modello sulla stessa riga, colore/cilindrata/anno sotto, targa in badge prominente a destra',
+    'Fix Step Periodo: date ora usano input datetime-local (picker nativo con calendario e ora) invece di testo libero; conversione bidirezionale DD/MM/YYYY HH:MM ↔ YYYY-MM-DDTHH:MM; min consegna = ritiro',
     // v0.42.1 — 2026-05-27 (fix pre-deploy)
     'Fix Wizard: cambio date in Step Periodo ora resetta data.veicolo → impossibile confermare un veicolo non disponibile per il nuovo periodo',
     'Fix Wizard: cambio tipo veicolo in Step Tipo ora resetta data.veicolo → nessun veicolo di tipo sbagliato in conferma',
@@ -617,25 +635,27 @@ const INITIAL_PARTNERS = [
   { id: 's1',  nome: 'Aeroporto di Lampedusa',       tipo: 'aeroporto',   indirizzo: 'Contrada Cala Pisana, 92031 Lampedusa (AG)',  fissa: true },
   { id: 's2',  nome: 'Porto di Lampedusa',           tipo: 'porto',       indirizzo: 'Lungomare Luigi Rizzo, 92031 Lampedusa (AG)', fissa: true },
   { id: 's3',  nome: 'Sede Edonoleggio',             tipo: 'sede',        indirizzo: 'Cortile Caltanissetta, 92031 Lampedusa (AG)', fissa: true },
-  { id: 's4',  nome: 'Nautic Hotel',                 tipo: 'hotel',       indirizzo: 'Lampedusa (AG)' },
-  { id: 's5',  nome: "U' Piddu Hotel",               tipo: 'hotel',       indirizzo: 'Lampedusa (AG)' },
-  { id: 's6',  nome: 'Moresco Resort',               tipo: 'resort',      indirizzo: 'Lampedusa (AG)' },
-  { id: 's7',  nome: 'Il Villaggio del Mago',        tipo: 'resort',      indirizzo: 'Lampedusa (AG)' },
-  { id: 's8',  nome: 'Villa Giulia Residence',       tipo: 'residence',   indirizzo: 'Lampedusa (AG)' },
-  { id: 's9',  nome: '7 Palazzi',                    tipo: 'residence',   indirizzo: 'Lampedusa (AG)' },
-  { id: 's10', nome: 'Le Barche Volanti',            tipo: 'guesthouse',  indirizzo: 'Via Roma, 92031 Lampedusa (AG)' },
-  { id: 's11', nome: 'Perla del Sud',                tipo: 'guesthouse',  indirizzo: 'Lampedusa (AG)' },
-  { id: 's12', nome: 'Dimora Spugnara',              tipo: 'guesthouse',  indirizzo: 'Lampedusa (AG)' },
-  { id: 's13', nome: 'Farchikalà',                   tipo: 'guesthouse',  indirizzo: 'Lampedusa (AG)' },
-  { id: 's14', nome: 'Appartamenti Alba e Tramonto', tipo: 'appartamento',indirizzo: 'Lampedusa (AG)' },
-  { id: 's15', nome: 'Appartamenti Nino Paranzoto',  tipo: 'appartamento',indirizzo: 'Lampedusa (AG)' },
-  { id: 's16', nome: 'Brezza Marina',                tipo: 'casa',        indirizzo: 'Lampedusa (AG)' },
-  { id: 's17', nome: 'Casa vacanze da Ivan',         tipo: 'casa',        indirizzo: 'Lampedusa (AG)' },
-  { id: 's18', nome: 'Casa di Manuela',              tipo: 'casa',        indirizzo: 'Lampedusa (AG)' },
-  { id: 's19', nome: 'Casa vacanze da Nino',         tipo: 'casa',        indirizzo: 'Lampedusa (AG)' },
-  { id: 's20', nome: 'Casette di Sara',              tipo: 'casa',        indirizzo: 'Lampedusa (AG)' },
+  { id: 's4',  nome: 'Nautic Hotel',                 tipo: 'hotel',       indirizzo: 'Via delle Grotte, 92010 Lampedusa (AG)' },
+  { id: 's5',  nome: "U' Piddu Hotel",               tipo: 'hotel',       indirizzo: 'Via Depositi, 92031 Lampedusa (AG)' },
+  { id: 's6',  nome: 'Moresco Resort',               tipo: 'resort',      indirizzo: 'Via Vittorio Emanuele 56, 92031 Lampedusa (AG)' },
+  { id: 's7',  nome: 'Il Villaggio del Mago',        tipo: 'resort',      indirizzo: 'Contrada Cala Creta 15, 92031 Lampedusa (AG)' },
+  { id: 's8',  nome: 'Villa Giulia Residence',       tipo: 'residence',   indirizzo: 'Via Tacceri 23, 92031 Lampedusa (AG)' },
+  { id: 's9',  nome: '7 Palazzi',                    tipo: 'residence',   indirizzo: 'Via Vittorio Emanuele 45, 92031 Lampedusa (AG)' },
+  { id: 's10', nome: 'Le Barche Volanti',            tipo: 'guesthouse',  indirizzo: 'Via Terranova 37, 92010 Lampedusa (AG)' },
+  { id: 's11', nome: 'Perla del Sud',                tipo: 'guesthouse',  indirizzo: 'Via Adua 19, 92010 Lampedusa (AG)' },
+  { id: 's12', nome: 'Dimora Spugnara',              tipo: 'guesthouse',  indirizzo: 'Contrada Taccio Vecchio snc, 92031 Lampedusa (AG)' },
+  { id: 's13', nome: 'Farchikalà',                   tipo: 'guesthouse',  indirizzo: 'Via Madonna 56, 92010 Lampedusa (AG)' },
+  { id: 's14', nome: 'Appartamenti Alba e Tramonto', tipo: 'appartamento',indirizzo: 'Via Maccaferri ang. Stazzone snc, 92010 Lampedusa (AG)' },
+  { id: 's15', nome: 'Appartamenti Nino Paranzoto',  tipo: 'appartamento',indirizzo: 'Via Pozzo Monaco 33, 92031 Lampedusa (AG)' },
+  { id: 's16', nome: 'Brezza Marina',                tipo: 'casa',        indirizzo: 'Via E. La Loggia 15, 92031 Lampedusa (AG)' },
+  { id: 's17', nome: 'Casa vacanze da Ivan',         tipo: 'casa',        indirizzo: 'Contrada Madonna, 92031 Lampedusa (AG)' },
+  { id: 's18', nome: 'Casa di Manuela',              tipo: 'casa',        indirizzo: 'Contrada Mare Morto snc, 92031 Lampedusa (AG)' },
+  { id: 's19', nome: 'Casa vacanze da Nino',         tipo: 'casa',        indirizzo: 'Contrada Grecale 14, 92031 Lampedusa (AG)' },
+  { id: 's20', nome: 'Casette di Sara',              tipo: 'casa',        indirizzo: 'Via Pozzo Monaco snc, 92031 Lampedusa (AG)' },
   { id: 's21', nome: 'Le villette di Cala Galera',   tipo: 'casa',        indirizzo: 'Contrada Cala Galera, 92031 Lampedusa (AG)' },
   { id: 's22', nome: 'Le villette di Cala Madonna',  tipo: 'casa',        indirizzo: 'Contrada Cala Madonna, 92031 Lampedusa (AG)' },
+  { id: 's23', nome: 'Rifugio dei Naviganti',        tipo: 'guesthouse',  indirizzo: 'Via Sanvisente 23, 92031 Lampedusa (AG)' },
+  { id: 's24', nome: 'Il Maestro di Nodi',           tipo: 'casa',        indirizzo: 'Salita Thaon De Revel, 92010 Lampedusa (AG)' },
 ];
 
 const PARTNER_TYPES = {
@@ -2579,6 +2599,8 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
     const TIPO_ORD = { scooter: 0, moto: 1, auto: 2, quad: 3, ebike: 4, bici: 5 };
     return allVehicles
       .filter(v => !bookedIds.has(v.id))
+      // Filtra per tipo scelto: se vehicleType è settato, mostra solo quella categoria
+      .filter(v => !f.vehicleType || v.tipo === f.vehicleType)
       .sort((a, b) => {
         // 1. tipo (scooter → auto → quad → ebike → bici)
         const tA = TIPO_ORD[a.tipo] ?? 9;
@@ -2593,7 +2615,7 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
         const nB = parseInt((b.targa || b.id || '').replace(/\D+/g, '') || '0', 10);
         return nA - nB;
       });
-  }, [allVehicles, bookedIds]);
+  }, [allVehicles, bookedIds, f.vehicleType]);
 
   // Smart assignment: calcola combinazione ottimale se nessun mezzo singolo è disponibile
   const smartCombo = useMemo(() => {
@@ -8069,7 +8091,13 @@ function useRentMeSync({ fleet, rentmeVehicles, setRentmeVehicles, setPrenotazio
       const r = await fetch(`${RENTME_API_BASE}/user/getVeicoli/${RENTME_USER_ID}`);
       if (!r.ok) throw new Error(`Errore server RentMe: ${r.status}`);
       const data = await r.json();
-      const veicoli = data.listObject || [];
+      // Filtra solo i veicoli di Edonoleggio: l'API restituisce tutti i mezzi
+      // accessibili all'utente (potenzialmente di più aziende sullo stesso account RentMe).
+      // uuidDittaAssociata === RENTME_USER_ID → appartiene a Edonoleggio.
+      // Se il campo manca (veicoli legacy senza UUID) li teniamo per sicurezza.
+      const veicoli = (data.listObject || []).filter(v =>
+        !v.uuidDittaAssociata || v.uuidDittaAssociata === RENTME_USER_ID
+      );
 
       // Mappa codice RentMe → targa reale
       // Priorità: 1) mappa statica censimento  2) fleet locale (edit manuale ha precedenza)
@@ -8143,10 +8171,19 @@ function useRentMeSync({ fleet, rentmeVehicles, setRentmeVehicles, setPrenotazio
         });
       });
 
-      // Merge: mantieni prenotazioni locali + sostituisce quelle RentMe
+      // Merge: mantieni prenotazioni locali + sostituisce quelle RentMe.
+      // IMPORTANTE: preserva il codice già assegnato ai booking RentMe esistenti
+      // (il codice viene usato come ID contratto EDO-YYYY-{codice}) —
+      // senza questo, ogni sync rigenerava un codice diverso spezzando il link contratto.
       setPrenotazioni(prev => {
-        const local = (prev || []).filter(p => p.fonte !== 'rentme');
-        return [...local, ...rentmeRows];
+        const existingRentme = (prev || []).filter(p => p.fonte === 'rentme');
+        const local          = (prev || []).filter(p => p.fonte !== 'rentme');
+        const rentmeWithCodes = rentmeRows.map(r => {
+          const found = existingRentme.find(e => e.id === r.id);
+          // Riutilizza il codice esistente; altrimenti genera uno nuovo EDO-style
+          return { ...r, codice: found?.codice || generateBookingCode() };
+        });
+        return [...local, ...rentmeWithCodes];
       });
 
       const now = new Date().toISOString();
@@ -10179,7 +10216,9 @@ function ImportStoricoModal({ existingPreno, existingCustomers, onImport, onClos
       const r = await fetch(`${RENTME_API_BASE}/user/getVeicoli/${RENTME_USER_ID}`);
       if (!r.ok) throw new Error(`RentMe API: ${r.status}`);
       const data = await r.json();
-      const veicoli = data.listObject || [];
+      const veicoli = (data.listObject || []).filter(v =>
+        !v.uuidDittaAssociata || v.uuidDittaAssociata === RENTME_USER_ID
+      );
 
       const rows = [];
       veicoli.forEach(v => {
@@ -13382,6 +13421,17 @@ export default function App() {
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, []);
+
+  // Migrazione one-shot: assegna codice EDO a prenotazioni esistenti (locali e RentMe)
+  // che ne sono prive — necessario affinché contractId = EDO-YYYY-{codice} sia sempre completo.
+  // Dipendenza vuota: gira una sola volta al mount; setPrenotazioni è stabile.
+  useEffect(() => {
+    setPrenotazioni(ps => {
+      const needsFix = ps.some(p => !p.codice);
+      if (!needsFix) return ps; // nessuna modifica → nessun re-render
+      return ps.map(p => p.codice ? p : { ...p, codice: generateBookingCode() });
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Scroll top automatico ad ogni cambio pagina
   useEffect(() => {
@@ -18329,10 +18379,12 @@ function Step3Vehicle({ data, update, fleet, prenotazioni }) {
   const filtered = useMemo(() => {
     if (!query.trim()) return availableFleet;
     const q = query.toLowerCase();
-    return availableFleet.filter(v =>
-      (v.targa || '').toLowerCase().includes(q) || (v.modello || '').toLowerCase().includes(q) ||
-      (v.marca || '').toLowerCase().includes(q) || (v.colore || '').toLowerCase().includes(q)
-    );
+    return availableFleet.filter(v => {
+      // Risolvi targa reale (RENTME_TARGA_MAP) per la ricerca
+      const targa = (resolveVehicleDisplay(v).targa || v.targa || '').toLowerCase();
+      return targa.includes(q) || (v.modello || '').toLowerCase().includes(q) ||
+        (v.marca || '').toLowerCase().includes(q) || (v.colore || '').toLowerCase().includes(q);
+    });
   }, [availableFleet, query]);
 
   const datesSet = !!(fromDate && toDate && !isNaN(fromDate) && !isNaN(toDate));
@@ -18377,6 +18429,8 @@ function Step3Vehicle({ data, update, fleet, prenotazioni }) {
       ) : (
         <div className="grid grid-cols-2 gap-3" role="radiogroup" aria-label="Scegli veicolo">
           {filtered.map(v => {
+            // Risolvi targa reale tramite RENTME_TARGA_MAP (source of truth)
+            const targa = resolveVehicleDisplay(v).targa || v.targa || '—';
             const selected = data.veicolo?.id === v.id;
             return (
               <button
@@ -18384,20 +18438,17 @@ function Step3Vehicle({ data, update, fleet, prenotazioni }) {
                 type="button"
                 role="radio"
                 aria-checked={selected}
-                onClick={() => update('veicolo', v)}
+                onClick={() => update('veicolo', { ...v, targa })}
                 className={`vehicle-card card-paper p-4 text-left ${selected ? 'selected' : ''}`}
               >
                 <div className="flex items-start justify-between">
                   <div>
-                    <div className="serif text-lg font-medium leading-tight">{v.marca}</div>
-                    <div className="text-sm" style={{ color: 'var(--ink-2)' }}>{v.modello}</div>
+                    <div className="serif text-lg font-medium leading-tight">{v.marca} {v.modello}</div>
+                    <div className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>{v.colore}{v.cilindrata ? ` · ${v.cilindrata}` : ''}{v.anno ? ` · ${v.anno}` : ''}</div>
                   </div>
-                  <div className="mono text-sm font-semibold tracking-wider px-2 py-1 rounded" style={{ background: 'var(--surface-2)' }}>{v.targa}</div>
+                  <div className="mono text-sm font-bold tracking-widest px-2 py-1 rounded flex-shrink-0" style={{ background: 'var(--surface-2)', color: 'var(--ink)' }}>{targa}</div>
                 </div>
-                <div className="flex flex-wrap items-center gap-1.5 mt-3 text-[11px]">
-                  <span style={{ color: 'var(--muted)' }}>{v.colore}</span>
-                  <span style={{ color: 'var(--muted)' }}>· {v.cilindrata}</span>
-                  <span style={{ color: 'var(--muted)' }}>· {v.anno}</span>
+                <div className="flex flex-wrap items-center gap-1.5 mt-2 text-[11px]">
                   {v.gps === 1 && <span className="pill pill-neutral">GPS</span>}
                   {selected && <span className="pill pill-ok ml-auto"><Check className="w-3 h-3" aria-hidden="true" /> Selezionato</span>}
                 </div>
@@ -18411,6 +18462,27 @@ function Step3Vehicle({ data, update, fleet, prenotazioni }) {
 }
 
 // ─── Step 4 — Periodo ─────────────────────────────────────────────
+// Conversione tra il formato interno dell'app (DD/MM/YYYY HH:MM)
+// e il formato dell'input datetime-local (YYYY-MM-DDTHH:MM)
+function toDatetimeLocal(italianFmt) {
+  if (!italianFmt) return '';
+  const [datePart = '', timePart = '00:00'] = italianFmt.split(' ');
+  const parts = datePart.split('/');
+  if (parts.length < 3) return '';
+  const [dd, mm, yyyy] = parts;
+  if (!yyyy || !mm || !dd) return '';
+  return `${yyyy}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}T${timePart}`;
+}
+function fromDatetimeLocal(dtLocal) {
+  if (!dtLocal) return '';
+  const [datePart = '', timePart = '00:00'] = dtLocal.split('T');
+  const parts = datePart.split('-');
+  if (parts.length < 3) return '';
+  const [yyyy, mm, dd] = parts;
+  if (!yyyy || !mm || !dd) return '';
+  return `${dd}/${mm}/${yyyy} ${timePart}`;
+}
+
 function Step4Period({ data, update, partners }) {
   return (
     <div className="max-w-4xl mx-auto">
@@ -18419,14 +18491,35 @@ function Step4Period({ data, update, partners }) {
       <div className="card-paper p-6 space-y-5">
         <FormSection title="Ritiro">
           <div className="grid grid-cols-2 gap-3">
-            <FormField id="p4-ritiroData" label="Data e ora ritiro" req mono value={data.ritiroData} onChange={v => { update('ritiroData', v); update('veicolo', null); }} placeholder="DD/MM/AAAA HH:MM" />
+            <div>
+              <label htmlFor="p4-ritiroData" className="label">Data e ora ritiro <span aria-hidden="true" style={{ color: 'var(--accent)' }}>*</span></label>
+              <input
+                id="p4-ritiroData"
+                type="datetime-local"
+                required
+                className="input mono"
+                value={toDatetimeLocal(data.ritiroData)}
+                onChange={e => { update('ritiroData', fromDatetimeLocal(e.target.value)); update('veicolo', null); }}
+              />
+            </div>
             <StructureSelect label="Luogo di ritiro" req partners={partners} structureId={data.ritiroStruttura} onStructureChange={v => update('ritiroStruttura', v)} freeText={data.ritiroIndirizzo} onFreeTextChange={v => update('ritiroIndirizzo', v)} />
           </div>
         </FormSection>
         <div className="divider-dotted" />
         <FormSection title="Consegna">
           <div className="grid grid-cols-2 gap-3">
-            <FormField id="p4-consegnaData" label="Data e ora consegna" req mono value={data.consegnaData} onChange={v => { update('consegnaData', v); update('veicolo', null); }} placeholder="DD/MM/AAAA HH:MM" />
+            <div>
+              <label htmlFor="p4-consegnaData" className="label">Data e ora consegna <span aria-hidden="true" style={{ color: 'var(--accent)' }}>*</span></label>
+              <input
+                id="p4-consegnaData"
+                type="datetime-local"
+                required
+                className="input mono"
+                min={toDatetimeLocal(data.ritiroData)}
+                value={toDatetimeLocal(data.consegnaData)}
+                onChange={e => { update('consegnaData', fromDatetimeLocal(e.target.value)); update('veicolo', null); }}
+              />
+            </div>
             <StructureSelect label="Luogo di consegna" req partners={partners} structureId={data.consegnaStruttura} onStructureChange={v => update('consegnaStruttura', v)} freeText={data.consegnaIndirizzo} onFreeTextChange={v => update('consegnaIndirizzo', v)} />
           </div>
         </FormSection>
