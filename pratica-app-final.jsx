@@ -21,10 +21,18 @@ import Tesseract from 'tesseract.js';
 // Convenzione: x.y.z dove x = major rewrite, y = feature, z = fix.
 // La data accanto aiuta a verificare al volo che il deploy sia andato a buon fine.
 const APP_VERSION = {
-  number: '0.43.0',
-  codename: 'Wizard unificato: contratto da prenotazioni = ContractPdfModal; firma in Step 5; date prima veicolo; filtro disponibilità',
-  date: '2026-05-27',
+  number: '0.43.4',
+  codename: 'Fix migratePartners: aggiunge strutture mancanti (s23, s24) oltre a patchare quelle esistenti',
+  date: '2026-05-28',
   changelog: [
+    // v0.43.4 — 2026-05-28
+    'Fix migratePartners: aggiunge al array persistito i partner di INITIAL_PARTNERS non ancora presenti (es. s23 Rifugio dei Naviganti, s24 Il Maestro di Nodi) — stesso pattern toAdd di migrateListino. Il backend aveva solo s1–s22, s23/s24 non venivano mai sincronizzati.',
+    // v0.43.3 — 2026-05-28
+    'Fix architettura migrazioni: aggiunto hook migrate a usePersistentState, eseguito sia su localStorage che su backend load (elimina race condition delle migration-useEffect che venivano annullate dal fetch remoto). Migrazioni attive: listino (entry mancanti + nome/tipo/categoria da master, prezzi utente intatti), partners (indirizzo/nome/tipo da INITIAL_PARTNERS), agency (campi mancanti + cellulari stringa→array), cargos (istatLuogo/questuraPec/autoSendTimeout), operators (role+enabled), fleet (moto→scooter, id deterministico da targa), prenotazioni (codice+fonte)',
+    // v0.43.2 — 2026-05-28 (rimosso: migration-useEffect con race condition)
+    'ANNULLATO — sostituito da v0.43.3',
+    // v0.43.1 — 2026-05-28
+    'calcAvailability riscritta: grouping per tipo+getVehicleCategoria (CHIUSA→BASE normalizzato), pool unificato fleet+RentMe dedup per id, display name da LISTINO; getVehiclesForCat aggiornata in BancoRapido e Preventivi con filtro catMatch; migrazione one-shot partner: sincronizza nome/tipo/indirizzo/fissa da INITIAL_PARTNERS sui record persistiti Render (fix "Indirizzo da completare" nella pagina Strutture)',
     // v0.43.0 — 2026-05-28
     'Fix calcAvailability RentMe: conteggio veicoli ora usa v.id (UUID) invece di v.targa — i veicoli senza targa non erano contati, causando total=0 e filtro via .filter(c=>c.total>0); le categorie con 0 targhe sparivano dal Banco Rapido (es. Auto chiusa mostrava solo 37 su 63 veicoli); tracking prenotazioni aggiornato: b.vehicleId confrontato con cat.ids (Set) invece di cat.targhes (Array)',
     // v0.42.9 — 2026-05-27
@@ -1137,7 +1145,11 @@ function useFleetCounts(fleet) {
 //   options.skipRemote — true per disabilitare backend (utile in test)
 //
 function usePersistentState(key, initialValue, options = {}) {
-  const { baseUrl, skipRemote, sanitize } = options;
+  // migrate: funzione pura (oldData) → newData applicata sui dati caricati
+  // sia da localStorage che dal backend. Gira PRIMA di setValue, quindi
+  // non può essere sovrascritta dalla fetch remota (era il bug delle
+  // migration-useEffect: il backend caricava dopo e annullava il fix).
+  const { baseUrl, skipRemote, sanitize, migrate } = options;
 
   // Lettura sincrona da localStorage all'init
   const [value, setValue] = useState(() => {
@@ -1145,7 +1157,8 @@ function usePersistentState(key, initialValue, options = {}) {
     try {
       const raw = window.localStorage.getItem(key);
       if (raw === null) return initialValue;
-      return JSON.parse(raw);
+      const parsed = JSON.parse(raw);
+      return migrate ? migrate(parsed) : parsed;
     } catch {
       return initialValue;
     }
@@ -1187,8 +1200,9 @@ function usePersistentState(key, initialValue, options = {}) {
         // Se il backend ha un valore non-null, sovrascrive il locale.
         // Convenzione: { value: ... } payload del backend.
         if (data && data.value !== null && data.value !== undefined) {
-          setValue(data.value);
-          lastSavedRef.current = JSON.stringify(data.value);
+          const loaded = migrate ? migrate(data.value) : data.value;
+          setValue(loaded);
+          lastSavedRef.current = JSON.stringify(loaded);
         }
         setRemoteStatus('synced');
         setLastRemoteSync(new Date());
@@ -4871,6 +4885,156 @@ const LISTINO = [
     bassa:{daily:25,weekly:45},  media:{daily:25,weekly:50},  alta:{daily:25,weekly:70}  },
 ];
 
+// ═══════════════════════════════════════════════════════════════════
+// FUNZIONI DI MIGRAZIONE DATI PERSISTITI
+// Queste funzioni vengono passate come opzione `migrate` a usePersistentState.
+// Girano SIA sui dati localStorage all'avvio SIA sui dati caricati dal
+// backend Render, garantendo che nessun re-fetch remoto possa annullare
+// la migrazione (bug delle migration-useEffect, rimosso in v0.43.2).
+// Ogni funzione è pura: restituisce lo stesso riferimento se nulla cambia.
+// ═══════════════════════════════════════════════════════════════════
+
+// ── migrateListino ───────────────────────────────────────────────
+// Garantisce che TUTTE le entry di LISTINO siano presenti nel dato
+// persistito, aggiunge quelle mancanti, aggiorna nome/tipo/categoria
+// dai valori master. I prezzi modificati dall'utente restano intatti.
+function migrateListino(ls) {
+  if (!Array.isArray(ls)) return LISTINO;
+  const idMap = Object.fromEntries(ls.map(e => [e.id, e]));
+  let changed = false;
+  const updated = ls.map(e => {
+    const master = LISTINO.find(m => m.id === e.id);
+    if (!master) return e;
+    const patch = {};
+    if (e.nome      !== master.nome)      patch.nome      = master.nome;
+    if (e.tipo      !== master.tipo)      patch.tipo      = master.tipo;
+    if (e.categoria !== master.categoria) patch.categoria = master.categoria;
+    if (!Object.keys(patch).length) return e;
+    changed = true;
+    return { ...e, ...patch };
+  });
+  const toAdd = LISTINO.filter(m => !idMap[m.id]);
+  if (toAdd.length) changed = true;
+  return changed ? [...updated, ...toAdd] : ls;
+}
+
+// ── migratePartners ──────────────────────────────────────────────
+// • Sincronizza nome/tipo/indirizzo/fissa dei partner sistema (s1–sN)
+//   con i valori master di INITIAL_PARTNERS. I partner aggiunti dall'utente
+//   (id non in INITIAL_PARTNERS) non vengono toccati.
+// • Aggiunge i partner di INITIAL_PARTNERS non ancora presenti nel dato
+//   persistito (es. s23/s24 aggiunti in v0.42.7–8 ma non ancora nel backend).
+function migratePartners(ps) {
+  if (!Array.isArray(ps)) return INITIAL_PARTNERS;
+  const masterMap = Object.fromEntries(INITIAL_PARTNERS.map(p => [p.id, p]));
+  let changed = false;
+  const next = ps.map(p => {
+    const ref = masterMap[p.id];
+    if (!ref) return p;
+    const patch = {};
+    if (ref.nome      !== undefined && p.nome      !== ref.nome)      patch.nome      = ref.nome;
+    if (ref.tipo      !== undefined && p.tipo      !== ref.tipo)      patch.tipo      = ref.tipo;
+    if (ref.indirizzo !== undefined && p.indirizzo !== ref.indirizzo) patch.indirizzo = ref.indirizzo;
+    if (ref.fissa     !== undefined && p.fissa     !== ref.fissa)     patch.fissa     = ref.fissa;
+    if (!Object.keys(patch).length) return p;
+    changed = true;
+    return { ...p, ...patch };
+  });
+  // Aggiunge partner di sistema non ancora presenti nel dato persistito
+  const existingIds = new Set(ps.map(p => p.id));
+  const toAdd = INITIAL_PARTNERS.filter(p => !existingIds.has(p.id));
+  if (toAdd.length) changed = true;
+  return changed ? [...next, ...toAdd] : ps;
+}
+
+// ── migrateAgency ────────────────────────────────────────────────
+// Aggiunge campi mancanti da INITIAL_AGENCY (solo se absent/null,
+// non sovrascrive le scelte dell'utente). Corregge cellulari da
+// stringa → array (cambio struttura pre-v0.36, causa crash su .join).
+function migrateAgency(ag) {
+  if (!ag || typeof ag !== 'object') return INITIAL_AGENCY;
+  const patch = {};
+  for (const [k, v] of Object.entries(INITIAL_AGENCY)) {
+    if (ag[k] === undefined || ag[k] === null) patch[k] = v;
+  }
+  if (typeof ag.cellulari === 'string') {
+    patch.cellulari = ag.cellulari ? [ag.cellulari] : INITIAL_AGENCY.cellulari;
+  }
+  return Object.keys(patch).length ? { ...ag, ...patch } : ag;
+}
+
+// ── migrateCargos ────────────────────────────────────────────────
+// Aggiunge istatLuogo, questuraPec, autoSendTimeout se assenti.
+// Critici per la generazione contratti CARGOS.
+function migrateCargos(cfg) {
+  if (!cfg || typeof cfg !== 'object') return INITIAL_CARGOS_CONFIG;
+  const patch = {};
+  for (const [k, v] of Object.entries(INITIAL_CARGOS_CONFIG)) {
+    if (cfg[k] === undefined || cfg[k] === null) patch[k] = v;
+  }
+  return Object.keys(patch).length ? { ...cfg, ...patch } : cfg;
+}
+
+// ── migrateOperators ─────────────────────────────────────────────
+// Aggiunge role e enabled agli operatori che ne sono privi.
+// Tutti gli operatori esistenti erano di fatto admin.
+function migrateOperators(ops) {
+  if (!Array.isArray(ops) || !ops.length) return MOCK_OPERATORS;
+  let changed = false;
+  const next = ops.map(op => {
+    const patch = {};
+    if (op.enabled === undefined) patch.enabled = true;
+    if (!op.role)                 patch.role    = 'admin';
+    if (!Object.keys(patch).length) return op;
+    changed = true;
+    return { ...op, ...patch };
+  });
+  return changed ? next : ops;
+}
+
+// ── migrateFleet ─────────────────────────────────────────────────
+// • normalizza tipo 'moto' → 'scooter' (rinomina pre-v0.35)
+// • assegna id deterministico ai veicoli privi (import ante-v0.32)
+//   usando targa o combinazione marca+modello+anno per stabilità
+function migrateFleet(fl) {
+  if (!Array.isArray(fl)) return fl;
+  let changed = false;
+  const next = fl.map(v => {
+    const patch = {};
+    if ((v.tipo || '').toLowerCase() === 'moto') patch.tipo = 'scooter';
+    if (!v.id) {
+      // ID deterministico: stabile tra refresh, unico per veicolo
+      const key = (v.targa || `${v.marca || ''}-${v.modello || ''}-${v.anno || ''}`);
+      patch.id = `migrated-${key.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '')}`;
+    }
+    if (!Object.keys(patch).length) return v;
+    changed = true;
+    return { ...v, ...patch };
+  });
+  return changed ? next : fl;
+}
+
+// ── migratePrenotazioni ──────────────────────────────────────────
+// • aggiunge codice EDO mancante (prenotazioni ante-v0.38)
+// • aggiunge fonte='manuale' se assente (ante-v0.38)
+// Nota: generateBookingCode() è deterministicamente random —
+// in caso di doppio caricamento (localStorage poi backend) il codice
+// potrebbe differire, ma al secondo avvio app il backend ha già il
+// valore migrato e restituisce lo stesso → stabile dopo la prima run.
+function migratePrenotazioni(ps) {
+  if (!Array.isArray(ps)) return ps;
+  let changed = false;
+  const next = ps.map(p => {
+    const patch = {};
+    if (!p.codice) patch.codice = generateBookingCode();
+    if (!p.fonte)  patch.fonte  = 'manuale';
+    if (!Object.keys(patch).length) return p;
+    changed = true;
+    return { ...p, ...patch };
+  });
+  return changed ? next : ps;
+}
+
 // ── Calcolo preventivo (multi-stagione) ──────────────────────────────
 // Divide il periodo in segmenti per stagione:
 //   es. 28 lug → 5 ago = 4g luglio (media) + 5g agosto (alta)
@@ -5400,15 +5564,22 @@ function PreventiviPage({ setPage, setPrenotazioniPrefill, listino: listinoProps
       const tl = (t || '').toLowerCase();
       return tl === ct || (tl === 'moto' && ct === 'scooter') || (tl === 'scooter' && ct === 'moto');
     };
+    // Filtro categoria: mostra solo i veicoli della sotto-categoria corretta
+    const catMatch = v => {
+      if (!cat.categoria) return true;
+      let vcat = getVehicleCategoria(v) || '';
+      if ((v.tipo || '').toLowerCase() === 'auto' && vcat === 'CHIUSA') vcat = 'BASE';
+      return vcat === cat.categoria;
+    };
     const fleetVehicles = (fleet || [])
-      .filter(v => v.stato !== 'venduto' && v.stato !== 'fuori_uso' && tipoMatch(v.tipo))
+      .filter(v => v.stato !== 'venduto' && v.stato !== 'fuori_uso' && tipoMatch(v.tipo) && catMatch(v))
       .map(v => ({
         ...v,
         label: (v.marca && v.modello) ? `${v.marca} ${v.modello}` : (v.nome || v.targa || v.id),
         targa: resolveVehicleDisplay(v).targa || v.targa || '',
       }));
     const rmVehicles = (rentmeVehicles || [])
-      .filter(v => tipoMatch(v.tipo))
+      .filter(v => tipoMatch(v.tipo) && catMatch(v))
       .map(v => ({
         ...v,
         label: v.nome || v.modello || v.marca || '',
@@ -7643,86 +7814,92 @@ const RENTME_USER_ID  = '02zq4lkb-44yy-6j4h-53dg-4752198po90p';
 
 // ── calcAvailability ─────────────────────────────────────────────
 // Funzione pura: dato un periodo dal/al, restituisce array di categorie
-// con { id, nome, tipo, total, booked, free, threshold, alert }.
-// Usa dati RentMe se disponibili, altrimenti prenotazioni locali.
-// fleet (opzionale): se passato, usato come totale nel fallback
+// con { id, nome, tipo, categoria, total, booked, free, threshold, alert }.
+// v0.43.1: grouping per tipo+categoria (usa getVehicleCategoria sul pool
+// unificato fleet+RentMe), così le sotto-categorie auto (5 Posti, Cabrio,
+// ecc.) appaiono come card distinte nel Banco Rapido / Walk-in.
 function calcAvailability(dal, al, rentmeVehicles, prenotazioni, fleet) {
   const dalS = dal || new Date().toISOString().slice(0,10);
   const alS  = al  || dalS;
 
-  if (rentmeVehicles && rentmeVehicles.length > 0) {
-    // ── Modalità RentMe: categorie reali ────────────────────────
-    // Usiamo v.id (UUID RentMe) come identificatore — v.targa può essere
-    // vuota per molti veicoli e farebbe azzerare il conteggio di quelle categorie.
-    const bySlug = {};
-    rentmeVehicles.forEach(v => {
-      if (!v.id) return;
-      if (!bySlug[v.slug]) bySlug[v.slug] = { slug: v.slug, nome: v.nome, tipo: v.tipo, ids: new Set() };
-      bySlug[v.slug].ids.add(v.id);
+  // ── Pool unificato: fleet locale + RentMe, dedup per id ─────────
+  // Fleet ha precedenza (dati più precisi su categoria/cc/targa)
+  const allVehicles = [];
+  const seenIds = new Set();
+
+  (fleet || []).forEach(v => {
+    if (v.stato === 'venduto' || v.stato === 'fuori_uso') return;
+    const id = v.id || v.targa;
+    if (!id) return;
+    if (seenIds.has(id)) return;
+    seenIds.add(id);
+    allVehicles.push(v);
+  });
+
+  (rentmeVehicles || []).forEach(v => {
+    if (!v.id) return;
+    if (seenIds.has(v.id)) return;
+    seenIds.add(v.id);
+    allVehicles.push(v);
+  });
+
+  if (allVehicles.length > 0) {
+    // ── Raggruppa per tipo + categoria ──────────────────────────
+    const TIPO_ORDER = ['auto','scooter','moto','quad','ebike','bici','altro'];
+    const byKey = {};
+    allVehicles.forEach(v => {
+      const tipo = (v.tipo || '').toLowerCase();
+      let cat = getVehicleCategoria(v) || 'BASE';
+      // Normalizza CHIUSA→BASE per gli auto (LISTINO usa 'BASE' come auto base)
+      if (tipo === 'auto' && cat === 'CHIUSA') cat = 'BASE';
+      const key = `${tipo}|${cat}`;
+      if (!byKey[key]) {
+        // Display name da LISTINO, altrimenti composto
+        const listinoEntry = (LISTINO || []).find(l => l.tipo === tipo && l.categoria === cat);
+        const nome = listinoEntry ? listinoEntry.nome : `${tipo} ${cat}`.trim();
+        byKey[key] = { key, tipo, categoria: cat, nome, ids: new Set() };
+      }
+      const id = v.id || v.targa;
+      if (id) byKey[key].ids.add(id);
     });
-    return Object.values(bySlug).map(cat => {
-      const total = cat.ids.size;
+
+    return Object.values(byKey).map(grp => {
+      const total = grp.ids.size;
       const busy  = new Set();
       let   busyNoId = 0;
       (prenotazioni || []).forEach(b => {
-        if (!b.dal || !b.al || b.stato === 'annullata' || b.stato === 'completata' || b.stato === 'cancellata') return;
-        if (b.al < dalS || b.dal > alS) return; // fuori periodo
+        if (!b.dal || !b.al) return;
+        if (b.stato === 'annullata' || b.stato === 'completata' || b.stato === 'cancellata') return;
+        if (b.al < dalS || b.dal > alS) return;
         const vidB = b.vehicleId || '';
-        if (vidB && cat.ids.has(vidB)) {
+        if (vidB && grp.ids.has(vidB)) {
           busy.add(vidB);
-        } else if (b.vehicleType === cat.tipo && !vidB) {
+        } else if (!vidB && b.vehicleType === grp.tipo) {
           // prenotazione tipo-only senza vehicleId: consuma 1 slot generico
           busyNoId++;
         }
-        // segmenti vehicleSchedule
         if (b.vehicleSchedule) {
           b.vehicleSchedule.forEach(s => {
-            if (s.vehicleId && cat.ids.has(s.vehicleId) && s.dal <= alS && s.al >= dalS) busy.add(s.vehicleId);
+            if (s.vehicleId && grp.ids.has(s.vehicleId) && s.dal <= alS && s.al >= dalS) busy.add(s.vehicleId);
           });
         }
       });
       const booked    = busy.size + busyNoId;
       const free      = Math.max(0, total - booked);
       const threshold = Math.max(1, Math.ceil(total * 0.25));
-      return { id: cat.slug, nome: cat.nome, tipo: cat.tipo, total, booked, free, threshold, alert: free <= threshold && total > 0 };
-    }).filter(c => c.total > 0).sort((a, b) => a.nome.localeCompare(b.nome, 'it'));
+      return {
+        id: grp.key, nome: grp.nome, tipo: grp.tipo, categoria: grp.categoria,
+        total, booked, free, threshold, alert: free <= threshold && total > 0
+      };
+    }).filter(c => c.total > 0).sort((a, b) => {
+      const ta = TIPO_ORDER.indexOf(a.tipo);
+      const tb = TIPO_ORDER.indexOf(b.tipo);
+      if (ta !== tb) return (ta === -1 ? 99 : ta) - (tb === -1 ? 99 : tb);
+      return a.nome.localeCompare(b.nome, 'it');
+    });
   }
 
-  // ── Fallback: usa fleet locale come fonte di verità ────────────
-  if (fleet && fleet.length > 0) {
-    // Raggruppa per tipo
-    const tipiMap = {};
-    fleet.forEach(v => {
-      if (v.stato === 'venduto' || v.stato === 'fuori_uso') return;
-      const t = v.tipo || 'altro';
-      if (!tipiMap[t]) tipiMap[t] = { targhes: [], nome: t, tipo: t };
-      tipiMap[t].targhes.push(v.id || v.targa);
-    });
-    return Object.values(tipiMap).map(cat => {
-      const total = cat.targhes.length;
-      const busy = new Set();
-      let busyNoId = 0;
-      (prenotazioni || []).forEach(b => {
-        if (b.stato === 'annullata' || b.stato === 'completata' || b.stato === 'cancellata') return;
-        if (!b.dal || !b.al || b.al < dalS || b.dal > alS) return;
-        if (b.vehicleId && cat.targhes.includes(b.vehicleId)) {
-          busy.add(b.vehicleId);
-        } else if (!b.vehicleId && (b.vehicleType === cat.tipo)) {
-          busyNoId++;
-        }
-        if (b.vehicleSchedule) {
-          b.vehicleSchedule.forEach(s => {
-            if (s.vehicleId && cat.targhes.includes(s.vehicleId) && s.dal <= alS && s.al >= dalS) busy.add(s.vehicleId);
-          });
-        }
-      });
-      const booked = busy.size + busyNoId;
-      const free = Math.max(0, total - booked);
-      const threshold = Math.max(1, Math.ceil(total * 0.25));
-      return { id: cat.tipo, nome: cat.nome, tipo: cat.tipo, total, booked, free, threshold, alert: free <= threshold && total > 0 };
-    }).filter(c => c.total > 0).sort((a,b) => a.nome.localeCompare(b.nome, 'it'));
-  }
-  // Ultimo fallback: stima dai dati prenotazioni (senza fleet)
+  // Ultimo fallback: stima dai dati prenotazioni (senza fleet né RentMe)
   const catMap = {};
   (prenotazioni || []).forEach(b => {
     if (!b.vehicleLabel || b.stato === 'annullata' || b.stato === 'completata' || b.stato === 'cancellata') return;
@@ -8343,19 +8520,26 @@ function BancoRapidoPage({ rentmeVehicles, prenotazioni, fleet, setPage, setPren
       const tl = (t || '').toLowerCase();
       return tl === ct || (tl === 'moto' && ct === 'scooter') || (tl === 'scooter' && ct === 'moto');
     };
+    // Filtro categoria: mostra solo i veicoli della sotto-categoria corretta
+    const catMatch = v => {
+      if (!cat.categoria) return true;
+      let vcat = getVehicleCategoria(v) || '';
+      if ((v.tipo || '').toLowerCase() === 'auto' && vcat === 'CHIUSA') vcat = 'BASE';
+      return vcat === cat.categoria;
+    };
 
-    // Fleet locale: filtra per tipo corretto, arricchisci label e targa
+    // Fleet locale: filtra per tipo + categoria, arricchisci label e targa
     const fleetVehicles = (fleet || [])
-      .filter(v => v.stato !== 'venduto' && v.stato !== 'fuori_uso' && tipoMatch(v.tipo))
+      .filter(v => v.stato !== 'venduto' && v.stato !== 'fuori_uso' && tipoMatch(v.tipo) && catMatch(v))
       .map(v => ({
         ...v,
         label: (v.marca && v.modello) ? `${v.marca} ${v.modello}` : (v.nome || v.targa || v.id),
         targa: resolveVehicleDisplay(v).targa || v.targa || '',
       }));
 
-    // RentMe: filtra per tipo (non per nome)
+    // RentMe: filtra per tipo + categoria
     const rmVehicles = (rentmeVehicles || [])
-      .filter(v => tipoMatch(v.tipo))
+      .filter(v => tipoMatch(v.tipo) && catMatch(v))
       .map(v => ({
         ...v,
         label: v.nome || v.modello || v.marca || '',
@@ -13367,15 +13551,16 @@ export default function App() {
   // Le chiavi 'edo:v1:' devono combaciare con quelle che usa il backend (path /api/store/edo:v1:fleet).
   // Sync flow: load da backend in background → save debounced 1.5s → fallback localStorage se offline.
   const sharedOpts = { baseUrl: apiBaseUrl };
-  const [listino, setListino] = usePersistentState('edo:v1:listino', LISTINO, sharedOpts);
-  const [fleet,        setFleet,        fleetSync]     = usePersistentState('edo:v1:fleet',     [],                      sharedOpts);
+  const [listino, setListino] = usePersistentState('edo:v1:listino', LISTINO,            { ...sharedOpts, migrate: migrateListino });
+  const [fleet,        setFleet,        fleetSync]     = usePersistentState('edo:v1:fleet',     [],                      { ...sharedOpts, migrate: migrateFleet });
   const [customers,    setCustomers,    customersSync] = usePersistentState('edo:v1:customers', INITIAL_CUSTOMERS,       sharedOpts);
-  const [partners,     setPartners,     partnersSync]  = usePersistentState('edo:v1:partners',  INITIAL_PARTNERS,        sharedOpts);
-  const [operators,    setOperators,    operatorsSync] = usePersistentState('edo:v1:operators', MOCK_OPERATORS,          sharedOpts);
-  const [cargosConfig, setCargosConfig, cargosSync]    = usePersistentState('edo:v1:cargos',    INITIAL_CARGOS_CONFIG,   sharedOpts);
-  const [agency,       setAgency,       agencySync]    = usePersistentState('edo:v1:agency',    INITIAL_AGENCY,          sharedOpts);
+  const [partners,     setPartners,     partnersSync]  = usePersistentState('edo:v1:partners',  INITIAL_PARTNERS,        { ...sharedOpts, migrate: migratePartners });
+  const [operators,    setOperators,    operatorsSync] = usePersistentState('edo:v1:operators', MOCK_OPERATORS,          { ...sharedOpts, migrate: migrateOperators });
+  const [cargosConfig, setCargosConfig, cargosSync]    = usePersistentState('edo:v1:cargos',    INITIAL_CARGOS_CONFIG,   { ...sharedOpts, migrate: migrateCargos });
+  const [agency,       setAgency,       agencySync]    = usePersistentState('edo:v1:agency',    INITIAL_AGENCY,          { ...sharedOpts, migrate: migrateAgency });
   const [prenotazioni, setPrenotazioni, prenoSync]     = usePersistentState('edo:v1:prenotazioni', [], {
     ...sharedOpts,
+    migrate: migratePrenotazioni,
     // Sanitize per il remote sync:
     // 1. Rimuove campi base64 pesanti (foto, firmaDigitale) — niente immagini sul backend
     // 2. Invia solo prenotazioni degli ultimi 6 mesi + quelle ancora attive/future
@@ -13459,17 +13644,6 @@ export default function App() {
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, []);
-
-  // Migrazione one-shot: assegna codice EDO a prenotazioni esistenti (locali e RentMe)
-  // che ne sono prive — necessario affinché contractId = EDO-YYYY-{codice} sia sempre completo.
-  // Dipendenza vuota: gira una sola volta al mount; setPrenotazioni è stabile.
-  useEffect(() => {
-    setPrenotazioni(ps => {
-      const needsFix = ps.some(p => !p.codice);
-      if (!needsFix) return ps; // nessuna modifica → nessun re-render
-      return ps.map(p => p.codice ? p : { ...p, codice: generateBookingCode() });
-    });
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Scroll top automatico ad ogni cambio pagina
   useEffect(() => {
