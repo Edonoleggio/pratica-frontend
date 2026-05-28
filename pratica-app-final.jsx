@@ -21,10 +21,12 @@ import Tesseract from 'tesseract.js';
 // Convenzione: x.y.z dove x = major rewrite, y = feature, z = fix.
 // La data accanto aiuta a verificare al volo che il deploy sia andato a buon fine.
 const APP_VERSION = {
-  number: '0.42.9',
+  number: '0.43.0',
   codename: 'Wizard unificato: contratto da prenotazioni = ContractPdfModal; firma in Step 5; date prima veicolo; filtro disponibilità',
   date: '2026-05-27',
   changelog: [
+    // v0.43.0 — 2026-05-28
+    'Fix calcAvailability RentMe: conteggio veicoli ora usa v.id (UUID) invece di v.targa — i veicoli senza targa non erano contati, causando total=0 e filtro via .filter(c=>c.total>0); le categorie con 0 targhe sparivano dal Banco Rapido (es. Auto chiusa mostrava solo 37 su 63 veicoli); tracking prenotazioni aggiornato: b.vehicleId confrontato con cat.ids (Set) invece di cat.targhes (Array)',
     // v0.42.9 — 2026-05-27
     'Fix Banco Rapido: getVehiclesForCat riscritta — filter fleet per v.tipo === cat.tipo (rimosso || v.targa che includeva tutti i veicoli con targa); filter RentMe per tipo invece che per nome (era fragile e spesso vuoto); label arricchita con marca+modello per fleet; targa risolta via resolveVehicleDisplay per RentMe; toast walk-in ora mostra targa reale',
     // v0.42.8 — 2026-05-27
@@ -7650,29 +7652,32 @@ function calcAvailability(dal, al, rentmeVehicles, prenotazioni, fleet) {
 
   if (rentmeVehicles && rentmeVehicles.length > 0) {
     // ── Modalità RentMe: categorie reali ────────────────────────
+    // Usiamo v.id (UUID RentMe) come identificatore — v.targa può essere
+    // vuota per molti veicoli e farebbe azzerare il conteggio di quelle categorie.
     const bySlug = {};
     rentmeVehicles.forEach(v => {
-      if (!bySlug[v.slug]) bySlug[v.slug] = { slug: v.slug, nome: v.nome, tipo: v.tipo, targhes: [] };
-      if (v.targa) bySlug[v.slug].targhes.push(v.targa);
+      if (!v.id) return;
+      if (!bySlug[v.slug]) bySlug[v.slug] = { slug: v.slug, nome: v.nome, tipo: v.tipo, ids: new Set() };
+      bySlug[v.slug].ids.add(v.id);
     });
     return Object.values(bySlug).map(cat => {
-      const total = cat.targhes.length;
+      const total = cat.ids.size;
       const busy  = new Set();
       let   busyNoId = 0;
       (prenotazioni || []).forEach(b => {
         if (!b.dal || !b.al || b.stato === 'annullata' || b.stato === 'completata' || b.stato === 'cancellata') return;
         if (b.al < dalS || b.dal > alS) return; // fuori periodo
-        const targaB = b.vehicleId || b.rentmeTarga || '';
-        if (cat.targhes.includes(targaB)) {
-          busy.add(targaB);
-        } else if (b.vehicleType === cat.tipo && !targaB) {
-          // prenotazione tipo-only senza targa: consuma 1 slot generico
+        const vidB = b.vehicleId || '';
+        if (vidB && cat.ids.has(vidB)) {
+          busy.add(vidB);
+        } else if (b.vehicleType === cat.tipo && !vidB) {
+          // prenotazione tipo-only senza vehicleId: consuma 1 slot generico
           busyNoId++;
         }
         // segmenti vehicleSchedule
         if (b.vehicleSchedule) {
           b.vehicleSchedule.forEach(s => {
-            if (s.vehicleId && cat.targhes.includes(s.vehicleId) && s.dal <= alS && s.al >= dalS) busy.add(s.vehicleId);
+            if (s.vehicleId && cat.ids.has(s.vehicleId) && s.dal <= alS && s.al >= dalS) busy.add(s.vehicleId);
           });
         }
       });
