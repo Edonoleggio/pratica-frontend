@@ -21,10 +21,12 @@ import Tesseract from 'tesseract.js';
 // Convenzione: x.y.z dove x = major rewrite, y = feature, z = fix.
 // La data accanto aiuta a verificare al volo che il deploy sia andato a buon fine.
 const APP_VERSION = {
-  number: '0.42.8',
+  number: '0.42.9',
   codename: 'Wizard unificato: contratto da prenotazioni = ContractPdfModal; firma in Step 5; date prima veicolo; filtro disponibilità',
   date: '2026-05-27',
   changelog: [
+    // v0.42.9 — 2026-05-27
+    'Fix Banco Rapido: getVehiclesForCat riscritta — filter fleet per v.tipo === cat.tipo (rimosso || v.targa che includeva tutti i veicoli con targa); filter RentMe per tipo invece che per nome (era fragile e spesso vuoto); label arricchita con marca+modello per fleet; targa risolta via resolveVehicleDisplay per RentMe; toast walk-in ora mostra targa reale',
     // v0.42.8 — 2026-05-27
     'Aggiunta struttura: Il Maestro di Nodi (s24) — Salita Thaon De Revel, 92010 Lampedusa (AG)',
     // v0.42.7 — 2026-05-27
@@ -5391,39 +5393,51 @@ function PreventiviPage({ setPage, setPrenotazioniPrefill, listino: listinoProps
 
   // Stessa logica di BancoRapido: raccoglie i veicoli di una categoria con stato libero/occupato
   function getVehiclesForCat(cat) {
-    const allVehicles = [
-      ...(fleet || []).filter(v => v.tipo === cat.tipo || v.targa),
-      ...(rentmeVehicles || []).filter(v => v.nome?.toLowerCase().includes(cat.nome?.toLowerCase().split(' ')[0]?.toLowerCase() || '')),
-    ];
+    const ct = (cat.tipo || '').toLowerCase();
+    const tipoMatch = t => {
+      const tl = (t || '').toLowerCase();
+      return tl === ct || (tl === 'moto' && ct === 'scooter') || (tl === 'scooter' && ct === 'moto');
+    };
+    const fleetVehicles = (fleet || [])
+      .filter(v => v.stato !== 'venduto' && v.stato !== 'fuori_uso' && tipoMatch(v.tipo))
+      .map(v => ({
+        ...v,
+        label: (v.marca && v.modello) ? `${v.marca} ${v.modello}` : (v.nome || v.targa || v.id),
+        targa: resolveVehicleDisplay(v).targa || v.targa || '',
+      }));
+    const rmVehicles = (rentmeVehicles || [])
+      .filter(v => tipoMatch(v.tipo))
+      .map(v => ({
+        ...v,
+        label: v.nome || v.modello || v.marca || '',
+        targa: resolveVehicleDisplay(v).targa || v.targa || '',
+      }));
     const seen = new Set();
     const merged = [];
-    for (const v of allVehicles) {
+    for (const v of [...fleetVehicles, ...rmVehicles]) {
       const id = v.id || v.targa;
       if (!id || seen.has(id)) continue;
       seen.add(id);
       merged.push(v);
     }
-    const byTipo = merged.filter(v => {
-      const t = (v.tipo || '').toLowerCase();
-      const ct = (cat.tipo || '').toLowerCase();
-      return t === ct || (t === 'moto' && ct === 'scooter') || (t === 'scooter' && ct === 'moto');
-    });
     const occupati = new Set(
       (prenotazioni || [])
-        .filter(p => dal && al && p.dal <= al && p.al >= dal && p.stato !== 'annullata' && p.stato !== 'completata')
+        .filter(p => dal && al && p.dal <= al && p.al >= dal && p.stato !== 'annullata' && p.stato !== 'completata' && p.stato !== 'cancellata')
         .map(p => p.vehicleId)
         .filter(Boolean)
     );
-    return byTipo.map(v => ({ ...v, libero: !occupati.has(v.id) }));
+    return merged.map(v => ({ ...v, libero: !occupati.has(v.id) }));
   }
 
   function handleVehicleBook(cat, v, totale) {
     setVehicleModal(null);
+    const label = v.label || v.targa || cat.nome;
+    const targa = v.targa || '';
     if (setPrenotazioniPrefill) {
       setPrenotazioniPrefill({
         vehicleId:    v.id,
-        vehicleLabel: v.label || v.targa || v.nome || cat.nome,
-        vehicleTarga: v.targa || v.plate || '',
+        vehicleLabel: label,
+        vehicleTarga: targa,
         vehicleType:  cat.tipo,
         dal, al,
         prezzo: totale,
@@ -5675,8 +5689,9 @@ function PreventiviPage({ setPage, setPrenotazioniPrefill, listino: listinoProps
             {vehicleModal.vehicles.map(v => {
               const TIPO_EMOJI = { auto:'🚗', scooter:'🛵', moto:'🛵', quad:'🏎', ebike:'⚡', bici:'🚲' };
               const emoji = TIPO_EMOJI[v.tipo] || '🚗';
-              const label = v.label || v.nome || v.targa || v.id;
-              const targa = v.targa || v.plate || '';
+              // label e targa già risolti da getVehiclesForCat
+              const label = v.label || v.targa || v.id;
+              const targa = v.targa || '';
               return (
                 <button key={v.id || label} type="button"
                   onClick={() => v.libero ? handleVehicleBook(vehicleModal.cat, v, vehicleModal.totale) : null}
@@ -8318,33 +8333,48 @@ function BancoRapidoPage({ rentmeVehicles, prenotazioni, fleet, setPage, setPren
 
   // Calcola veicoli liberi per una categoria nelle date selezionate
   function getVehiclesForCat(cat) {
-    const allVehicles = [
-      ...(fleet || []).filter(v => v.tipo === cat.tipo || v.targa),
-      ...(rentmeVehicles || []).filter(v => v.nome?.toLowerCase().includes(cat.nome?.toLowerCase().split(' ')[0]?.toLowerCase() || '')),
-    ];
-    // Dedup by id
+    const ct = (cat.tipo || '').toLowerCase();
+    const tipoMatch = t => {
+      const tl = (t || '').toLowerCase();
+      return tl === ct || (tl === 'moto' && ct === 'scooter') || (tl === 'scooter' && ct === 'moto');
+    };
+
+    // Fleet locale: filtra per tipo corretto, arricchisci label e targa
+    const fleetVehicles = (fleet || [])
+      .filter(v => v.stato !== 'venduto' && v.stato !== 'fuori_uso' && tipoMatch(v.tipo))
+      .map(v => ({
+        ...v,
+        label: (v.marca && v.modello) ? `${v.marca} ${v.modello}` : (v.nome || v.targa || v.id),
+        targa: resolveVehicleDisplay(v).targa || v.targa || '',
+      }));
+
+    // RentMe: filtra per tipo (non per nome)
+    const rmVehicles = (rentmeVehicles || [])
+      .filter(v => tipoMatch(v.tipo))
+      .map(v => ({
+        ...v,
+        label: v.nome || v.modello || v.marca || '',
+        targa: resolveVehicleDisplay(v).targa || v.targa || '',
+      }));
+
+    // Dedup by id — fleet ha precedenza
     const seen = new Set();
     const merged = [];
-    for (const v of allVehicles) {
+    for (const v of [...fleetVehicles, ...rmVehicles]) {
       const id = v.id || v.targa;
       if (!id || seen.has(id)) continue;
       seen.add(id);
       merged.push(v);
     }
-    // Filter by tipo match
-    const byTipo = merged.filter(v => {
-      const t = (v.tipo || '').toLowerCase();
-      const ct = (cat.tipo || '').toLowerCase();
-      return t === ct || t === 'moto' && ct === 'scooter' || t === 'scooter' && ct === 'moto';
-    });
-    // Mark occupati
+
+    // Mark occupati nelle date selezionate
     const occupati = new Set(
       (prenotazioni || [])
-        .filter(p => p.dal <= al && p.al >= dal && p.stato !== 'annullata' && p.stato !== 'completata')
+        .filter(p => p.dal <= al && p.al >= dal && p.stato !== 'annullata' && p.stato !== 'completata' && p.stato !== 'cancellata')
         .map(p => p.vehicleId)
         .filter(Boolean)
     );
-    return byTipo.map(v => ({ ...v, libero: !occupati.has(v.id) }));
+    return merged.map(v => ({ ...v, libero: !occupati.has(v.id) }));
   }
 
   const handleSelect = (cat) => {
@@ -8359,16 +8389,18 @@ function BancoRapidoPage({ rentmeVehicles, prenotazioni, fleet, setPage, setPren
 
   function handleVehicleBook(cat, v) {
     setVehicleModal(null);
+    const label = v.label || v.targa || cat.nome;
+    const targa = v.targa || '';
     setPrenotazioniPrefill({
       vehicleId:    v.id,
-      vehicleLabel: v.label || v.targa || v.nome || cat.nome,
-      vehicleTarga: v.targa || v.plate || '',
+      vehicleLabel: label,
+      vehicleTarga: targa,
       vehicleType:  cat.tipo,
       dal, al,
       fonte: 'walk_in',
     });
     setPage('prenotazioni');
-    pushToast({ tone: 'success', title: '🚶 Walk-in', message: `${v.label || v.targa || cat.nome} · ${dal === al ? dal : dal + ' → ' + al}` });
+    pushToast({ tone: 'success', title: '🚶 Walk-in', message: `${label}${targa ? ' · ' + targa : ''} · ${dal === al ? dal : dal + ' → ' + al}` });
   }
 
   const fmtLastSync = (iso) => {
@@ -8571,8 +8603,9 @@ function BancoRapidoPage({ rentmeVehicles, prenotazioni, fleet, setPage, setPren
             {vehicleModal.vehicles.map(v => {
               const TIPO_EMOJI = { auto:'🚗', scooter:'🛵', moto:'🛵', quad:'🏎', ebike:'⚡', bici:'🚲' };
               const emoji = TIPO_EMOJI[v.tipo] || '🚗';
-              const label = v.label || v.nome || v.targa || v.id;
-              const targa = v.targa || v.plate || '';
+              // label e targa già risolti da getVehiclesForCat
+              const label = v.label || v.targa || v.id;
+              const targa = v.targa || '';
               return (
                 <button key={v.id || label} type="button"
                   onClick={() => v.libero ? handleVehicleBook(vehicleModal.cat, v) : null}
