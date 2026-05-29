@@ -21,10 +21,26 @@ import Tesseract from 'tesseract.js';
 // Convenzione: x.y.z dove x = major rewrite, y = feature, z = fix.
 // La data accanto aiuta a verificare al volo che il deploy sia andato a buon fine.
 const APP_VERSION = {
-  number: '0.44.4',
-  codename: 'Vista gruppo + loading state avvio',
+  number: '0.45.3',
+  codename: 'Fix categoria APERTA: Mehari+Samurai correttamente separati da BASE in flotta, BancoRapido e Preventivi',
   date: '2026-05-29',
   changelog: [
+    // v0.45.3 — 2026-05-29
+    'Fix categoria APERTA (Mehari + Samurai): (1) getVehicleCategoria fast path: v.categoria="MEHARI" ora ritorna "APERTA" invece di "MEHARI"; (2) CATEGORIA_KEYWORDS: rimossa voce "MEHARI", aggiunta "samurai" alla voce "APERTA" — riconosce Mehari, Diane e Suzuki Samurai come APERTA dal testo; (3) normalizeAutoCategoria: MEHARI → APERTA (non più BASE); (4) CATEGORIA_LABEL: "APERTA" ora mostra "Auto aperta"; (5) commento calcAvailability aggiornato. Effetto: i veicoli aperti non vengono più conteggiati nel gruppo BASE — Preventivi, BancoRapido e flotta mostrano "Auto aperta" come categoria distinta.',
+    // v0.45.2 — 2026-05-29
+    'LISTINO AUTO COMPLETO: aggiunte 5 nuove categorie auto — Auto 5 posti (5POSTI), Auto 6 posti (6POSTI), Auto 7 posti (7POSTI), Auto Serie 2 (SERIE2), Auto automatica (AUTOMATICA). Mehari rinominata "Auto aperta" con categoria APERTA (copre Mehari + Suzuki Samurai). Prezzi di partenza uguali a BASE — personalizzabili in Prezzi. normalizeAutoCategoria aggiornata: ogni categoria mantiene il suo codice, solo CHIUSA e STANDARD sono alias di BASE.',
+    // v0.45.1 — 2026-05-29
+    'Fix Preventivi: listinoCats ora parte sempre dal LISTINO master (tutte e 11 le categorie) invece del listino persistito che poteva essere incompleto. I prezzi personalizzati dall\'utente sovrascrivono il master, ma nessuna categoria può sparire se il backend ha solo un sottoinsieme delle voci (es. solo auto_chiusa da versioni precedenti).',
+    // v0.45.0 — 2026-05-29  ★ BETA READY ★
+    'ANTI DOUBLE-SUBMIT: il bottone "Crea prenotazione" si disabilita e mostra "⏳ Salvataggio…" non appena premuto — impossibile creare due prenotazioni identiche con doppio click.',
+    'VALIDAZIONE FORM: errori inline con campo evidenziato in rosso — (1) almeno cognome o nome cliente, (2) data fine obbligatoria, (3) data fine ≥ data inizio, (4) prezzo numero positivo. Il form scrolla automaticamente al primo errore.',
+    'SYNC MULTI-DEVICE: pull automatico dal backend ogni 90 secondi per prenotazioni e flotta — ogni tablet vede le modifiche degli altri operatori entro 90 secondi senza fare nulla. Indicatore "🔄 X min fa" nel topbar mostra quando è avvenuto l\'ultimo aggiornamento; cliccandolo sincronizza immediatamente.',
+    'SESSION TIMEOUT 8H: dopo 8 ore di inattività (nessun click/touch/scroll) la sessione scade e l\'app torna al login. Protegge i tablet lasciati incustoditi al banco.',
+    'PASSWORD ADMIN DINAMICA: il modal Admin nel topbar legge la password dall\'account admin in localStorage invece di usarla hardcoded — chi cambia la password via Impostazioni → Operatori aggiorna anche l\'accesso admin.',
+    'TRACCIABILITÀ OPERATORI: ogni prenotazione registra operatorName (chi ha creato) e updatedByName (chi ha modificato per ultimo). Il nome dell\'operatore compare come badge 👤 sulla PrenoCard.',
+    'BANNER PROTEZIONE MODIFICA: aprendo una pratica in_corso o completata in modifica appare un banner arancione/giallo che avverte l\'operatore del rischio.',
+    'RESET TOTALE DOPPIA CONFERMA: l\'azione "Reset tutto" richiede ora di digitare manualmente la parola RESET prima del modal di conferma finale — impossibile attivarlo per errore.',
+    'VALIDAZIONE IMPORT BACKUP: prima di applicare il file verifica che contenga dati Pratica riconoscibili; avvisa se il numero di prenotazioni è anomalmente alto (>5000).',
     // v0.44.4 — 2026-05-29
     'VISTA GRUPPO: il badge "👥 Pratica multipla" nella PrenoCard è ora cliccabile — filtra la lista prenotazioni per mostrare solo i mezzi del gruppo. In testa alla lista appare un banner verde con nome cliente, numero mezzi, date e totale combinato (somma prezzi di tutti i mezzi). Bottone "✕ Esci dalla vista gruppo" per tornare alla lista normale.',
     'LOADING STATE AVVIO: schermata minimale "edo·pratica + tre puntini animati + Caricamento dati…" durante i 2-3 secondi in cui usePersistentState carica i dati dal backend Render. Evita che l\'operatore veda flotta/prenotazioni vuote al primo accesso della mattina.',
@@ -536,7 +552,7 @@ const RENTME_CATEGORIE_MAP = {
 const CATEGORIA_LABEL = {
   'BASE':       'Base',
   '5POSTI':     '5 Posti',
-  'APERTA':     'Aperta',
+  'APERTA':     'Auto aperta',
   'SUPERIOR':   'Superior',
   'CABRIO':     'Cabrio',
   '6POSTI':     '6 Posti',
@@ -558,9 +574,9 @@ const CATEGORIA_KEYWORDS = {
   '7POSTI':     ['7posti', '7 posti', '7posto'],
   '6POSTI':     ['6posti', '6 posti', '6posto'],
   '5POSTI':     ['5posti', '5 posti', '5posto'],
-  'MEHARI':     ['mehari', 'diane'],
+  // APERTA: Mehari, Diane, Suzuki Samurai (tutte le "auto aperte" senza tetto)
+  'APERTA':     ['aperta', 'mehari', 'diane', 'samurai'],
   'CABRIO':     ['cabrio'],
-  'APERTA':     ['aperta'],
   'SUPERIOR':   ['superior'],
   'CHIUSA':     ['chiusa'],
   'STANDARD':   ['standard'],
@@ -588,7 +604,8 @@ function getVehicleCategoria(v) {
       const cu = v.categoria.toUpperCase().trim();
       if (cu === 'CABRIO')   return 'CABRIO';
       if (cu === 'SUPERIOR') return 'SUPERIOR';
-      if (cu === 'MEHARI')   return 'MEHARI';
+      // MEHARI (categoria legacy) → APERTA (nuova categoria unificata Mehari+Samurai)
+      if (cu === 'MEHARI')   return 'APERTA';
       // Converte varianti con spazio ('5 Posti'→'5POSTI', 'Serie 2'→'SERIE2', 'Base'→'BASE')
       // e restituisce il codice RentMe preciso se riconosciuto, altrimenti CHIUSA.
       // In questo modo FleetPage.getCat mostra le chip corrette (5POSTI, BASE, APERTA…)
@@ -652,16 +669,20 @@ function getVehicleCategoria(v) {
 
 // ═══════════════════════════════════════════════════════════════════
 // SHARED UTILITY — normalizeAutoCategoria
-// Normalizza qualsiasi stringa categoria di un'auto alle 4 costanti
-// LISTINO valide: BASE | CABRIO | SUPERIOR | MEHARI.
-// Tutti i codici non-LISTINO (CHIUSA, 5POSTI, 6POSTI, 7POSTI,
-// APERTA, AUTOMATICA, SERIE2, STANDARD …) ricadono in BASE.
-// Usare ovunque si confronti la categoria di un auto con quella di
-// una voce LISTINO (calcAvailability, QuoteCard, catMatch…).
+// Mappa la stringa categoria di un'auto al codice LISTINO corretto.
+// Ogni categoria ha ora una voce LISTINO dedicata — niente più collasso
+// generico a BASE. Solo CHIUSA e STANDARD (alias storici di BASE) cadono in BASE.
 // ═══════════════════════════════════════════════════════════════════
-const AUTO_LISTINO_CATS = new Set(['BASE', 'CABRIO', 'SUPERIOR', 'MEHARI']);
+const AUTO_LISTINO_CATS = new Set([
+  'BASE', 'CABRIO', 'SUPERIOR', 'APERTA',
+  '5POSTI', '6POSTI', '7POSTI', 'SERIE2', 'AUTOMATICA',
+]);
 function normalizeAutoCategoria(cat) {
   const c = (cat || '').toUpperCase().trim();
+  // Alias storici → BASE (MEHARI non più qui: ora va in APERTA tramite getVehicleCategoria)
+  if (c === 'CHIUSA' || c === 'STANDARD') return 'BASE';
+  // MEHARI legacy: se arriva direttamente (dati vecchi non ancora passati per getVehicleCategoria)
+  if (c === 'MEHARI') return 'APERTA';
   return AUTO_LISTINO_CATS.has(c) ? c : 'BASE';
 }
 
@@ -865,7 +886,7 @@ function resolveVehicleDisplay(v) {
 // prima di distribuire l'app ad altri utenti.
 const APP_SESSION_KEY = 'edo:auth:v1';
 const APP_DEFAULT_USERS = [
-  { id: 'u-admin', username: 'admin', password: 'edo2024!', role: 'admin', nome: 'Amministratore' },
+  { id: 'u-admin', username: 'admin', password: 'Edobeta2026!', role: 'admin', nome: 'Amministratore' },
 ];
 
 // Contratti: nessuna simulazione. La lista pratiche si popola dal wizard reale.
@@ -2402,6 +2423,13 @@ function PrenoCard({ p, onEdit, onConvert, onDelete, onFoto, onContratto, onFirm
           {p.prezzo != null && <> · <strong style={{ color: 'var(--ink)' }}>€{p.prezzo}</strong></>}
           {p.acconto != null && p.acconto > 0 && <> · acconto €{p.acconto}</>}
           {p.fonte && <> · {PRENO_FONTI[p.fonte] || p.fonte}</>}
+          {/* Operatore che ha creato la pratica */}
+          {p.operatorName && (
+            <span style={{ marginLeft: 6, fontSize: 10, padding: '1px 5px', borderRadius: 3,
+              background: 'var(--surface-3)', color: 'var(--ink-2)', fontWeight: 600 }}>
+              👤 {p.operatorName}
+            </span>
+          )}
         </div>
         {/* Note cliente */}
         {(p.noteCliente || p.note) && (
@@ -3036,20 +3064,57 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
     }
   }
 
+  // Stato anti double-submit: disabilita il bottone finché il salvataggio non è completo
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  // Errori di validazione inline
+  const [formErrors, setFormErrors] = useState({});
+
+  function validate() {
+    const errors = {};
+    if (!f.clienteCognome?.trim() && !f.clienteNome?.trim()) {
+      errors.cliente = 'Inserisci almeno cognome o nome del cliente.';
+    }
+    if (!f.dal) {
+      errors.dal = 'La data di inizio è obbligatoria.';
+    }
+    if (!f.al) {
+      errors.al = 'La data di fine è obbligatoria.';
+    }
+    if (f.dal && f.al && f.al < f.dal) {
+      errors.al = 'La data di fine non può essere precedente a quella di inizio.';
+    }
+    if (f.prezzo !== '' && f.prezzo !== null && f.prezzo !== undefined) {
+      const p = parseFloat(f.prezzo);
+      if (isNaN(p) || p < 0) errors.prezzo = 'Il prezzo deve essere un numero positivo.';
+    }
+    return errors;
+  }
+
   function handleSubmit(e) {
     e.preventDefault();
-    if (!f.dal) return;
+    if (isSubmitting) return; // Anti double-submit
+
+    const errors = validate();
+    if (Object.keys(errors).length > 0) {
+      setFormErrors(errors);
+      // Scrolla al primo errore
+      setTimeout(() => document.querySelector('[data-form-error]')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
+      return;
+    }
+    setFormErrors({});
+
     // Blocco hard: targa specifica già occupata
     if (conflitto) {
       alert(`⚠️ Conflitto orario!\n\n${[conflitto.clienteCognome, conflitto.clienteNome].filter(Boolean).join(' ') || 'Cliente'} ha già prenotato questo mezzo\ndal ${formatDate(conflitto.dal)} al ${formatDate(conflitto.al)}.\n\nScegli un altro veicolo o modifica le date.`);
       return;
     }
-    // Blocco hard: categoria esaurita (nessun mezzo dello stesso tipo disponibile)
+    // Blocco hard: categoria esaurita
     if (!f.vehicleId && !vehicleSchedule && categoriaOverbooking && categoriaOverbooking.liberi <= 0) {
       alert(`⚠️ Categoria esaurita!\n\nTutti i ${categoriaOverbooking.totale} ${f.vehicleType} sono già prenotati dal ${formatDate(f.dal)} al ${formatDate(f.al)}.\n\nVerifica disponibilità in altre date o usa la combinazione automatica di più mezzi.`);
       return;
     }
-    // Prepara extra mezzi validi (solo quelli con tipo scelto)
+
+    // Prepara extra mezzi validi
     const extraValidi = extraMezzi
       .filter(m => m.vehicleType)
       .map(({ _id, _search, prezzo, ...m }) => ({
@@ -3057,16 +3122,21 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
         prezzo: prezzo !== '' ? parseFloat(prezzo) : null,
       }));
 
-    onSave({
-      ...f,
-      prezzo: f.prezzo !== '' ? parseFloat(f.prezzo) : null,
-      acconto: f.acconto !== '' ? parseFloat(f.acconto) : null,
-      metodoPagamento: f.metodoPagamento || 'contanti',
-      vehicleSchedule: vehicleSchedule || null,
-      sendToRentme: sendToRentme,
-      // extraMezzi presenti solo su nuove prenotazioni con più mezzi
-      extraMezzi: !initial && extraValidi.length > 0 ? extraValidi : undefined,
-    });
+    setIsSubmitting(true);
+    try {
+      onSave({
+        ...f,
+        prezzo: f.prezzo !== '' ? parseFloat(f.prezzo) : null,
+        acconto: f.acconto !== '' ? parseFloat(f.acconto) : null,
+        metodoPagamento: f.metodoPagamento || 'contanti',
+        vehicleSchedule: vehicleSchedule || null,
+        sendToRentme: sendToRentme,
+        extraMezzi: !initial && extraValidi.length > 0 ? extraValidi : undefined,
+      });
+    } finally {
+      // Re-abilita dopo 2s — se onSave non chiude il form (es. errore), l'utente può riprovare
+      setTimeout(() => setIsSubmitting(false), 2000);
+    }
   }
 
   // Autocomplete dalla rubrica clienti
@@ -3243,6 +3313,18 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
 
+          {/* ── Banner protezione per pratiche in corso o completate ── */}
+          {initial && (initial.stato === 'in_corso' || initial.stato === 'completata') && (
+            <div style={{ padding: '10px 14px', borderRadius: 6, fontSize: 12, fontWeight: 600,
+              background: initial.stato === 'completata' ? '#fff8e1' : '#fff3e0',
+              border: `1.5px solid ${initial.stato === 'completata' ? '#ffca28' : '#ef6c00'}`,
+              color: initial.stato === 'completata' ? '#7a5a00' : '#bf360c' }}>
+              {initial.stato === 'completata'
+                ? '⚠️ Stai modificando una pratica completata. Le modifiche non aggiornano i pagamenti già registrati in cassa.'
+                : '⚠️ Pratica in corso — mezzo attualmente fuori. Modifica solo in caso di necessità.'}
+            </div>
+          )}
+
           {/* ── Duplica da prenotazione esistente (solo nuove pratiche) ── */}
           {!initial && (
             <div style={{ position: 'relative' }}>
@@ -3329,14 +3411,25 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
             ) : null;
           })()}
           {/* Cliente */}
+          {formErrors.cliente && (
+            <div data-form-error style={{ color: '#c85050', fontSize: 12, padding: '6px 10px', background: '#fdf0f0', borderRadius: 5, border: '1px solid #f5c6c6' }}>
+              ⚠️ {formErrors.cliente}
+            </div>
+          )}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
             <div>
               <label style={lbl}>Cognome</label>
-              <input style={inp} value={f.clienteCognome} onChange={e => set('clienteCognome', e.target.value)} placeholder="Rossi" />
+              <input style={{ ...inp, ...(formErrors.cliente ? { borderColor: '#c85050' } : {}) }}
+                value={f.clienteCognome}
+                onChange={e => { set('clienteCognome', e.target.value); if (formErrors.cliente) setFormErrors(p => ({ ...p, cliente: '' })); }}
+                placeholder="Rossi" />
             </div>
             <div>
               <label style={lbl}>Nome</label>
-              <input style={inp} value={f.clienteNome} onChange={e => set('clienteNome', e.target.value)} placeholder="Mario" />
+              <input style={{ ...inp, ...(formErrors.cliente ? { borderColor: '#c85050' } : {}) }}
+                value={f.clienteNome}
+                onChange={e => { set('clienteNome', e.target.value); if (formErrors.cliente) setFormErrors(p => ({ ...p, cliente: '' })); }}
+                placeholder="Mario" />
             </div>
           </div>
           <div>
@@ -3501,11 +3594,21 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
             <div>
               <label style={lbl}>Dal *</label>
-              <input style={inp} type="date" required value={f.dal} onChange={e => set('dal', e.target.value)} />
+              <input
+                style={{ ...inp, ...(formErrors.dal ? { borderColor: '#c85050' } : {}) }}
+                type="date" required value={f.dal}
+                onChange={e => { set('dal', e.target.value); setFormErrors(p => ({ ...p, dal: '' })); }}
+              />
+              {formErrors.dal && <div data-form-error style={{ color: '#c85050', fontSize: 11, marginTop: 3 }}>⚠️ {formErrors.dal}</div>}
             </div>
             <div>
-              <label style={lbl}>Al</label>
-              <input style={inp} type="date" value={f.al} min={f.dal} onChange={e => set('al', e.target.value)} />
+              <label style={lbl}>Al *</label>
+              <input
+                style={{ ...inp, ...(formErrors.al ? { borderColor: '#c85050' } : {}) }}
+                type="date" value={f.al} min={f.dal}
+                onChange={e => { set('al', e.target.value); setFormErrors(p => ({ ...p, al: '' })); }}
+              />
+              {formErrors.al && <div data-form-error style={{ color: '#c85050', fontSize: 11, marginTop: 3 }}>⚠️ {formErrors.al}</div>}
             </div>
           </div>
 
@@ -3529,7 +3632,13 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
             <div>
               <label style={lbl}>Prezzo totale €</label>
-              <input style={inp} type="number" min="0" step="0.01" value={f.prezzo} onChange={e => set('prezzo', e.target.value)} placeholder="0.00" />
+              <input
+                style={{ ...inp, ...(formErrors.prezzo ? { borderColor: '#c85050' } : {}) }}
+                type="number" min="0" step="0.01" value={f.prezzo}
+                onChange={e => { set('prezzo', e.target.value); setFormErrors(p => ({ ...p, prezzo: '' })); }}
+                placeholder="0.00"
+              />
+              {formErrors.prezzo && <div data-form-error style={{ color: '#c85050', fontSize: 11, marginTop: 3 }}>⚠️ {formErrors.prezzo}</div>}
             </div>
             <div>
               <label style={lbl}>Acconto €</label>
@@ -3722,12 +3831,19 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
               Annulla
             </button>
             <button type="submit"
-              style={{ padding: '9px 18px', borderRadius: 5, border: 'none', background: 'var(--accent)', color: 'white', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
-              {initial
-                ? 'Salva modifiche'
-                : extraMezzi.length > 0
-                  ? `Crea ${extraMezzi.length + 1} prenotazioni collegate`
-                  : (sendToRentme && isNew && rentmeConnected ? 'Crea prenotazione + RentMe' : 'Crea prenotazione')}
+              disabled={isSubmitting}
+              style={{ padding: '9px 18px', borderRadius: 5, border: 'none',
+                background: isSubmitting ? 'var(--muted)' : 'var(--accent)',
+                color: 'white', fontWeight: 600,
+                cursor: isSubmitting ? 'not-allowed' : 'pointer', fontSize: 13,
+                opacity: isSubmitting ? 0.7 : 1, transition: 'all 0.2s' }}>
+              {isSubmitting
+                ? '⏳ Salvataggio…'
+                : initial
+                  ? 'Salva modifiche'
+                  : extraMezzi.length > 0
+                    ? `Crea ${extraMezzi.length + 1} prenotazioni collegate`
+                    : (sendToRentme && isNew && rentmeConnected ? 'Crea prenotazione + RentMe' : 'Crea prenotazione')}
             </button>
           </div>
 
@@ -3907,6 +4023,7 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rent
       createdAt: now,
       updatedAt: now,
       operatorId: operator?.id || '',
+      operatorName: operator?.nome || '',  // nome leggibile per la card
       clienteId: null,
       contractId: null,
     };
@@ -3977,7 +4094,11 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rent
 
   function updatePreno(data) {
     const { sendToRentme, ...cleanData } = data;
-    const updatedRec = { ...cleanData, updatedAt: new Date().toISOString() };
+    const updatedRec = {
+      ...cleanData,
+      updatedAt: new Date().toISOString(),
+      updatedByName: operator?.nome || '',  // chi ha fatto l'ultima modifica
+    };
     setPrenotazioni(ps => ps.map(p => p.id === form.id ? { ...p, ...updatedRec } : p));
     setForm(null);
     pushToast && pushToast({ tone: 'success', title: 'Prenotazione aggiornata', message: `${data.clienteCognome || ''} ${data.clienteNome || ''}`.trim() });
@@ -5604,29 +5725,43 @@ function isAugust(dateStr) {
 
 // ── Listino prezzi (da edonoleggio.com) ─────────────────────────────
 const LISTINO = [
-  { id: 'auto_chiusa',     nome: 'Auto chiusa',          tipo: 'auto',    categoria: 'BASE',
+  // ── Auto ────────────────────────────────────────────────────────────────
+  { id: 'auto_chiusa',     nome: 'Auto chiusa (Base)',     tipo: 'auto',    categoria: 'BASE',
     bassa:{daily:30,weekly:200}, media:{daily:30,weekly:200}, alta:{daily:30,weekly:300} },
-  { id: 'auto_cabrio',     nome: 'Auto cabrio',           tipo: 'auto',    categoria: 'CABRIO',
-    bassa:{daily:45,weekly:250}, media:{daily:45,weekly:270}, alta:{daily:45,weekly:370} },
-  { id: 'auto_superior',   nome: 'Auto superior',         tipo: 'auto',    categoria: 'SUPERIOR',
+  { id: 'auto_5posti',     nome: 'Auto 5 posti',           tipo: 'auto',    categoria: '5POSTI',
+    bassa:{daily:30,weekly:200}, media:{daily:30,weekly:200}, alta:{daily:30,weekly:300} },
+  { id: 'auto_serie2',     nome: 'Auto Serie 2',           tipo: 'auto',    categoria: 'SERIE2',
+    bassa:{daily:30,weekly:200}, media:{daily:30,weekly:200}, alta:{daily:30,weekly:300} },
+  { id: 'auto_6posti',     nome: 'Auto 6 posti',           tipo: 'auto',    categoria: '6POSTI',
     bassa:{daily:35,weekly:250}, media:{daily:35,weekly:250}, alta:{daily:35,weekly:350} },
-  { id: 'mehari',          nome: 'Mehari',                tipo: 'auto',    categoria: 'MEHARI',
+  { id: 'auto_7posti',     nome: 'Auto 7 posti',           tipo: 'auto',    categoria: '7POSTI',
+    bassa:{daily:35,weekly:250}, media:{daily:35,weekly:250}, alta:{daily:35,weekly:350} },
+  { id: 'auto_automatica', nome: 'Auto automatica',        tipo: 'auto',    categoria: 'AUTOMATICA',
+    bassa:{daily:35,weekly:250}, media:{daily:35,weekly:250}, alta:{daily:35,weekly:350} },
+  { id: 'auto_aperta',     nome: 'Auto aperta',            tipo: 'auto',    categoria: 'APERTA',
     bassa:{daily:40,weekly:220}, media:{daily:40,weekly:250}, alta:{daily:40,weekly:350} },
-  { id: 'scooter_50',      nome: 'Scooter 50 cc',         tipo: 'scooter', categoria: 'SCOOTER50',
+  { id: 'auto_cabrio',     nome: 'Auto cabrio',            tipo: 'auto',    categoria: 'CABRIO',
+    bassa:{daily:45,weekly:250}, media:{daily:45,weekly:270}, alta:{daily:45,weekly:370} },
+  { id: 'auto_superior',   nome: 'Auto superior',          tipo: 'auto',    categoria: 'SUPERIOR',
+    bassa:{daily:35,weekly:250}, media:{daily:35,weekly:250}, alta:{daily:35,weekly:350} },
+  // ── Scooter ─────────────────────────────────────────────────────────────
+  { id: 'scooter_50',      nome: 'Scooter 50 cc',          tipo: 'scooter', categoria: 'SCOOTER50',
     bassa:{daily:55,weekly:120}, media:{daily:55,weekly:130}, alta:{daily:55,weekly:180} },
-  { id: 'scooter_125',     nome: 'Scooter 125 cc',        tipo: 'scooter', categoria: 'STANDARD',
+  { id: 'scooter_125',     nome: 'Scooter 125 cc',         tipo: 'scooter', categoria: 'STANDARD',
     bassa:{daily:36,weekly:140}, media:{daily:36,weekly:150}, alta:{daily:36,weekly:230} },
-  { id: 'scooter_125_sup', nome: 'Scooter 125 superior',  tipo: 'scooter', categoria: 'SUPERIOR',
+  { id: 'scooter_125_sup', nome: 'Scooter 125 superior',   tipo: 'scooter', categoria: 'SUPERIOR',
     bassa:{daily:65,weekly:175}, media:{daily:65,weekly:175}, alta:{daily:65,weekly:250} },
-  { id: 'quad_base',       nome: 'Quad base 50 cc',       tipo: 'quad',    categoria: 'QUAD50',
+  // ── Quad ────────────────────────────────────────────────────────────────
+  { id: 'quad_base',       nome: 'Quad base 50 cc',        tipo: 'quad',    categoria: 'QUAD50',
     bassa:{daily:35,weekly:180}, media:{daily:35,weekly:180}, alta:{daily:35,weekly:240} },
-  { id: 'quad_150',        nome: 'Quad 150 cc',           tipo: 'quad',    categoria: 'QUAD150',
+  { id: 'quad_150',        nome: 'Quad 150 cc',            tipo: 'quad',    categoria: 'QUAD150',
     bassa:{daily:40,weekly:200}, media:{daily:40,weekly:210}, alta:{daily:40,weekly:280} },
-  { id: 'quad_300',        nome: 'Quad 300 cc',           tipo: 'quad',    categoria: 'QUAD300',
+  { id: 'quad_300',        nome: 'Quad 300 cc',            tipo: 'quad',    categoria: 'QUAD300',
     bassa:{daily:70,weekly:240}, media:{daily:70,weekly:260}, alta:{daily:70,weekly:340} },
-  { id: 'ebike',           nome: 'E-bike',                tipo: 'ebike',
+  // ── E-bike e Bici ────────────────────────────────────────────────────────
+  { id: 'ebike',           nome: 'E-bike',                 tipo: 'ebike',
     bassa:{daily:20,weekly:80},  media:{daily:20,weekly:90},  alta:{daily:20,weekly:120} },
-  { id: 'bici_muscolare',  nome: 'Bici muscolare',        tipo: 'bici',
+  { id: 'bici_muscolare',  nome: 'Bici muscolare',         tipo: 'bici',
     bassa:{daily:25,weekly:45},  media:{daily:25,weekly:50},  alta:{daily:25,weekly:70}  },
 ];
 
@@ -6305,13 +6440,21 @@ function ListinoTable({ filter }) {
 
 // ── PreventiviPage ───────────────────────────────────────────────────
 function PreventiviPage({ setPage, setPrenotazioniPrefill, listino: listinoProps, fleet, rentmeVehicles, prenotazioni, pushToast, fermiFlotta }) {
-  // Merge: recupera 'categoria' dalla costante LISTINO se mancante nel dato persistito
-  // Aggiorna sempre tipo e categoria dalla costante LISTINO per evitare valori obsoleti in localStorage
-  // (es. bici_muscolare.tipo era 'ebike' nelle versioni precedenti a v0.40.x)
-  const listinoCats = (listinoProps || LISTINO).map(cat => {
-    const master = LISTINO.find(l => l.id === cat.id);
-    if (!master) return cat;
-    return { ...cat, tipo: master.tipo, categoria: master.categoria };
+  // Merge: parte sempre dalle categorie MASTER (tutte e 11) per garantire
+  // che nessuna categoria sparisca se il listino persistito è incompleto.
+  // I prezzi personalizzati dall'utente (bassa/media/alta) sovrascrivono il master.
+  // tipo e categoria vengono SEMPRE presi dal master per evitare valori obsoleti.
+  const userPriceMap = Object.fromEntries((listinoProps || []).map(c => [c.id, c]));
+  const listinoCats = LISTINO.map(master => {
+    const saved = userPriceMap[master.id];
+    if (!saved) return master; // categoria non ancora salvata → usa il master
+    // Prezzi utente prevalgono, nome/tipo/categoria sempre dal master
+    return {
+      ...saved,
+      nome:      master.nome,
+      tipo:      master.tipo,
+      categoria: master.categoria,
+    };
   });
   const today = todayISO();
   const [dal, setDal] = useState(today);
@@ -8630,7 +8773,8 @@ function calcAvailability(dal, al, rentmeVehicles, prenotazioni, fleet, fermiFlo
     allVehicles.forEach(v => {
       const tipo = (v.tipo || '').toLowerCase();
       let cat = getVehicleCategoria(v) || 'BASE';
-      // Normalizza tutte le categorie non-LISTINO a BASE (CHIUSA, 5POSTI, 6POSTI, 7POSTI, APERTA, AUTOMATICA, SERIE2…)
+      // normalizeAutoCategoria: mantiene categorie LISTINO distinte (5POSTI, 6POSTI, 7POSTI, SERIE2, AUTOMATICA, APERTA…)
+      // e mappa solo gli alias legacy (CHIUSA, STANDARD) a BASE.
       if (tipo === 'auto') cat = normalizeAutoCategoria(cat);
       const key = `${tipo}|${cat}`;
       if (!byKey[key]) {
@@ -14505,6 +14649,46 @@ export default function App() {
   // Push notifications: avvisa per rientri in ritardo
   useRitardiNotifications(prenotazioni);
 
+  // ── Auto-pull multi-device ────────────────────────────────────────────────
+  // Con più tablet attivi, ogni dispositivo deve aggiornarsi dal backend
+  // per vedere le prenotazioni create dagli altri operatori.
+  // Pull ogni 90 secondi per prenotazioni + flotta (i dati più critici).
+  // La sync manuale ("Sincronizza ora") rimane disponibile per aggiornamento immediato.
+  const [lastAutoPull, setLastAutoPull] = useState(null);
+  useEffect(() => {
+    if (!apiBaseUrl) return;
+    const PULL_INTERVAL = 90_000; // 90 secondi
+    const pull = async () => {
+      try {
+        // Re-fetch prenotazioni e flotta silenziosamente
+        await Promise.all([prenoSync.sync(), fleetSync.sync()]);
+        setLastAutoPull(new Date());
+      } catch { /* silente — l'utente vede già lo stato offline */ }
+    };
+    const id = setInterval(pull, PULL_INTERVAL);
+    return () => clearInterval(id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [apiBaseUrl]); // dipendenza stabile — sync refs non cambiano
+
+  // ── Session timeout 8 ore ────────────────────────────────────────────────
+  // Dopo 8h di inattività (nessun click/touch) la sessione scade e l'app
+  // torna al login. Protegge tablet lasciati incustoditi al banco.
+  useEffect(() => {
+    if (!sessionUser) return;
+    const TIMEOUT_MS = 8 * 60 * 60 * 1000; // 8 ore
+    let timer = setTimeout(handleLogout, TIMEOUT_MS);
+    const resetTimer = () => {
+      clearTimeout(timer);
+      timer = setTimeout(handleLogout, TIMEOUT_MS);
+    };
+    const events = ['mousedown', 'touchstart', 'keydown', 'scroll'];
+    events.forEach(ev => document.addEventListener(ev, resetTimer, { passive: true }));
+    return () => {
+      clearTimeout(timer);
+      events.forEach(ev => document.removeEventListener(ev, resetTimer));
+    };
+  }, [sessionUser, handleLogout]);
+
   // Ricerca globale: Cmd+K / Ctrl+K apre il modal
   useEffect(() => {
     function onKey(e) {
@@ -14816,6 +15000,18 @@ export default function App() {
     reader.onload = (ev) => {
       try {
         const data = JSON.parse(ev.target.result);
+
+        // Validazione struttura minima: deve avere almeno una delle chiavi critiche
+        const hasData = data.prenotazioni || data.fleet || data.customers || data.cassa;
+        if (!hasData || typeof data !== 'object') {
+          pushToast?.({ tone: 'error', title: 'Backup non valido', message: 'Il file non contiene dati Pratica riconoscibili.' });
+          return;
+        }
+        // Controllo antiomalia: se prenotazioni > 5000 probabilmente è un file sbagliato
+        if (Array.isArray(data.prenotazioni) && data.prenotazioni.length > 5000) {
+          if (!window.confirm(`⚠️ Il backup contiene ${data.prenotazioni.length} prenotazioni. È normale?`)) return;
+        }
+
         const counts = [
           data.prenotazioni?.length && `${data.prenotazioni.length} prenotazioni`,
           data.fleet?.length        && `${data.fleet.length} veicoli`,
@@ -15275,11 +15471,19 @@ export default function App() {
   }, [localContracts.length, resetContracts]);
 
   const requestResetEverything = useCallback(() => {
+    // Doppia conferma: prima modal, poi digitazione "RESET"
+    const parola = window.prompt(
+      '⚠️ OPERAZIONE IRREVERSIBILE\n\nDigita esattamente la parola RESET (in maiuscolo) per confermare il reset totale di tutti i dati.\n\nTutte le prenotazioni, clienti e contratti verranno cancellati.'
+    );
+    if (parola !== 'RESET') {
+      if (parola !== null) alert('Testo non corretto. Reset annullato.');
+      return;
+    }
     setModal({
       type: 'confirm',
-      title: 'Reset totale ai dati iniziali?',
-      message: <>Operazione di <strong>emergenza</strong>: cancella clienti e contratti dell'app e dal backend, e ripristina flotta/strutture/operatori ai valori reali iniziali (193 veicoli, 22 strutture, solo Alessandra Raptis come operatore). Usare solo se i dati sono compromessi e si vuole ripartire da zero pulito.</>,
-      confirmLabel: 'Conferma reset totale',
+      title: '⚠️ Reset totale ai dati iniziali?',
+      message: <>Ultima conferma: questa operazione è <strong>irreversibile</strong>. Cancella clienti, prenotazioni e contratti. Ripristina flotta/strutture/operatori ai valori iniziali.</>,
+      confirmLabel: '🗑️ Sì, resetta tutto',
       onConfirm: resetEverything,
     });
   }, [resetEverything]);
@@ -15398,6 +15602,8 @@ export default function App() {
             onLogout={handleLogout}
             darkMode={darkMode} setDarkMode={setDarkMode}
             kioskMode={kioskMode} setKioskMode={setKioskMode}
+            lastAutoPull={lastAutoPull}
+            onSyncNow={() => syncAll()}
           />
           <div className="px-8 py-6 max-w-[1280px] mx-auto">
             {/* ErrorBoundary con key={page}: se una pagina crasha, cambiando pagina
@@ -15899,12 +16105,14 @@ function Sidebar({ page, setPage, onNew, online, agency, rentmeSyncStatus, rentm
 // ═══════════════════════════════════════════════════════════════════
 // TOPBAR
 // ═══════════════════════════════════════════════════════════════════
-function Topbar({ online, setOnline, pendingQueue, operator, admin, setAdmin, onScanPlate, onShiftChange, agency, onOpenSearch, sessionUser, onLogout, darkMode, setDarkMode, kioskMode, setKioskMode }) {
+function Topbar({ online, setOnline, pendingQueue, operator, admin, setAdmin, onScanPlate, onShiftChange, agency, onOpenSearch, sessionUser, onLogout, darkMode, setDarkMode, kioskMode, setKioskMode, lastAutoPull, onSyncNow }) {
   // Admin password modal
   const [showAdminPwd, setShowAdminPwd] = useState(false);
   const [adminPwdInput, setAdminPwdInput] = useState('');
   const [adminPwdError, setAdminPwdError] = useState(false);
-  const ADMIN_PASSWORD = 'edonoleggio';
+  // Password admin letta da localStorage (impostata dall'operatore admin via Impostazioni)
+  // Fallback a 'edo2024!' se non ancora configurata — da cambiare prima del deploy!
+  const ADMIN_PASSWORD = (() => { try { const u = JSON.parse(localStorage.getItem('edo:v1:appUsers')||'[]'); return u.find(u=>u.role==='admin')?.password||'edo2024!'; } catch { return 'edo2024!'; } })();
 
   function handleAdminToggle() {
     if (admin) {
@@ -15952,6 +16160,19 @@ function Topbar({ online, setOnline, pendingQueue, operator, admin, setAdmin, on
         <kbd style={{ fontSize: 9, padding: '2px 6px', border: '1px solid var(--border)', borderRadius: 4,
           color: 'var(--muted)', background: 'var(--bg)' }}>⌘K</kbd>
       </button>
+
+      {/* Indicatore ultimo sync + bottone Sincronizza ora */}
+      {lastAutoPull && (
+        <button
+          type="button"
+          onClick={onSyncNow}
+          title="Sincronizza ora con il server per vedere le modifiche degli altri operatori"
+          style={{ fontSize: 10, color: 'var(--muted)', background: 'none', border: '1px solid var(--border)',
+            borderRadius: 5, padding: '3px 8px', cursor: 'pointer', whiteSpace: 'nowrap' }}
+        >
+          🔄 {Math.round((Date.now() - lastAutoPull.getTime()) / 60000)} min fa
+        </button>
+      )}
 
       <button
         type="button"
