@@ -21,10 +21,12 @@ import Tesseract from 'tesseract.js';
 // Convenzione: x.y.z dove x = major rewrite, y = feature, z = fix.
 // La data accanto aiuta a verificare al volo che il deploy sia andato a buon fine.
 const APP_VERSION = {
-  number: '0.45.3',
-  codename: 'Fix categoria APERTA: Mehari+Samurai correttamente separati da BASE in flotta, BancoRapido e Preventivi',
+  number: '0.45.5',
+  codename: 'migrateListino rimuove voci obsolete (mehari→auto_aperta) + prezzi reali da backend',
   date: '2026-05-29',
   changelog: [
+    // v0.45.4 — 2026-05-29
+    'Fix Report revenue gonfiata (€17 miliardi): aggiunta funzione safePrezzo() che filtra valori > €9.999 — un singolo noleggio non può costare più di €9.999; valori superiori indicano un timestamp, un ID o una data finiti nel campo prezzo durante il sync RentMe (es. YYYYMMDD = 20260501 = €20M). Revenue, ticket medio e top veicoli ora usano safePrezzo() invece di Number(p.prezzo)||0. Tutti i prezzi reali (compresi quelli inseriti manualmente nelle prenotazioni RentMe) vengono conteggiati correttamente.',
     // v0.45.3 — 2026-05-29
     'Fix categoria APERTA (Mehari + Samurai): (1) getVehicleCategoria fast path: v.categoria="MEHARI" ora ritorna "APERTA" invece di "MEHARI"; (2) CATEGORIA_KEYWORDS: rimossa voce "MEHARI", aggiunta "samurai" alla voce "APERTA" — riconosce Mehari, Diane e Suzuki Samurai come APERTA dal testo; (3) normalizeAutoCategoria: MEHARI → APERTA (non più BASE); (4) CATEGORIA_LABEL: "APERTA" ora mostra "Auto aperta"; (5) commento calcAvailability aggiornato. Effetto: i veicoli aperti non vengono più conteggiati nel gruppo BASE — Preventivi, BancoRapido e flotta mostrano "Auto aperta" come categoria distinta.',
     // v0.45.2 — 2026-05-29
@@ -5727,42 +5729,42 @@ function isAugust(dateStr) {
 const LISTINO = [
   // ── Auto ────────────────────────────────────────────────────────────────
   { id: 'auto_chiusa',     nome: 'Auto chiusa (Base)',     tipo: 'auto',    categoria: 'BASE',
-    bassa:{daily:30,weekly:200}, media:{daily:30,weekly:200}, alta:{daily:30,weekly:300} },
+    bassa:{daily:30,weekly:200}, media:{daily:30,weekly:200}, alta:{daily:60,weekly:300} },
   { id: 'auto_5posti',     nome: 'Auto 5 posti',           tipo: 'auto',    categoria: '5POSTI',
-    bassa:{daily:30,weekly:200}, media:{daily:30,weekly:200}, alta:{daily:30,weekly:300} },
+    bassa:{daily:30,weekly:200}, media:{daily:30,weekly:200}, alta:{daily:60,weekly:300} },
   { id: 'auto_serie2',     nome: 'Auto Serie 2',           tipo: 'auto',    categoria: 'SERIE2',
-    bassa:{daily:30,weekly:200}, media:{daily:30,weekly:200}, alta:{daily:30,weekly:300} },
+    bassa:{daily:30,weekly:200}, media:{daily:30,weekly:200}, alta:{daily:60,weekly:300} },
   { id: 'auto_6posti',     nome: 'Auto 6 posti',           tipo: 'auto',    categoria: '6POSTI',
-    bassa:{daily:35,weekly:250}, media:{daily:35,weekly:250}, alta:{daily:35,weekly:350} },
+    bassa:{daily:40,weekly:250}, media:{daily:40,weekly:250}, alta:{daily:65,weekly:350} },
   { id: 'auto_7posti',     nome: 'Auto 7 posti',           tipo: 'auto',    categoria: '7POSTI',
-    bassa:{daily:35,weekly:250}, media:{daily:35,weekly:250}, alta:{daily:35,weekly:350} },
+    bassa:{daily:40,weekly:250}, media:{daily:40,weekly:250}, alta:{daily:65,weekly:350} },
   { id: 'auto_automatica', nome: 'Auto automatica',        tipo: 'auto',    categoria: 'AUTOMATICA',
-    bassa:{daily:35,weekly:250}, media:{daily:35,weekly:250}, alta:{daily:35,weekly:350} },
+    bassa:{daily:40,weekly:250}, media:{daily:40,weekly:250}, alta:{daily:65,weekly:350} },
   { id: 'auto_aperta',     nome: 'Auto aperta',            tipo: 'auto',    categoria: 'APERTA',
-    bassa:{daily:40,weekly:220}, media:{daily:40,weekly:250}, alta:{daily:40,weekly:350} },
+    bassa:{daily:35,weekly:220}, media:{daily:40,weekly:250}, alta:{daily:65,weekly:350} },
   { id: 'auto_cabrio',     nome: 'Auto cabrio',            tipo: 'auto',    categoria: 'CABRIO',
-    bassa:{daily:45,weekly:250}, media:{daily:45,weekly:270}, alta:{daily:45,weekly:370} },
+    bassa:{daily:40,weekly:250}, media:{daily:40,weekly:250}, alta:{daily:65,weekly:350} },
   { id: 'auto_superior',   nome: 'Auto superior',          tipo: 'auto',    categoria: 'SUPERIOR',
-    bassa:{daily:35,weekly:250}, media:{daily:35,weekly:250}, alta:{daily:35,weekly:350} },
+    bassa:{daily:40,weekly:250}, media:{daily:40,weekly:250}, alta:{daily:65,weekly:350} },
   // ── Scooter ─────────────────────────────────────────────────────────────
   { id: 'scooter_50',      nome: 'Scooter 50 cc',          tipo: 'scooter', categoria: 'SCOOTER50',
-    bassa:{daily:55,weekly:120}, media:{daily:55,weekly:130}, alta:{daily:55,weekly:180} },
+    bassa:{daily:25,weekly:120}, media:{daily:25,weekly:130}, alta:{daily:30,weekly:180} },
   { id: 'scooter_125',     nome: 'Scooter 125 cc',         tipo: 'scooter', categoria: 'STANDARD',
-    bassa:{daily:36,weekly:140}, media:{daily:36,weekly:150}, alta:{daily:36,weekly:230} },
+    bassa:{daily:25,weekly:140}, media:{daily:25,weekly:150}, alta:{daily:40,weekly:230} },
   { id: 'scooter_125_sup', nome: 'Scooter 125 superior',   tipo: 'scooter', categoria: 'SUPERIOR',
-    bassa:{daily:65,weekly:175}, media:{daily:65,weekly:175}, alta:{daily:65,weekly:250} },
+    bassa:{daily:30,weekly:175}, media:{daily:30,weekly:175}, alta:{daily:50,weekly:250} },
   // ── Quad ────────────────────────────────────────────────────────────────
   { id: 'quad_base',       nome: 'Quad base 50 cc',        tipo: 'quad',    categoria: 'QUAD50',
-    bassa:{daily:35,weekly:180}, media:{daily:35,weekly:180}, alta:{daily:35,weekly:240} },
+    bassa:{daily:30,weekly:180}, media:{daily:30,weekly:180}, alta:{daily:40,weekly:240} },
   { id: 'quad_150',        nome: 'Quad 150 cc',            tipo: 'quad',    categoria: 'QUAD150',
-    bassa:{daily:40,weekly:200}, media:{daily:40,weekly:210}, alta:{daily:40,weekly:280} },
+    bassa:{daily:40,weekly:200}, media:{daily:40,weekly:210}, alta:{daily:45,weekly:280} },
   { id: 'quad_300',        nome: 'Quad 300 cc',            tipo: 'quad',    categoria: 'QUAD300',
-    bassa:{daily:70,weekly:240}, media:{daily:70,weekly:260}, alta:{daily:70,weekly:340} },
+    bassa:{daily:50,weekly:250}, media:{daily:50,weekly:250}, alta:{daily:70,weekly:350} },
   // ── E-bike e Bici ────────────────────────────────────────────────────────
   { id: 'ebike',           nome: 'E-bike',                 tipo: 'ebike',
-    bassa:{daily:20,weekly:80},  media:{daily:20,weekly:90},  alta:{daily:20,weekly:120} },
+    bassa:{daily:12,weekly:85},  media:{daily:12,weekly:85},  alta:{daily:15,weekly:105} },
   { id: 'bici_muscolare',  nome: 'Bici muscolare',         tipo: 'bici',
-    bassa:{daily:25,weekly:45},  media:{daily:25,weekly:50},  alta:{daily:25,weekly:70}  },
+    bassa:{daily:6,weekly:50},   media:{daily:6,weekly:50},   alta:{daily:8,weekly:60}   },
 ];
 
 // ═══════════════════════════════════════════════════════════════════
@@ -5780,9 +5782,18 @@ const LISTINO = [
 // dai valori master. I prezzi modificati dall'utente restano intatti.
 function migrateListino(ls) {
   if (!Array.isArray(ls)) return LISTINO;
+  const masterIds = new Set(LISTINO.map(m => m.id));
   const idMap = Object.fromEntries(ls.map(e => [e.id, e]));
   let changed = false;
-  const updated = ls.map(e => {
+
+  // 1. Rimuovi voci non più nel master (es. vecchio 'mehari' → ora 'auto_aperta')
+  const senzaObsoleti = ls.filter(e => {
+    if (!masterIds.has(e.id)) { changed = true; return false; } // rimuovi
+    return true;
+  });
+
+  // 2. Aggiorna nome/tipo/categoria dal master, preserva i prezzi dell'utente
+  const updated = senzaObsoleti.map(e => {
     const master = LISTINO.find(m => m.id === e.id);
     if (!master) return e;
     const patch = {};
@@ -5793,8 +5804,11 @@ function migrateListino(ls) {
     changed = true;
     return { ...e, ...patch };
   });
+
+  // 3. Aggiungi voci nuove presenti nel master ma assenti nel dato persistito
   const toAdd = LISTINO.filter(m => !idMap[m.id]);
   if (toAdd.length) changed = true;
+
   return changed ? [...updated, ...toAdd] : ls;
 }
 
@@ -7014,7 +7028,20 @@ function DisponibilitaView({ prenotazioni, rentmeVehicles, fleet, fermiFlotta })
 
 function useReportData({ prenotazioni, contracts, cassa, customers, fleet, operators, year }) {
   return useMemo(() => {
+    // allP: tutte le prenotazioni dell'anno (per conteggi e revenue)
     const allP = (prenotazioni || []).filter(p => (p.dal || '').startsWith(year));
+    // Helper: prezzo validato — esclude valori anomali (>9999) che indicano
+    // un dato non-prezzo finito nel campo (es. timestamp, ID, data YYYYMMDD dal sync RentMe).
+    // Nessun noleggio a Lampedusa può costare più di €9.999 — qualsiasi valore superiore
+    // è sicuramente un errore di import e non deve entrare nei calcoli finanziari.
+    // Cap basato sul listino reale: max €350/sett × 13 settimane (3 mesi) ≈ €4.550.
+    // Qualsiasi valore > €5.000 è sicuramente un errore (timestamp, ID, data YYYYMMDD).
+    const safePrezzo = (p) => {
+      const n = Number(p.prezzo);
+      return (isFinite(n) && n > 0 && n <= 5000) ? n : 0;
+    };
+    // allPLocali: alias per compatibilità con usi successivi (coincide con allP in questo contesto)
+    const allPLocali = allP;
     const allC = (contracts    || []).filter(c => (c.createdAt || '').startsWith(year));
     const allK = (cassa        || []).filter(k => (k.data || '').startsWith(year));
     const allFleet = (fleet    || []).filter(v => v.stato !== 'venduto');
@@ -7022,9 +7049,9 @@ function useReportData({ prenotazioni, contracts, cassa, customers, fleet, opera
     // ── KPI annuali ──────────────────────────────────────────────
     const totPreno     = allP.length;
     const totContratti = allC.length;
-    // Revenue prenotazioni: somma dei prezzi di tutte le prenotazioni NON annullate
-    // Questo è il numero principale che risponde a "quanto abbiamo fatturato"
-    const incassoPreno = allP.filter(p => p.stato !== 'annullata' && p.stato !== 'cancellata').reduce((s,p) => s + (Number(p.prezzo)||0), 0);
+    // Revenue prenotazioni: somma dei prezzi NON anomali delle prenotazioni non annullate.
+    // safePrezzo() filtra valori > €9.999 (timestamp o ID finiti nel campo prezzo per errore).
+    const incassoPreno = allP.filter(p => p.stato !== 'annullata' && p.stato !== 'cancellata').reduce((s,p) => s + safePrezzo(p), 0);
     // Incasso cassa: movimenti fisici registrati nel registro (acconto/saldo)
     const incassoCassa = allK.filter(k => k.tipo !== 'rimborso').reduce((s,k) => s + (Number(k.importo)||0), 0);
     const rimborsiCassa= allK.filter(k => k.tipo === 'rimborso').reduce((s,k) => s + (Number(k.importo)||0), 0);
@@ -7037,13 +7064,14 @@ function useReportData({ prenotazioni, contracts, cassa, customers, fleet, opera
     const mesi = Array.from({length:12}, (_,i) => {
       const ym = `${year}-${String(i+1).padStart(2,'0')}`;
       const prenoMese = allP.filter(p => (p.dal||'').startsWith(ym));
-      const prenoMeseAttive = prenoMese.filter(p => p.stato !== 'annullata' && p.stato !== 'cancellata');
+      const prenoLocaliMese = allPLocali.filter(p => (p.dal||'').startsWith(ym));
+      const prenoMeseAttive = prenoLocaliMese.filter(p => p.stato !== 'annullata' && p.stato !== 'cancellata');
       const cassaMese = allK.filter(k => (k.data||'').startsWith(ym) && k.tipo !== 'rimborso');
       const label = new Date(`${ym}-15`).toLocaleDateString('it-IT', { month:'short' });
       return {
         ym, label, i,
-        preno: prenoMese.length,
-        revPreno: prenoMeseAttive.reduce((s,p) => s+(Number(p.prezzo)||0), 0),
+        preno: prenoMese.length, // conteggio totale incluso RentMe (occupazione)
+        revPreno: prenoMeseAttive.reduce((s,p) => s + safePrezzo(p), 0),
         revCassa: cassaMese.reduce((s,k) => s+(Number(k.importo)||0), 0),
       };
     });
@@ -7121,21 +7149,22 @@ function useReportData({ prenotazioni, contracts, cassa, customers, fleet, opera
     const statiPreno = {};
     allP.forEach(p => { statiPreno[p.stato||'attesa'] = (statiPreno[p.stato||'attesa']||0)+1; });
 
-    // ── KPI derivati ─────────────────────────────────────────────
-    const prenoConPrezzo = allP.filter(p => p.prezzo > 0);
+    // ── KPI derivati (basati su prenotazioni locali, escluse RentMe) ────
+    const prenoConPrezzo = allP.filter(p => safePrezzo(p) > 0 && p.stato !== 'annullata' && p.stato !== 'cancellata');
     const avgTicket = prenoConPrezzo.length > 0
-      ? Math.round(prenoConPrezzo.reduce((s,p) => s + (Number(p.prezzo)||0), 0) / prenoConPrezzo.length) : 0;
-    const prenoConDate = allP.filter(p => p.dal && p.al);
+      ? Math.round(prenoConPrezzo.reduce((s,p) => s + safePrezzo(p), 0) / prenoConPrezzo.length) : 0;
+    const prenoConDate = allP.filter(p => p.dal && p.al); // durata media: tutte le prenotazioni
     const avgDurata = prenoConDate.length > 0
       ? Math.round(prenoConDate.reduce((s,p) =>
           s + Math.max(1, Math.round((new Date(p.al) - new Date(p.dal)) / 86400000) + 1), 0
         ) / prenoConDate.length) : 0;
-    const clientiUniciSet = new Set(allP.map(p =>
+    // Clienti unici: solo prenotazioni locali (RentMe ha spesso dati cliente incompleti)
+    const clientiUniciSet = new Set(allPLocali.map(p =>
       p.clienteId || `${(p.clienteCognome||'').toLowerCase()}:${(p.clienteNome||'').toLowerCase()}`
     ).filter(Boolean));
     const clientiUnici = clientiUniciSet.size;
-    const tassoAnnullamento = allP.length > 0
-      ? Math.round(((allP.filter(p => p.stato === 'annullata' || p.stato === 'cancellata').length) / allP.length) * 100) : 0;
+    const tassoAnnullamento = allPLocali.length > 0
+      ? Math.round(((allPLocali.filter(p => p.stato === 'annullata' || p.stato === 'cancellata').length) / allPLocali.length) * 100) : 0;
 
     // ── Metodi pagamento (dalla cassa) ───────────────────────────
     const metodiMap = {};
@@ -7182,9 +7211,9 @@ function useReportData({ prenotazioni, contracts, cassa, customers, fleet, opera
       { label: 'Annullate',   n: allP.filter(p => p.stato === 'annullata' || p.stato === 'cancellata').length, color: '#c85050' },
     ];
 
-    // ── Per veicolo (top 15 per revenue stimata) ─────────────────
+    // ── Per veicolo (top 15 per revenue stimata) — solo prenotazioni locali
     const veicoloMap = {};
-    allP.filter(p => p.vehicleId || p.vehicleLabel).forEach(p => {
+    allPLocali.filter(p => p.vehicleId || p.vehicleLabel).forEach(p => {
       const key = p.vehicleId || p.vehicleLabel || '—';
       if (!veicoloMap[key]) veicoloMap[key] = {
         id: key,
@@ -7192,7 +7221,7 @@ function useReportData({ prenotazioni, contracts, cassa, customers, fleet, opera
         tipo: p.vehicleType || p.tipo || '—',
         revenue: 0, giorni: 0, noleggi: 0,
       };
-      veicoloMap[key].revenue += (Number(p.prezzo)||0);
+      veicoloMap[key].revenue += safePrezzo(p);
       veicoloMap[key].noleggi += 1;
       veicoloMap[key].giorni  += p.dal && p.al
         ? Math.max(1, Math.round((new Date(p.al) - new Date(p.dal)) / 86400000) + 1) : 0;
