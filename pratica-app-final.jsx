@@ -21,10 +21,31 @@ import Tesseract from 'tesseract.js';
 // Convenzione: x.y.z dove x = major rewrite, y = feature, z = fix.
 // La data accanto aiuta a verificare al volo che il deploy sia andato a buon fine.
 const APP_VERSION = {
-  number: '0.43.25',
-  codename: 'categoriaOverbooking: fermiFlotta + targa normalization',
+  number: '0.44.4',
+  codename: 'Vista gruppo + loading state avvio',
   date: '2026-05-29',
   changelog: [
+    // v0.44.4 — 2026-05-29
+    'VISTA GRUPPO: il badge "👥 Pratica multipla" nella PrenoCard è ora cliccabile — filtra la lista prenotazioni per mostrare solo i mezzi del gruppo. In testa alla lista appare un banner verde con nome cliente, numero mezzi, date e totale combinato (somma prezzi di tutti i mezzi). Bottone "✕ Esci dalla vista gruppo" per tornare alla lista normale.',
+    'LOADING STATE AVVIO: schermata minimale "edo·pratica + tre puntini animati + Caricamento dati…" durante i 2-3 secondi in cui usePersistentState carica i dati dal backend Render. Evita che l\'operatore veda flotta/prenotazioni vuote al primo accesso della mattina.',
+    // v0.44.3 — 2026-05-29
+    'PRATICA MULTIPLA: nella nuova prenotazione compare la sezione "👥 Mezzi aggiuntivi — stessa pratica". Con "＋ Aggiungi mezzo" si aggiunge una riga per tipo + ricerca targa + prezzo per ogni mezzo extra. Al salvataggio vengono create N+1 prenotazioni (principale + extra) tutte collegate da un gruppoId univoco, con stesso cliente e stesse date. Il bottone di submit mostra "Crea N prenotazioni collegate". Le card mostrano il badge verde "👥 Pratica multipla". La funzione calcola correttamente la disponibilità escludendo dai suggerimenti i mezzi già scelti nello stesso form.',
+    // v0.44.2 — 2026-05-29
+    'Duplica da esistente IN FORM: in apertura nuova prenotazione compare il pulsante "📋 Duplica da prenotazione esistente" — cliccando si apre un cerca live (cognome, targa, codice pratica); selezionando una pratica vengono copiati cliente, date, tipo mezzo, prezzo e note; il campo mezzo resta vuoto così l\'operatore sceglie quello disponibile. Funziona anche come alternativa rapida all\'autocomplete cliente.',
+    'Badge sync offline in sidebar: icona Impostazioni mostra "!" rosso se uno o più slot dati (prenotazioni, flotta, clienti…) sono in stato offline/error — significa che ci sono modifiche locali non ancora salvate sul backend.',
+    // v0.44.1 — 2026-05-29
+    'Nuova funzione DUPLICA PRENOTAZIONE: bottone "📋 Duplica" su ogni prenotazione — apre il form precompilato con stesso cliente, stesse date, stesso tipo mezzo, stesso prezzo e stesse note, ma con il mezzo vuoto da scegliere. Utile per assegnare un veicolo alternativo allo stesso cliente per lo stesso periodo (es. mezzo guasto, overbooking, upgrade).',
+    'Badge retry RentMe in sidebar: icona Impostazioni mostra un badge arancione con il contatore se ci sono prenotazioni in coda retry (invio a RentMe fallito). Badge sparisce quando la coda si svuota.',
+    'Widget coda retry in Impostazioni → RentMe Bridge: mostra contatore prenotazioni in attesa di reinvio, con avviso arancione se > 0 e conferma verde "✓ Vuota" altrimenti.',
+    // v0.44.0 — 2026-05-29
+    'SICUREZZA — appUsers: rimosso sharedOpts da usePersistentState (skipRemote:true) — credenziali non vengono più inviate al backend Render; password default cambiata da "edonoleggio" a "edo2024!" (da cambiare tramite Impostazioni → Operatori prima del deploy).',
+    'SICUREZZA — Backup: aggiunto campo "Token sicurezza backup" in Impostazioni → Backend; se configurato, viene inviato come Authorization: Bearer header; backend legge BACKUP_SECRET env var e blocca richieste non autorizzate (con 401). Retrocompatibile: se BACKUP_SECRET non è impostato, il comportamento è invariato.',
+    'OCR DOCUMENTI — preprocessForOcr(): nuova funzione che converte l\'immagine in scala di grigi e applica curva S di contrasto (fattore 1.4) prima di passarla a Tesseract. Migliora il riconoscimento su foto con luce variabile o sfondo colorato.',
+    'OCR DOCUMENTI — OEM mode 1→3 (LSTM+Tesseract combinati) — più robusto per font OCR-B delle bande MRZ.',
+    'OCR DOCUMENTI — crop zona MRZ: fromFraction 0.55→0.72 — ritaglia l\'ultimo 28% dell\'immagine dove si trova realmente la banda MRZ su CI, passaporto e patente italiana.',
+    'OCR TARGA — stesso preprocessing (preprocessForOcr) e OEM 3 applicati anche a PlateScanModal.',
+    'UX SCANNER — guida visiva nel componente DocumentScanner (modalità idle): 4 istruzioni su come fotografare il documento (lato MRZ, luce uniforme, documento piatto, sfondo scuro).',
+    'UX SCANNER — overlay viewfinder giallo-oro con label "Inquadra il lato con i codici MRZ" durante la ripresa live.',
     // v0.43.25 — 2026-05-29
     'Fix categoriaOverbooking (banner "X/Y liberi" in PrenoForm): (1) fermiFlotta non era conteggiato — un veicolo in manutenzione risultava "libero" nel banner anche se bloccato; aggiunto loop fermiFlotta con tipo-check contro allVehicles. (2) vehicleId legacy (targa) non normalizzato a fleet.id prima di add() al Set — la stessa prenotazione con vehicleId=targa poteva essere de-duplicata male se lo stesso veicolo aveva un altro booking con vehicleId=fleet.id; aggiunto normalizeVid() con fleetIdByTarga lookup. (3) tipoP lookup usava v.id === p.vehicleId esatto — ora usa matchVehicle per retrocompatibilità. Impatto: solo cosmetic (il blocco reale è in bookedIds/availableVehicles), ma il banner mostrava liberi gonfiati.',
     // v0.43.24 — 2026-05-29
@@ -840,9 +861,11 @@ function resolveVehicleDisplay(v) {
 // Le credenziali sono salvate SOLO in localStorage (skipRemote:true),
 // mai inviate al backend Render. La sessione vive in sessionStorage
 // e scade automaticamente quando il browser viene chiuso.
+// IMPORTANTE: cambiare la password admin tramite Impostazioni → Operatori
+// prima di distribuire l'app ad altri utenti.
 const APP_SESSION_KEY = 'edo:auth:v1';
 const APP_DEFAULT_USERS = [
-  { id: 'u-admin', username: 'admin', password: 'edonoleggio', role: 'admin', nome: 'Amministratore' },
+  { id: 'u-admin', username: 'admin', password: 'edo2024!', role: 'admin', nome: 'Amministratore' },
 ];
 
 // Contratti: nessuna simulazione. La lista pratiche si popola dal wizard reale.
@@ -1561,6 +1584,40 @@ function parseMRZ(ocrText) {
   return Object.keys(result).length > 0 ? result : null;
 }
 
+// ─── Preprocessing immagine per OCR ──────────────────────────────────────────
+// Converte l'immagine in scala di grigi e aumenta il contrasto prima di Tesseract.
+// Migliora significativamente il riconoscimento su foto scattate con luce variabile
+// o sfondo colorato. Restituisce una nuova dataURL ottimizzata per OCR.
+function preprocessForOcr(dataUrl) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width  = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        // Scala di grigi via pixel manipulation
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const data = imageData.data;
+        for (let i = 0; i < data.length; i += 4) {
+          // Luminosità pesata (formula BT.601)
+          const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+          // Contrasto: curva S leggera (aumenta separazione chiaro/scuro)
+          const c = (gray - 128) * 1.4 + 128;
+          const clamped = Math.max(0, Math.min(255, c));
+          data[i] = data[i + 1] = data[i + 2] = clamped;
+        }
+        ctx.putImageData(imageData, 0, 0);
+        resolve(canvas.toDataURL('image/jpeg', 0.95));
+      } catch { resolve(dataUrl); }
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+}
+
 // ─── Preprocessing MRZ ───────────────────────────────────────────────────────
 // Ritaglia la zona inferiore dell'immagine dove si trova tipicamente la banda MRZ.
 // Usato come secondo tentativo OCR se la prima passata (immagine intera) fallisce.
@@ -1610,7 +1667,8 @@ function DocumentScanner({ mode = 'document', customers, onPick, onUpload, onOcr
     setOcrStatus('⏳ Caricamento motore OCR…');
     let worker;
     try {
-      worker = await Tesseract.createWorker('eng', 1, {
+      // OEM 3 = LSTM + Tesseract combinati — più robusto per font MRZ fissi
+      worker = await Tesseract.createWorker('eng', 3, {
         logger: m => {
           if (m.status === 'recognizing text') {
             setOcrStatus(`🔍 Analisi testo… ${Math.round((m.progress || 0) * 100)}%`);
@@ -1619,19 +1677,24 @@ function DocumentScanner({ mode = 'document', customers, onPick, onUpload, onOcr
       });
       const MRZ_WHITELIST = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789<';
 
-      // ── 1ª PASSATA: immagine intera, sparse ───────────────────────
+      // ── Preprocessing: scala di grigi + contrasto ─────────────────
+      setOcrStatus('🔍 Ottimizzazione immagine…');
+      const processedUrl = await preprocessForOcr(dataUrl);
+
+      // ── 1ª PASSATA: immagine intera preprocessata, sparse ─────────
       setOcrStatus('🔍 Lettura documento (1/2)…');
       await worker.setParameters({
         tessedit_char_whitelist: MRZ_WHITELIST,
         tessedit_pageseg_mode: 11, // sparse text — trova righe ovunque nell'immagine
       });
-      const { data: { text: fullText } } = await worker.recognize(dataUrl);
+      const { data: { text: fullText } } = await worker.recognize(processedUrl);
       let parsed = parseMRZ(fullText);
 
-      // ── 2ª PASSATA: crop zona MRZ (parte inferiore), blocco uniforme ─
+      // ── 2ª PASSATA: crop zona MRZ 72% (banda bassa), riga singola ─
       if (!parsed || !Object.keys(parsed).length) {
         setOcrStatus('🔍 Lettura zona MRZ (2/2)…');
-        const croppedUrl = await cropMrzZone(dataUrl, 0.55);
+        // 0.72 = crop più aggressivo, la MRZ è nell'ultimo 28% del documento
+        const croppedUrl = await cropMrzZone(processedUrl, 0.72);
         await worker.setParameters({
           tessedit_char_whitelist: MRZ_WHITELIST,
           tessedit_pageseg_mode: 6, // blocco uniforme — ottimale per righe MRZ isolate
@@ -1705,7 +1768,18 @@ function DocumentScanner({ mode = 'document', customers, onPick, onUpload, onOcr
           {mode === 'qr' ? <QrCode className="w-3.5 h-3.5" /> : <ScanLine className="w-3.5 h-3.5" />}
           Acquisisci {labelDoc}
         </div>
-        <div className="text-xs mb-4" style={{ color: 'var(--ink-2)' }}>{hintText}</div>
+        <div className="text-xs mb-3" style={{ color: 'var(--ink-2)' }}>{hintText}</div>
+        {mode === 'document' && (
+          <div className="mb-4 rounded p-3" style={{ background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
+            <div className="text-[11px] font-semibold mb-2" style={{ color: 'var(--ink-1)' }}>📋 Come fotografare il documento</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <div className="text-[11px]" style={{ color: 'var(--ink-2)' }}>✅ Lato con le <strong>due o tre righe</strong> di codici in basso (banda MRZ)</div>
+              <div className="text-[11px]" style={{ color: 'var(--ink-2)' }}>✅ <strong>Luce uniforme</strong>, evita riflessi e ombre</div>
+              <div className="text-[11px]" style={{ color: 'var(--ink-2)' }}>✅ Documento <strong>piatto</strong>, non piegato</div>
+              <div className="text-[11px]" style={{ color: 'var(--ink-2)' }}>✅ <strong>Sfondo scuro</strong> o neutro dietro il documento</div>
+            </div>
+          </div>
+        )}
         <div className="grid grid-cols-2 gap-3">
           <button
             type="button"
@@ -1776,9 +1850,14 @@ function DocumentScanner({ mode = 'document', customers, onPick, onUpload, onOcr
           <>
             <div className="relative rounded overflow-hidden" style={{ background: '#000', aspectRatio: '4/3' }}>
               <video ref={videoRef} className="w-full h-full object-cover" playsInline muted />
-              {/* Overlay guida */}
-              <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-                <div className="w-[80%] h-[60%] border-2 border-dashed rounded" style={{ borderColor: 'rgba(255,255,255,0.6)' }} />
+              {/* Overlay guida documento */}
+              <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center">
+                <div className="w-[85%] h-[55%] border-2 border-dashed rounded" style={{ borderColor: 'rgba(255,220,50,0.85)' }} />
+                {mode === 'document' && (
+                  <div className="mt-2 px-3 py-1 rounded text-[10px] font-medium" style={{ background: 'rgba(0,0,0,0.6)', color: '#ffd700' }}>
+                    Inquadra il lato con i codici MRZ (righe in fondo)
+                  </div>
+                )}
               </div>
               <div className="absolute bottom-2 left-2 right-2 text-center">
                 <div className="inline-block px-3 py-1 rounded text-[11px]" style={{ background: 'rgba(0,0,0,0.6)', color: '#fff' }}>
@@ -2207,7 +2286,7 @@ function PrenoStatPill({ stato }) {
 }
 
 // ── PrenoCard ────────────────────────────────────────────────────────
-function PrenoCard({ p, onEdit, onConvert, onDelete, onFoto, onContratto, onFirma, onSaldo, onSaldoRapido, onDeposito, onRientro, onRiconsegna, onProroga, onSostituzione, onConsegna, onRicrea, onWaConferma, rentmePush, rentmeVehicles, pushToast, agency }) {
+function PrenoCard({ p, onEdit, onConvert, onDelete, onFoto, onContratto, onFirma, onSaldo, onSaldoRapido, onDeposito, onRientro, onRiconsegna, onProroga, onSostituzione, onConsegna, onRicrea, onDuplica, onVediGruppo, onWaConferma, rentmePush, rentmeVehicles, pushToast, agency }) {
   const giorni = daysDiff(p.dal, p.al);
   const [saldoRapidoOpen, setSaldoRapidoOpen] = useState(false);
   const [pagamentoOpen, setPagamentoOpen] = useState(false);
@@ -2334,6 +2413,20 @@ function PrenoCard({ p, onEdit, onConvert, onDelete, onFoto, onContratto, onFirm
         {p.noteInterne && (
           <div style={{ fontSize: 11, color: '#b87333', marginTop: 3, display: 'flex', alignItems: 'flex-start', gap: 4 }}>
             <span>🔒</span><span style={{ fontStyle: 'italic' }}>{p.noteInterne}</span>
+          </div>
+        )}
+        {p.gruppoId && (
+          <div style={{ marginTop: 4 }}>
+            <button
+              type="button"
+              onClick={() => onVediGruppo && onVediGruppo(p.gruppoId)}
+              title="Filtra per vedere tutte le prenotazioni di questo gruppo"
+              style={{ fontSize: 10, padding: '2px 7px', borderRadius: 10, fontWeight: 700,
+                background: '#e8f5e9', color: '#2e7d32', border: '1px solid #a5d6a7',
+                cursor: onVediGruppo ? 'pointer' : 'default' }}
+            >
+              👥 Pratica multipla — vedi tutto il gruppo
+            </button>
           </div>
         )}
         {p.vehicleSchedule && p.vehicleSchedule.length > 1 && (
@@ -2564,6 +2657,14 @@ function PrenoCard({ p, onEdit, onConvert, onDelete, onFoto, onContratto, onFirm
             🔁 Ricrea
           </button>
         )}
+        {onDuplica && (
+          <button type="button" onClick={() => onDuplica(p)}
+            title="Duplica questa prenotazione con lo stesso cliente e le stesse date — potrai scegliere un mezzo diverso"
+            style={{ fontSize: 11, padding: '4px 10px', borderRadius: 4, border: '1px solid #2e7d32',
+              background: 'transparent', color: '#2e7d32', cursor: 'pointer', fontWeight: 600 }}>
+            📋 Duplica
+          </button>
+        )}
         <button type="button" onClick={() => onDelete(p.id)}
           style={{ fontSize: 11, padding: '4px 10px', borderRadius: 4, border: '1px solid #f0d0d0', background: 'transparent', color: '#c85050', cursor: 'pointer' }}>
           Elimina
@@ -2716,6 +2817,88 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
     initial?.vehicleSchedule || null
   ); // null = mezzo singolo, array = multi-mezzo
 
+  // ── Duplica da prenotazione esistente ─────────────────────────────────────
+  // Stato: stringa di ricerca per trovare la prenotazione da copiare
+  const [duplicaSearch, setDuplicaSearch]   = useState('');
+  const [duplicaOpen,   setDuplicaOpen]     = useState(false);
+
+  // ── Extra mezzi (pratica multipla) ────────────────────────────────────────
+  // Lista di mezzi aggiuntivi per lo stesso cliente e stesse date.
+  // Ogni elemento: { _id, vehicleType, vehicleId, vehicleLabel, vehicleTarga, prezzo, _search }
+  const [extraMezzi, setExtraMezzi] = useState([]);
+
+  function addExtraMezzo() {
+    setExtraMezzi(prev => [...prev, {
+      _id: `em-${Date.now()}-${Math.random().toString(36).slice(2,6)}`,
+      vehicleType:  f.vehicleType || 'scooter',
+      vehicleId:    '',
+      vehicleLabel: '',
+      vehicleTarga: '',
+      prezzo:       '',
+      _search:      '',
+    }]);
+  }
+
+  function removeExtraMezzo(id) {
+    setExtraMezzi(prev => prev.filter(m => m._id !== id));
+  }
+
+  function updateExtraMezzo(id, patch) {
+    setExtraMezzi(prev => prev.map(m => m._id === id ? { ...m, ...patch } : m));
+  }
+
+  // Veicoli disponibili per un extra mezzo (filtra per tipo e rimuove già prenotati/scelti)
+  function extraAvailableVehicles(tipo, selfId) {
+    const chosenIds = new Set([
+      f.vehicleId,
+      ...extraMezzi.filter(m => m._id !== selfId).map(m => m.vehicleId),
+    ].filter(Boolean));
+    return allVehicles
+      .filter(v => (!tipo || v.tipo === tipo) && !bookedIds.has(v.id) && !chosenIds.has(v.id));
+  }
+
+  // Suggerimenti: filtra prenotazioni per cognome/nome/targa/codice
+  const duplicaSuggestions = useMemo(() => {
+    const q = duplicaSearch.trim().toLowerCase();
+    if (q.length < 2) return [];
+    return (prenotazioni || [])
+      .filter(p => p.stato !== 'annullata' && p.stato !== 'cancellata')
+      .filter(p => {
+        const nome   = `${p.clienteCognome||''} ${p.clienteNome||''}`.toLowerCase();
+        const targa  = (p.vehicleLabel || p.vehicleTarga || '').toLowerCase();
+        const codice = (p.codice || p.id || '').toLowerCase();
+        return nome.includes(q) || targa.includes(q) || codice.includes(q);
+      })
+      .slice(0, 8);
+  }, [prenotazioni, duplicaSearch]);
+
+  // Applica la prenotazione selezionata al form: copia tutto tranne il mezzo
+  function applyDuplica(p) {
+    setF(prev => ({
+      ...prev,
+      clienteNome:     p.clienteNome     || '',
+      clienteCognome:  p.clienteCognome  || '',
+      clienteTel:      p.clienteTel      || '',
+      clienteId:       p.clienteId       || null,
+      vehicleType:     p.vehicleType     || p.tipo || prev.vehicleType,
+      dal:             p.dal             || prev.dal,
+      al:              p.al              || prev.al,
+      prezzo:          p.prezzo          != null ? String(p.prezzo) : '',
+      metodoPagamento: p.metodoPagamento || 'contanti',
+      noteCliente:     p.noteCliente     || '',
+      noteInterne:     p.noteInterne     || '',
+      fonte:           p.fonte           || 'diretto',
+      // mezzo resettato → l'operatore sceglie
+      vehicleId:    '',
+      vehicleLabel: '',
+      vehicleTarga: '',
+      acconto:      '',  // acconto azzerato sulla nuova pratica
+    }));
+    setVehicleSchedule(null);
+    setDuplicaSearch('');
+    setDuplicaOpen(false);
+  }
+
   // ── Ricerca targa manuale + OCR ─────────────────
   const [targaSearch, setTargaSearch] = useState('');
   const [showOcrModal, setShowOcrModal] = useState(false);
@@ -2866,6 +3049,14 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
       alert(`⚠️ Categoria esaurita!\n\nTutti i ${categoriaOverbooking.totale} ${f.vehicleType} sono già prenotati dal ${formatDate(f.dal)} al ${formatDate(f.al)}.\n\nVerifica disponibilità in altre date o usa la combinazione automatica di più mezzi.`);
       return;
     }
+    // Prepara extra mezzi validi (solo quelli con tipo scelto)
+    const extraValidi = extraMezzi
+      .filter(m => m.vehicleType)
+      .map(({ _id, _search, prezzo, ...m }) => ({
+        ...m,
+        prezzo: prezzo !== '' ? parseFloat(prezzo) : null,
+      }));
+
     onSave({
       ...f,
       prezzo: f.prezzo !== '' ? parseFloat(f.prezzo) : null,
@@ -2873,6 +3064,8 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
       metodoPagamento: f.metodoPagamento || 'contanti',
       vehicleSchedule: vehicleSchedule || null,
       sendToRentme: sendToRentme,
+      // extraMezzi presenti solo su nuove prenotazioni con più mezzi
+      extraMezzi: !initial && extraValidi.length > 0 ? extraValidi : undefined,
     });
   }
 
@@ -3049,6 +3242,80 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
         </div>
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+
+          {/* ── Duplica da prenotazione esistente (solo nuove pratiche) ── */}
+          {!initial && (
+            <div style={{ position: 'relative' }}>
+              <button
+                type="button"
+                onClick={() => setDuplicaOpen(v => !v)}
+                style={{ width: '100%', padding: '9px 14px', borderRadius: 6,
+                  border: '1.5px dashed var(--border)', background: 'var(--surface-2)',
+                  color: 'var(--ink-2)', cursor: 'pointer', fontSize: 13,
+                  display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'center',
+                  fontWeight: 500 }}
+              >
+                <span>📋</span>
+                <span>Duplica da prenotazione esistente</span>
+                <span style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--muted)' }}>
+                  {duplicaOpen ? '▲' : '▼'}
+                </span>
+              </button>
+
+              {duplicaOpen && (
+                <div style={{ marginTop: 6, border: '1px solid var(--border)', borderRadius: 8,
+                  background: 'var(--bg)', boxShadow: '0 4px 20px rgba(0,0,0,0.12)', zIndex: 300,
+                  padding: 12 }}>
+                  <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 8 }}>
+                    Cerca per cognome, targa o codice pratica — verranno copiati cliente, date, prezzo e note. Il mezzo dovrà essere scelto.
+                  </div>
+                  <input
+                    autoFocus
+                    style={{ width: '100%', padding: '8px 10px', borderRadius: 5,
+                      border: '1px solid var(--border)', fontSize: 13,
+                      background: 'var(--bg)', color: 'var(--ink)', boxSizing: 'border-box' }}
+                    placeholder="Es: Rossi, AB123CD, EDO-2026…"
+                    value={duplicaSearch}
+                    onChange={e => setDuplicaSearch(e.target.value)}
+                  />
+                  {duplicaSearch.length >= 2 && duplicaSuggestions.length === 0 && (
+                    <div style={{ padding: '10px 4px', fontSize: 12, color: 'var(--muted)', textAlign: 'center' }}>
+                      Nessuna prenotazione trovata
+                    </div>
+                  )}
+                  {duplicaSuggestions.map(p => {
+                    const nome   = [p.clienteCognome, p.clienteNome].filter(Boolean).join(' ') || '—';
+                    const mezzo  = p.vehicleLabel || p.vehicleTarga || p.vehicleType || '—';
+                    const dal    = p.dal ? p.dal.split('-').reverse().join('/') : '';
+                    const al     = p.al  ? p.al.split('-').reverse().join('/') : '';
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => applyDuplica(p)}
+                        style={{ width: '100%', textAlign: 'left', padding: '10px 10px',
+                          borderRadius: 5, border: 'none', background: 'none', cursor: 'pointer',
+                          display: 'flex', flexDirection: 'column', gap: 2,
+                          borderBottom: '1px solid var(--border)' }}
+                        onMouseOver={e => e.currentTarget.style.background = 'var(--surface-2)'}
+                        onMouseOut={e => e.currentTarget.style.background = 'none'}
+                      >
+                        <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--ink)' }}>{nome}</span>
+                        <span style={{ fontSize: 11, color: 'var(--ink-2)' }}>
+                          {mezzo} &nbsp;·&nbsp; {dal}{al ? ` → ${al}` : ''}
+                          {p.prezzo != null ? ` &nbsp;·&nbsp; €${p.prezzo}` : ''}
+                        </span>
+                        {p.codice && (
+                          <span style={{ fontSize: 10, color: 'var(--muted)', fontFamily: 'monospace' }}>{p.codice}</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Avviso blacklist */}
           {(() => {
             const matchBl = (customers || []).find(c => c.blacklist &&
@@ -3300,6 +3567,133 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
             <textarea style={{ ...inp, resize: 'vertical', minHeight: 50, borderColor: 'var(--border)' }} value={f.noteInterne} onChange={e => set('noteInterne', e.target.value)} placeholder="Osservazioni interne, avvisi staff…" />
           </div>
 
+          {/* ── Extra mezzi: pratica multipla (solo nuove prenotazioni) ── */}
+          {!initial && (
+            <div style={{ borderTop: '1px solid var(--border)', paddingTop: 14 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--ink-2)' }}>
+                  👥 Mezzi aggiuntivi — stessa pratica
+                </div>
+                <button
+                  type="button"
+                  onClick={addExtraMezzo}
+                  style={{ fontSize: 12, padding: '4px 12px', borderRadius: 5,
+                    border: '1.5px solid #2e7d32', background: 'transparent',
+                    color: '#2e7d32', cursor: 'pointer', fontWeight: 700 }}
+                >
+                  ＋ Aggiungi mezzo
+                </button>
+              </div>
+
+              {extraMezzi.length === 0 && (
+                <div style={{ fontSize: 11, color: 'var(--muted)', textAlign: 'center', padding: '8px 0' }}>
+                  Stesso cliente, stesse date — mezzi di categorie diverse salvati insieme
+                </div>
+              )}
+
+              {extraMezzi.map((m, idx) => {
+                const disponibili = extraAvailableVehicles(m.vehicleType, m._id);
+                const TIPI = ['auto','scooter','quad','ebike','bici','moto'];
+                return (
+                  <div key={m._id} style={{ display: 'grid', gridTemplateColumns: '90px 1fr 80px 30px',
+                    gap: 6, alignItems: 'center', marginBottom: 8,
+                    padding: '10px 10px', borderRadius: 6,
+                    background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
+                    {/* Tipo */}
+                    <select
+                      value={m.vehicleType}
+                      onChange={e => updateExtraMezzo(m._id, { vehicleType: e.target.value, vehicleId: '', vehicleLabel: '', vehicleTarga: '', _search: '' })}
+                      style={{ fontSize: 12, padding: '5px 6px', borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--ink)' }}
+                    >
+                      {TIPI.map(t => <option key={t} value={t}>{t.charAt(0).toUpperCase()+t.slice(1)}</option>)}
+                    </select>
+
+                    {/* Mezzo (search + select) */}
+                    <div style={{ position: 'relative' }}>
+                      {m.vehicleId ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <span style={{ fontSize: 12, fontFamily: 'monospace', fontWeight: 700, padding: '4px 8px', background: '#e8f5e9', borderRadius: 4, color: '#2e7d32' }}>
+                            {m.vehicleTarga || m.vehicleLabel || m.vehicleId}
+                          </span>
+                          <button type="button" onClick={() => updateExtraMezzo(m._id, { vehicleId: '', vehicleLabel: '', vehicleTarga: '', _search: '' })}
+                            style={{ fontSize: 10, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)' }}>✕</button>
+                        </div>
+                      ) : (
+                        <>
+                          <input
+                            style={{ fontSize: 12, padding: '5px 8px', borderRadius: 4,
+                              border: '1px solid var(--border)', background: 'var(--bg)',
+                              color: 'var(--ink)', width: '100%', boxSizing: 'border-box',
+                              fontFamily: 'monospace', textTransform: 'uppercase' }}
+                            placeholder="Cerca targa…"
+                            value={m._search}
+                            onChange={e => updateExtraMezzo(m._id, { _search: e.target.value.toUpperCase() })}
+                          />
+                          {m._search.length >= 2 && (
+                            <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 400,
+                              background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 5,
+                              boxShadow: '0 4px 12px rgba(0,0,0,0.15)', maxHeight: 180, overflowY: 'auto' }}>
+                              {disponibili
+                                .filter(v => (v.targa||v.id||'').toUpperCase().includes(m._search))
+                                .slice(0, 6)
+                                .map(v => (
+                                  <button key={v.id} type="button"
+                                    onClick={() => updateExtraMezzo(m._id, {
+                                      vehicleId:    v.id,
+                                      vehicleLabel: makeVehicleLabel(v),
+                                      vehicleTarga: v.targa || '',
+                                      vehicleType:  v.tipo || m.vehicleType,
+                                      _search:      '',
+                                    })}
+                                    style={{ width: '100%', textAlign: 'left', padding: '7px 10px',
+                                      border: 'none', background: 'none', cursor: 'pointer', fontSize: 12 }}
+                                    onMouseOver={e => e.currentTarget.style.background = 'var(--surface-2)'}
+                                    onMouseOut={e => e.currentTarget.style.background = 'none'}
+                                  >
+                                    <span style={{ fontFamily: 'monospace', fontWeight: 700 }}>{v.targa || v.id}</span>
+                                    {v.modello ? <span style={{ color: 'var(--muted)', marginLeft: 6 }}>{v.modello}</span> : null}
+                                  </button>
+                                ))}
+                              {disponibili.filter(v => (v.targa||v.id||'').toUpperCase().includes(m._search)).length === 0 && (
+                                <div style={{ padding: '8px 10px', fontSize: 11, color: 'var(--muted)' }}>Nessun mezzo libero trovato</div>
+                              )}
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+
+                    {/* Prezzo */}
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      placeholder="€"
+                      value={m.prezzo}
+                      onChange={e => updateExtraMezzo(m._id, { prezzo: e.target.value })}
+                      style={{ fontSize: 12, padding: '5px 6px', borderRadius: 4,
+                        border: '1px solid var(--border)', background: 'var(--bg)',
+                        color: 'var(--ink)', textAlign: 'right' }}
+                    />
+
+                    {/* Rimuovi */}
+                    <button type="button" onClick={() => removeExtraMezzo(m._id)}
+                      style={{ fontSize: 16, background: 'none', border: 'none', cursor: 'pointer',
+                        color: '#c85050', lineHeight: 1, padding: 0, textAlign: 'center' }}>
+                      ×
+                    </button>
+                  </div>
+                );
+              })}
+
+              {extraMezzi.length > 0 && (
+                <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>
+                  Verranno create {extraMezzi.length + 1} prenotazioni collegate con lo stesso cliente e le stesse date.
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Toggle RentMe — visibile sia per nuove prenotazioni che in modifica */}
           {rentmeConnected && (
             <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
@@ -3329,7 +3723,11 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
             </button>
             <button type="submit"
               style={{ padding: '9px 18px', borderRadius: 5, border: 'none', background: 'var(--accent)', color: 'white', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
-              {initial ? 'Salva modifiche' : (sendToRentme && isNew && rentmeConnected ? 'Crea prenotazione + RentMe' : 'Crea prenotazione')}
+              {initial
+                ? 'Salva modifiche'
+                : extraMezzi.length > 0
+                  ? `Crea ${extraMezzi.length + 1} prenotazioni collegate`
+                  : (sendToRentme && isNew && rentmeConnected ? 'Crea prenotazione + RentMe' : 'Crea prenotazione')}
             </button>
           </div>
 
@@ -3487,6 +3885,8 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rent
   const [showAdvFilter, setShowAdvFilter] = useState(false);
   const [prePage, setPrePage] = useState(1);
   const PAGE_SIZE = 20;
+  // Filtro gruppo: mostra solo le prenotazioni con lo stesso gruppoId
+  const [filterGruppo, setFilterGruppo] = useState(null);
   const [viewMode, setViewMode] = useState('gruppi'); // 'lista' | 'gruppi'
   // Modali contratto e firma
   const [contrattoPreno, setContrattoPreno] = useState(null);
@@ -3501,30 +3901,77 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rent
 
   // CRUD
   function createPreno(data) {
-    const { sendToRentme, ...cleanData } = data; // non salvare il flag nel record
-    const rec = {
-      id: prenoId(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+    const { sendToRentme, extraMezzi: extra, ...cleanData } = data;
+    const now = new Date().toISOString();
+    const baseRec = {
+      createdAt: now,
+      updatedAt: now,
       operatorId: operator?.id || '',
       clienteId: null,
       contractId: null,
-      ...cleanData,
     };
-    setPrenotazioni(ps => [...ps, rec]);
-    setForm(null);
-    pushToast && pushToast({ tone: 'success', title: 'Prenotazione creata', message: `${rec.clienteCognome || ''} ${rec.clienteNome || ''} · ${formatDate(rec.dal)}` });
 
-    // Push opzionale a RentMe
+    // ── Pratica singola (caso normale) ─────────────────────────────
+    if (!extra || extra.length === 0) {
+      const rec = { id: prenoId(), ...baseRec, ...cleanData };
+      setPrenotazioni(ps => [...ps, rec]);
+      setForm(null);
+      pushToast && pushToast({ tone: 'success', title: 'Prenotazione creata', message: `${rec.clienteCognome || ''} ${rec.clienteNome || ''} · ${formatDate(rec.dal)}` });
+      if (sendToRentme && rentmePush) {
+        const rmVeh = (rentmeVehicles || []).find(v => v.targa === rec.vehicleId || v.rentmeCode === rec.vehicleId);
+        rentmePush(rec, rmVeh?.slug || rec.vehicleType || 'auto')
+          .then(() => pushToast && pushToast({ tone: 'success', title: '📡 Inviato a RentMe', message: `${[rec.clienteCognome, rec.clienteNome].filter(Boolean).join(' ')}` }))
+          .catch(err => pushToast && pushToast({ tone: 'warning', title: 'RentMe: invio fallito', message: err.message, duration: 6000 }));
+      }
+      return;
+    }
+
+    // ── Pratica multipla: crea N+1 prenotazioni collegate da gruppoId ──
+    const gruppoId = `grp-${Date.now()}-${Math.random().toString(36).slice(2,6)}`;
+    const clienteBase = {
+      clienteNome:     cleanData.clienteNome,
+      clienteCognome:  cleanData.clienteCognome,
+      clienteTel:      cleanData.clienteTel,
+      clienteId:       cleanData.clienteId,
+      dal:             cleanData.dal,
+      al:              cleanData.al,
+      fonte:           cleanData.fonte,
+      metodoPagamento: cleanData.metodoPagamento,
+      noteCliente:     cleanData.noteCliente,
+      stato:           cleanData.stato || 'attesa',
+    };
+
+    const recPrimario = { id: prenoId(), ...baseRec, ...cleanData, gruppoId };
+    const recExtra    = extra.map(m => ({
+      id: prenoId(),
+      ...baseRec,
+      ...clienteBase,
+      gruppoId,
+      vehicleId:    m.vehicleId    || '',
+      vehicleLabel: m.vehicleLabel || '',
+      vehicleTarga: m.vehicleTarga || '',
+      vehicleType:  m.vehicleType  || 'auto',
+      prezzo:       m.prezzo       != null ? m.prezzo : null,
+      acconto:      null,
+      noteInterne:  cleanData.noteInterne || '',
+    }));
+
+    const tutti = [recPrimario, ...recExtra];
+    setPrenotazioni(ps => [...ps, ...tutti]);
+    setForm(null);
+    const nomeCliente = `${cleanData.clienteCognome || ''} ${cleanData.clienteNome || ''}`.trim();
+    pushToast && pushToast({
+      tone: 'success',
+      title: `${tutti.length} prenotazioni create`,
+      message: `${nomeCliente} · ${tutti.length} mezzi · ${formatDate(cleanData.dal)}–${formatDate(cleanData.al)}`,
+    });
+
+    // Push RentMe per tutti i mezzi del gruppo
     if (sendToRentme && rentmePush) {
-      // Trova il slug del veicolo RentMe corrispondente alla targa selezionata
-      const rmVeh = (rentmeVehicles || []).find(v =>
-        v.targa === rec.vehicleId || v.rentmeCode === rec.vehicleId
-      );
-      const slug = rmVeh?.slug || rec.vehicleType || 'auto';
-      rentmePush(rec, slug)
-        .then(() => pushToast && pushToast({ tone: 'success', title: '📡 Inviato a RentMe', message: `${[rec.clienteCognome, rec.clienteNome].filter(Boolean).join(' ')}` }))
-        .catch(err => pushToast && pushToast({ tone: 'warning', title: 'RentMe: invio fallito', message: err.message, duration: 6000 }));
+      tutti.filter(r => r.vehicleId).forEach(r => {
+        const rmVeh = (rentmeVehicles || []).find(v => v.targa === r.vehicleId || v.rentmeCode === r.vehicleId);
+        rentmePush(r, rmVeh?.slug || r.vehicleType || 'auto').catch(() => {});
+      });
     }
   }
 
@@ -3730,6 +4177,36 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rent
     pushToast && pushToast({ tone: 'success', title: '💶 Saldo registrato', message: `€${importo} · ${metodo}` });
   }
 
+  // ── Duplica prenotazione (stesso cliente + date, mezzo da scegliere) ─────────
+  // A differenza di "Ricrea" (che aggiorna le date a oggi), Duplica mantiene
+  // esattamente le stesse date e tutti i dati ma svuota il mezzo:
+  // l'operatore può così scegliere un veicolo alternativo per lo stesso periodo.
+  function handleDuplica(p) {
+    const prefill = {
+      id: '__new__',
+      clienteNome:      p.clienteNome      || '',
+      clienteCognome:   p.clienteCognome   || '',
+      clienteTel:       p.clienteTel       || '',
+      clienteId:        p.clienteId        || null,
+      vehicleType:      p.vehicleType      || p.tipo || 'auto',
+      dal:              p.dal              || todayISO(),
+      al:               p.al              || '',
+      stato:            'attesa',
+      fonte:            p.fonte            || 'diretto',
+      prezzo:           p.prezzo           != null ? p.prezzo : '',
+      acconto:          '',                 // acconto azzerato sulla nuova pratica
+      metodoPagamento:  p.metodoPagamento  || 'contanti',
+      noteCliente:      p.noteCliente      || '',
+      noteInterne:      p.noteInterne      || '',
+      // vehicleId / vehicleLabel / vehicleTarga VUOTI → l'operatore sceglie il mezzo
+      vehicleId:    '',
+      vehicleLabel: '',
+      vehicleTarga: '',
+    };
+    setForm(prefill);
+    pushToast && pushToast({ tone: 'info', title: '📋 Duplica prenotazione', message: `${p.clienteCognome || ''} ${p.clienteNome || ''} · seleziona il nuovo mezzo` });
+  }
+
   // ── Ricrea prenotazione ──────────────────────────────────────────
   function handleRicrea(p) {
     const t = todayISO();
@@ -3792,6 +4269,12 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rent
   // Filtri e ordinamento — memoizzati per evitare ricalcolo ad ogni render
   const today = todayISO();
   const filtered = useMemo(() => {
+    // Filtro gruppo: bypass di tutti gli altri filtri, mostra solo il gruppo
+    if (filterGruppo) {
+      return (prenotazioni || [])
+        .filter(p => p.gruppoId === filterGruppo)
+        .sort((a, b) => (a.dal || '').localeCompare(b.dal || ''));
+    }
     const q = search.trim().toLowerCase();
     return (prenotazioni || [])
       .filter(p => {
@@ -3809,10 +4292,10 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rent
         const da = a.dal || '9999', db = b.dal || '9999';
         return sortDir === 'asc' ? da.localeCompare(db) : db.localeCompare(da);
       });
-  }, [prenotazioni, filterStato, search, filterDal, filterAl, filterTipo, sortDir]);
+  }, [prenotazioni, filterStato, search, filterDal, filterAl, filterTipo, sortDir, filterGruppo]);
 
   // Paginazione — reset pagina quando cambiano i filtri
-  useEffect(() => { setPrePage(1); }, [search, filterStato, filterDal, filterAl, filterTipo]);
+  useEffect(() => { setPrePage(1); }, [search, filterStato, filterDal, filterAl, filterTipo, filterGruppo]);
   const paginated = useMemo(
     () => filtered.slice((prePage - 1) * PAGE_SIZE, prePage * PAGE_SIZE),
     [filtered, prePage]
@@ -3904,6 +4387,37 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rent
           {(filterDal || filterAl || filterTipo) && <span style={{ background: 'var(--accent)', color: '#fff', borderRadius: '50%', width: 14, height: 14, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700 }}>!</span>}
         </button>
       </div>
+
+      {/* Banner vista gruppo — appare quando si filtra per gruppoId */}
+      {filterGruppo && (() => {
+        const gruppo = (prenotazioni || []).filter(p => p.gruppoId === filterGruppo);
+        const nomeCliente = [gruppo[0]?.clienteCognome, gruppo[0]?.clienteNome].filter(Boolean).join(' ') || '—';
+        const totale = gruppo.reduce((s, p) => s + (Number(p.prezzo) || 0), 0);
+        const dal = gruppo[0]?.dal ? gruppo[0].dal.split('-').reverse().join('/') : '';
+        const al  = gruppo[0]?.al  ? gruppo[0].al.split('-').reverse().join('/')  : '';
+        return (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+            background: '#e8f5e9', border: '1.5px solid #a5d6a7', borderRadius: 8,
+            padding: '10px 16px', marginBottom: 12 }}>
+            <span style={{ fontSize: 18 }}>👥</span>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 700, fontSize: 13, color: '#1b5e20' }}>
+                Pratica multipla — {nomeCliente}
+              </div>
+              <div style={{ fontSize: 11, color: '#2e7d32' }}>
+                {gruppo.length} mezzi · {dal}→{al}
+                {totale > 0 ? ` · Totale gruppo €${totale.toFixed(2)}` : ''}
+              </div>
+            </div>
+            <button type="button"
+              onClick={() => setFilterGruppo(null)}
+              style={{ padding: '5px 14px', borderRadius: 20, fontSize: 12, fontWeight: 600,
+                border: '1px solid #2e7d32', background: 'transparent', color: '#2e7d32', cursor: 'pointer' }}>
+              ✕ Esci dalla vista gruppo
+            </button>
+          </div>
+        );
+      })()}
 
       {/* Filtri avanzati — pannello espandibile */}
       {showAdvFilter && (
@@ -4023,6 +4537,8 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rent
                                 onSostituzione={(rec) => setSostituzionePreno(rec)}
                                 onConsegna={(rec) => setConsegnaPreno(rec)}
                                 onRicrea={handleRicrea}
+                                onDuplica={handleDuplica}
+                                onVediGruppo={(gid) => setFilterGruppo(gid)}
                                 onSaldoRapido={handleSaldoRapido}
                                 onWaConferma={(rec) => { window.open(buildWaConferma(rec), '_blank', 'noopener'); }}
                                 rentmePush={rentmePush}
@@ -4063,6 +4579,8 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rent
               onSostituzione={(rec) => setSostituzionePreno(rec)}
               onConsegna={(rec) => setConsegnaPreno(rec)}
               onRicrea={handleRicrea}
+              onDuplica={handleDuplica}
+              onVediGruppo={(gid) => setFilterGruppo(gid)}
               onSaldoRapido={handleSaldoRapido}
               onWaConferma={(rec) => { window.open(buildWaConferma(rec), '_blank', 'noopener'); }}
               rentmePush={rentmePush}
@@ -13950,7 +14468,8 @@ export default function App() {
 
   // ── AUTENTICAZIONE ────────────────────────────────────────────────
   // Lista utenti con accesso all'app (skipRemote: mai inviata al backend).
-  const [appUsers, setAppUsers] = usePersistentState('edo:v1:appUsers', APP_DEFAULT_USERS, sharedOpts);
+  // skipRemote:true — credenziali non vengono mai inviate al backend
+  const [appUsers, setAppUsers] = usePersistentState('edo:v1:appUsers', APP_DEFAULT_USERS, { skipRemote: true });
   // Sessione corrente: letta da sessionStorage → null se browser chiuso/riaperto.
   const [sessionUser, setSessionUser] = useState(() => {
     try {
@@ -13973,8 +14492,11 @@ export default function App() {
   const [driveClientId, setDriveClientId] = usePersistentState('edo:v1:driveClientId', '', { skipRemote: true });
   const [driveLastBackup, setDriveLastBackup] = usePersistentState('edo:v1:driveLastBackup', null, { skipRemote: true });
   const [driveAutoEnabled, setDriveAutoEnabled] = usePersistentState('edo:v1:driveAutoEnabled', false, { skipRemote: true });
-  // Backup automatico Render — timestamp ultimo backup sul backend (nessun auth necessario)
+  // Backup automatico Render — timestamp ultimo backup sul backend
   const [renderLastBackup, setRenderLastBackup] = usePersistentState('edo:v1:renderLastBackup', null, { skipRemote: true });
+  // Token segreto per il backup — deve coincidere con BACKUP_SECRET sul server Render.
+  // Configurabile in Impostazioni → Backend → Token backup. skipRemote: mai inviato in chiaro.
+  const [backupToken, setBackupToken] = usePersistentState('edo:v1:backupToken', '', { skipRemote: true });
   // Cache token Drive: { token, expiresAt } — evita popup per backup automatico entro ~55 min
   const driveTokenCacheRef = useRef(null);
 
@@ -14129,7 +14651,8 @@ export default function App() {
   }, [driveClientId, prenotazioni, fleet, customers, cassa, scadenze, operators, partners, agency, listino, stagioni, manutenzioni, setDriveLastBackup, pushToast]);
 
   // ── Backup su Render backend ───────────────────────────────────────────────
-  // Zero autenticazione: usa lo stesso apiBaseUrl del sync dati, funziona sempre.
+  // Se backupToken è configurato, viene inviato come Bearer header.
+  // Sul server Render: impostare variabile env BACKUP_SECRET con lo stesso valore.
   const backupToRender = useCallback(async (silent = false) => {
     if (!apiBaseUrl) return false;
     const backupObj = {
@@ -14143,7 +14666,10 @@ export default function App() {
       const t = setTimeout(() => ctrl.abort(), 15000);
       const res = await fetch(`${apiBaseUrl}/backup`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(backupToken ? { 'Authorization': `Bearer ${backupToken}` } : {}),
+        },
         body: JSON.stringify(backupObj),
         signal: ctrl.signal,
       });
@@ -14160,7 +14686,7 @@ export default function App() {
 
   // ── Auto-backup Drive + Render ────────────────────────────────────────────
   // Refs per evitare stale closures nell'intervallo (aggiornati ad ogni render)
-  const driveAutoRef = useRef({ enabled: false, clientId: '', lastBackup: null, apiBaseUrl: '' });
+  const driveAutoRef = useRef({ enabled: false, clientId: '', lastBackup: null, apiBaseUrl: '', backupToken: '' });
   useEffect(() => {
     // lastBackup = il più recente tra Drive e Render (qualunque backup conti)
     const lastDrive  = driveLastBackup  ? new Date(driveLastBackup).getTime()  : 0;
@@ -14168,8 +14694,8 @@ export default function App() {
     const lastBackup = lastDrive || lastRender
       ? new Date(Math.max(lastDrive, lastRender)).toISOString()
       : null;
-    driveAutoRef.current = { enabled: driveAutoEnabled, clientId: driveClientId, lastBackup, apiBaseUrl };
-  }, [driveAutoEnabled, driveClientId, driveLastBackup, renderLastBackup, apiBaseUrl]);
+    driveAutoRef.current = { enabled: driveAutoEnabled, clientId: driveClientId, lastBackup, apiBaseUrl, backupToken };
+  }, [driveAutoEnabled, driveClientId, driveLastBackup, renderLastBackup, apiBaseUrl, backupToken]);
 
   const backupDataRef = useRef(null);
   useEffect(() => {
@@ -14193,14 +14719,18 @@ export default function App() {
       const now = new Date().toLocaleTimeString('it-IT');
       const results = [];
 
-      // ── 1. Backup Render (sempre, nessuna auth) ──────────────────────────
+      // ── 1. Backup Render (con token se configurato) ──────────────────────────
       if (base) {
         try {
           const ctrl = new AbortController();
           const t = setTimeout(() => ctrl.abort(), 15000);
+          const { backupToken: tok } = driveAutoRef.current;
           const r = await fetch(`${base}/backup`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+              'Content-Type': 'application/json',
+              ...(tok ? { 'Authorization': `Bearer ${tok}` } : {}),
+            },
             body: JSON.stringify(backupObj),
             signal: ctrl.signal,
           });
@@ -14808,6 +15338,33 @@ export default function App() {
     );
   }
 
+  // ── Loading state all'avvio ──────────────────────────────────────────────
+  // Se il backend è configurato e ancora in fase di caricamento iniziale
+  // (remoteStatus === 'loading' su almeno uno slot critico), mostra una
+  // schermata minima per evitare che l'operatore veda dati vuoti per 2-3 secondi.
+  const isBootLoading = apiBaseUrl && [prenoSync, fleetSync, customersSync].some(
+    s => s?.remoteStatus === 'loading'
+  );
+  if (isBootLoading) {
+    return (
+      <>
+        <Styles />
+        <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)', gap: 20 }}>
+          <div style={{ fontFamily: 'var(--font-serif)', fontSize: 36, fontWeight: 600, color: 'var(--ink)', letterSpacing: '-0.02em' }}>
+            edo<span style={{ color: 'var(--accent)' }}>·</span><span style={{ fontWeight: 400, color: 'var(--ink-2)' }}>pratica</span>
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--accent)', animation: 'pulse 1.2s ease-in-out infinite' }} />
+            <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--accent)', animation: 'pulse 1.2s ease-in-out infinite 0.2s', opacity: 0.6 }} />
+            <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--accent)', animation: 'pulse 1.2s ease-in-out infinite 0.4s', opacity: 0.3 }} />
+          </div>
+          <div style={{ fontSize: 13, color: 'var(--muted)' }}>Caricamento dati in corso…</div>
+          <style>{`@keyframes pulse { 0%,100%{transform:scale(1);opacity:1} 50%{transform:scale(1.4);opacity:0.5} }`}</style>
+        </div>
+      </>
+    );
+  }
+
   if (kioskMode) return (
     <div className={`pratica-app${darkMode ? ' dark-mode' : ''}`}>
       <Styles />
@@ -14828,7 +15385,7 @@ export default function App() {
     <>
       <Styles />
       <div className={`pratica-app flex${darkMode ? ' dark-mode' : ''}`}>
-        {!kioskMode && <Sidebar page={page} setPage={setPage} onNew={() => openWizard()} online={online && cargosConfig.enabled} agency={agency} rentmeSyncStatus={rentmeSync.status} rentmeAlertCount={rentmeSync.status === 'ok' ? calcAvailability(todayISO(), todayISO(), rentmeVehicles, prenotazioni, fleet, fermiFlotta).filter(c => c.alert).length : 0} />}
+        {!kioskMode && <Sidebar page={page} setPage={setPage} onNew={() => openWizard()} online={online && cargosConfig.enabled} agency={agency} rentmeSyncStatus={rentmeSync.status} rentmeAlertCount={rentmeSync.status === 'ok' ? calcAvailability(todayISO(), todayISO(), rentmeVehicles, prenotazioni, fleet, fermiFlotta).filter(c => c.alert).length : 0} rentmeRetryCount={(() => { try { return JSON.parse(localStorage.getItem('rentme_pending_queue') || '[]').length; } catch { return 0; } })()} offlineSyncCount={Object.values(allSyncStatus).filter(s => s?.remoteStatus === 'offline' || s?.remoteStatus === 'error').length} />}
         <main className="flex-1 min-h-screen" id="main-content">
           <Topbar
             online={online} setOnline={setOnline} pendingQueue={pendingQueue}
@@ -14868,7 +15425,7 @@ export default function App() {
                   <StagioniEditor stagioni={stagioni} onSave={(s)=>{setStagioni(s); pushToast && pushToast({tone:'success',title:'Stagioni aggiornate',message:'Configurazione stagionale salvata'});}} />
                 </div>
               </div>}
-              {page === 'settings'   && <SettingsPage operator={operator} operators={operators} admin={admin} cargosConfig={cargosConfig} backendStatus={backendStatus} lastCheck={lastCheck} apiBaseUrl={apiBaseUrl} syncStatus={allSyncStatus} agency={agency} customers={customers} contracts={localContracts} onSyncAll={syncAll} onExportBackup={exportBackup} onImportBackup={importBackup} pushToast={pushToast} onAddOperator={() => setModal('newOperator')} onEditOperator={(o) => setModal({ type: 'editOperator', operator: o })} onDeleteOperator={requestDeleteOperator} onEditCargos={() => setModal('cargosConfig')} onEditApiBase={() => setModal('apiBase')} onEditAgency={() => setModal('agency')} onResetCustomers={requestResetCustomers} onResetContracts={requestResetContracts} onResetEverything={requestResetEverything} onImportFleetFromRentMe={requestImportFleetFromRentMe} rentmeConfig={rentmeConfig} setRentmeConfig={setRentmeConfig} rentmeSync={rentmeSync} rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} appUsers={appUsers} setAppUsers={setAppUsers} onLogout={handleLogout} driveClientId={driveClientId} setDriveClientId={setDriveClientId} driveLastBackup={driveLastBackup} onDriveBackup={driveBackup} driveAutoEnabled={driveAutoEnabled} setDriveAutoEnabled={setDriveAutoEnabled} renderLastBackup={renderLastBackup} onRenderBackup={backupToRender} onImportStorico={({ prenotazioni: newP, clienti: newC }) => {
+              {page === 'settings'   && <SettingsPage operator={operator} operators={operators} admin={admin} cargosConfig={cargosConfig} backendStatus={backendStatus} lastCheck={lastCheck} apiBaseUrl={apiBaseUrl} syncStatus={allSyncStatus} agency={agency} customers={customers} contracts={localContracts} onSyncAll={syncAll} onExportBackup={exportBackup} onImportBackup={importBackup} pushToast={pushToast} onAddOperator={() => setModal('newOperator')} onEditOperator={(o) => setModal({ type: 'editOperator', operator: o })} onDeleteOperator={requestDeleteOperator} onEditCargos={() => setModal('cargosConfig')} onEditApiBase={() => setModal('apiBase')} onEditAgency={() => setModal('agency')} onResetCustomers={requestResetCustomers} onResetContracts={requestResetContracts} onResetEverything={requestResetEverything} onImportFleetFromRentMe={requestImportFleetFromRentMe} rentmeConfig={rentmeConfig} setRentmeConfig={setRentmeConfig} rentmeSync={rentmeSync} rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} appUsers={appUsers} setAppUsers={setAppUsers} onLogout={handleLogout} driveClientId={driveClientId} setDriveClientId={setDriveClientId} driveLastBackup={driveLastBackup} onDriveBackup={driveBackup} driveAutoEnabled={driveAutoEnabled} setDriveAutoEnabled={setDriveAutoEnabled} renderLastBackup={renderLastBackup} onRenderBackup={backupToRender} backupToken={backupToken} setBackupToken={setBackupToken} onImportStorico={({ prenotazioni: newP, clienti: newC }) => {
                 setPrenotazioni(prev => {
                   const existKeys = new Set(prev.map(p => p.id));
                   return [...prev, ...newP.filter(p => !existKeys.has(p.id))];
@@ -15237,7 +15794,7 @@ function Styles() {
 // ═══════════════════════════════════════════════════════════════════
 // SIDEBAR
 // ═══════════════════════════════════════════════════════════════════
-function Sidebar({ page, setPage, onNew, online, agency, rentmeSyncStatus, rentmeAlertCount }) {
+function Sidebar({ page, setPage, onNew, online, agency, rentmeSyncStatus, rentmeAlertCount, rentmeRetryCount, offlineSyncCount }) {
   const items = [
     { id: 'dashboard',    label: 'Dashboard',    icon: LayoutDashboard },
     { id: 'oggi',         label: 'Oggi',         icon: Compass },
@@ -15252,7 +15809,10 @@ function Sidebar({ page, setPage, onNew, online, agency, rentmeSyncStatus, rentm
     { id: 'customers',    label: 'Clienti',      icon: Users },
     { id: 'partners',     label: 'Strutture',    icon: Hotel },
     { id: 'listino',      label: 'Prezzi',       icon: Pencil },
-    { id: 'settings',     label: 'Impostazioni', icon: Settings },
+    // Badge: arancione per retry RentMe, rosso per dati non sincronizzati
+    { id: 'settings', label: 'Impostazioni', icon: Settings,
+      badge: rentmeRetryCount > 0 ? rentmeRetryCount : (offlineSyncCount > 0 ? '!' : null),
+      badgeColor: rentmeRetryCount > 0 ? '#e67e22' : '#c0392b' },
   ];
 
   return (
@@ -15296,7 +15856,7 @@ function Sidebar({ page, setPage, onNew, online, agency, rentmeSyncStatus, rentm
               <Icon className="w-4 h-4" aria-hidden="true" />
               <span className="flex-1 text-left">{it.label}</span>
               {it.badge ? (
-                <span style={{ background: '#c0392b', color: '#fff', fontSize: 9, fontWeight: 700, borderRadius: 10, padding: '1px 5px', minWidth: 16, textAlign: 'center' }}>{it.badge}</span>
+                <span style={{ background: it.badgeColor || '#c0392b', color: '#fff', fontSize: 9, fontWeight: 700, borderRadius: 10, padding: '1px 5px', minWidth: 16, textAlign: 'center' }}>{it.badge}</span>
               ) : (
                 <span className="dot" aria-hidden="true" />
               )}
@@ -17590,7 +18150,7 @@ function SecuritySection({ appUsers, setAppUsers, onLogout, pushToast }) {
   );
 }
 
-function SettingsPage({ operator, operators, cargosConfig, admin, backendStatus, lastCheck, apiBaseUrl, syncStatus, agency, onSyncAll, onExportBackup, onImportBackup, pushToast, onAddOperator, onEditOperator, onDeleteOperator, onEditCargos, onEditApiBase, onEditAgency, onResetCustomers, onResetContracts, onResetEverything, onImportFleetFromRentMe, customers, contracts, rentmeConfig, setRentmeConfig, rentmeSync, rentmeVehicles, prenotazioni, onImportStorico, appUsers, setAppUsers, onLogout, driveClientId, setDriveClientId, driveLastBackup, onDriveBackup, driveAutoEnabled, setDriveAutoEnabled, renderLastBackup, onRenderBackup }) {
+function SettingsPage({ operator, operators, cargosConfig, admin, backendStatus, lastCheck, apiBaseUrl, syncStatus, agency, onSyncAll, onExportBackup, onImportBackup, pushToast, onAddOperator, onEditOperator, onDeleteOperator, onEditCargos, onEditApiBase, onEditAgency, onResetCustomers, onResetContracts, onResetEverything, onImportFleetFromRentMe, customers, contracts, rentmeConfig, setRentmeConfig, rentmeSync, rentmeVehicles, prenotazioni, onImportStorico, appUsers, setAppUsers, onLogout, driveClientId, setDriveClientId, driveLastBackup, onDriveBackup, driveAutoEnabled, setDriveAutoEnabled, renderLastBackup, onRenderBackup, backupToken, setBackupToken }) {
   const importInputRef = useRef();
   const [showCargosSecrets, setShowCargosSecrets] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -17976,6 +18536,21 @@ function SettingsPage({ operator, operators, cargosConfig, admin, backendStatus,
           Ogni 3 ore il backup viene salvato automaticamente sul backend Render — nessuna autorizzazione Google richiesta. Fino a 20 snapshot vengono conservati (ultimi ~2,5 giorni).
           Ultimo backup: <strong>{renderLastBackup ? new Date(renderLastBackup).toLocaleString('it-IT') : '—'}</strong>
         </p>
+        {/* Token sicurezza backup */}
+        <div className="mb-4" style={{ background: 'var(--surface-2)', borderRadius: 6, padding: '10px 12px', border: '1px solid var(--border)' }}>
+          <div className="text-xs font-semibold mb-1" style={{ color: 'var(--ink-1)' }}>🔐 Token sicurezza backup</div>
+          <div className="text-xs mb-2" style={{ color: 'var(--ink-2)' }}>
+            Imposta lo stesso valore nella variabile d'ambiente <code>BACKUP_SECRET</code> su Render per proteggere il backup da accessi non autorizzati. Lascia vuoto per disabilitare.
+          </div>
+          <input
+            type="password"
+            className="input mono"
+            placeholder="Token segreto (es. edo-backup-2024-xyz)"
+            value={backupToken || ''}
+            onChange={e => setBackupToken(e.target.value)}
+            style={{ width: '100%', fontSize: 12 }}
+          />
+        </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
           <button type="button"
             onClick={() => onRenderBackup?.(false)}
@@ -18168,6 +18743,22 @@ function SettingsPage({ operator, operators, cargosConfig, admin, backendStatus,
                 : new Date(rentmeSync.nextSyncAt).toLocaleString('it-IT', { hour: '2-digit', minute: '2-digit' })}
             </div>
           </div>
+          {/* Coda retry prenotazioni fallite */}
+          {(() => {
+            const retryCount = (() => { try { return JSON.parse(localStorage.getItem('rentme_pending_queue') || '[]').length; } catch { return 0; } })();
+            return retryCount > 0 ? (
+              <div style={{ padding: '10px 12px', background: '#fff3e0', borderRadius: 6, border: '1px solid #e67e22' }}>
+                <div className="text-xs uppercase tracking-wider mb-1" style={{ color: '#e67e22', fontWeight: 700 }}>⏳ In coda retry</div>
+                <div style={{ fontWeight: 700, color: '#e67e22' }}>{retryCount} prenotazioni</div>
+                <div style={{ fontSize: 10, color: '#7a5000', marginTop: 2 }}>Verranno reinviate a RentMe al prossimo sync</div>
+              </div>
+            ) : (
+              <div style={{ padding: '10px 12px', background: 'var(--surface-2)', borderRadius: 6 }}>
+                <div className="text-xs uppercase tracking-wider mb-1" style={{ color: 'var(--muted)', fontWeight: 700 }}>Coda retry</div>
+                <div style={{ fontWeight: 600, color: 'var(--ok)' }}>✓ Vuota</div>
+              </div>
+            );
+          })()}
         </div>
 
         {/* Intervallo auto-sync */}
@@ -20531,7 +21122,9 @@ function PlateScanModal({ fleet, onClose }) {
     setOcrRunning(true);
     let worker;
     try {
-      worker = await Tesseract.createWorker('eng', 1);
+      // OEM 3 = combinato LSTM+Tesseract, preprocessing contrasto per targa
+      const processedUrl = await preprocessForOcr(dataUrl);
+      worker = await Tesseract.createWorker('eng', 3);
       const PLATE_WHITELIST = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 
       // Estrae la targa dal testo OCR cercando il pattern italiano:
@@ -20557,7 +21150,7 @@ function PlateScanModal({ fleet, onClose }) {
         tessedit_char_whitelist: PLATE_WHITELIST,
         tessedit_pageseg_mode: 7,
       });
-      const { data: { text: text7 } } = await worker.recognize(dataUrl);
+      const { data: { text: text7 } } = await worker.recognize(processedUrl);
       let plate = extractPlate(text7);
 
       // ── 2ª PASSATA: pageseg_mode 11 (sparse) — funziona se la foto
@@ -20568,7 +21161,7 @@ function PlateScanModal({ fleet, onClose }) {
           tessedit_char_whitelist: PLATE_WHITELIST,
           tessedit_pageseg_mode: 11,
         });
-        const { data: { text: text11 } } = await worker.recognize(dataUrl);
+        const { data: { text: text11 } } = await worker.recognize(processedUrl);
         plate = extractPlate(text11);
       }
 
