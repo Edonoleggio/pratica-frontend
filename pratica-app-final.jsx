@@ -21,7 +21,7 @@ import Tesseract from 'tesseract.js';
 // Convenzione: x.y.z dove x = major rewrite, y = feature, z = fix.
 // La data accanto aiuta a verificare al volo che il deploy sia andato a buon fine.
 const APP_VERSION = {
-  number: '0.45.5',
+  number: '0.45.7',
   codename: 'migrateListino rimuove voci obsolete (mehari→auto_aperta) + prezzi reali da backend',
   date: '2026-05-29',
   changelog: [
@@ -670,6 +670,14 @@ function getVehicleCategoria(v) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
+// SHARED UTILITY — safePrezzo
+// Filtra valori anomali nel campo prezzo (timestamp, ID, date YYYYMMDD finiti nel campo).
+// Nessun noleggio supera €5.000 — qualsiasi valore > €5.000 è un errore di import/sync.
+function safePrezzo(p) {
+  const n = Number(p?.prezzo ?? p);
+  return (isFinite(n) && n > 0 && n <= 5000) ? n : 0;
+}
+
 // SHARED UTILITY — normalizeAutoCategoria
 // Mappa la stringa categoria di un'auto al codice LISTINO corretto.
 // Ogni categoria ha ora una voce LISTINO dedicata — niente più collasso
@@ -4515,7 +4523,7 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rent
       {filterGruppo && (() => {
         const gruppo = (prenotazioni || []).filter(p => p.gruppoId === filterGruppo);
         const nomeCliente = [gruppo[0]?.clienteCognome, gruppo[0]?.clienteNome].filter(Boolean).join(' ') || '—';
-        const totale = gruppo.reduce((s, p) => s + (Number(p.prezzo) || 0), 0);
+        const totale = gruppo.reduce((s, p) => s + safePrezzo(p), 0);
         const dal = gruppo[0]?.dal ? gruppo[0].dal.split('-').reverse().join('/') : '';
         const al  = gruppo[0]?.al  ? gruppo[0].al.split('-').reverse().join('/')  : '';
         return (
@@ -4624,7 +4632,7 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rent
                       {items.length} prenotazion{items.length === 1 ? 'e' : 'i'}
                     </span>
                     <span style={{ fontSize: 11, color: 'var(--muted)' }}>
-                      €{items.reduce((s, p) => s + (Number(p.prezzo)||0), 0).toLocaleString('it-IT')}
+                      €{items.reduce((s, p) => s + safePrezzo(p), 0).toLocaleString('it-IT')}
                     </span>
                     <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
                   </div>
@@ -7034,12 +7042,6 @@ function useReportData({ prenotazioni, contracts, cassa, customers, fleet, opera
     // un dato non-prezzo finito nel campo (es. timestamp, ID, data YYYYMMDD dal sync RentMe).
     // Nessun noleggio a Lampedusa può costare più di €9.999 — qualsiasi valore superiore
     // è sicuramente un errore di import e non deve entrare nei calcoli finanziari.
-    // Cap basato sul listino reale: max €350/sett × 13 settimane (3 mesi) ≈ €4.550.
-    // Qualsiasi valore > €5.000 è sicuramente un errore (timestamp, ID, data YYYYMMDD).
-    const safePrezzo = (p) => {
-      const n = Number(p.prezzo);
-      return (isFinite(n) && n > 0 && n <= 5000) ? n : 0;
-    };
     // allPLocali: alias per compatibilità con usi successivi (coincide con allP in questo contesto)
     const allPLocali = allP;
     const allC = (contracts    || []).filter(c => (c.createdAt || '').startsWith(year));
@@ -7245,8 +7247,8 @@ function useReportData({ prenotazioni, contracts, cassa, customers, fleet, opera
     const prenoFuture = (prenotazioni || []).filter(p =>
       p.dal > todayStr && (p.stato === 'confermata' || p.stato === 'bozza')
     );
-    const revenueFutura     = prenoFuture.filter(p => p.stato === 'confermata').reduce((s,p) => s+(Number(p.prezzo)||0), 0);
-    const revenuePotenziale = prenoFuture.filter(p => p.stato === 'bozza').reduce((s,p) => s+(Number(p.prezzo)||0), 0);
+    const revenueFutura     = prenoFuture.filter(p => p.stato === 'confermata').reduce((s,p) => s + safePrezzo(p), 0);
+    const revenuePotenziale = prenoFuture.filter(p => p.stato === 'bozza').reduce((s,p) => s + safePrezzo(p), 0);
     const previsioneMap = {};
     prenoFuture.forEach(p => {
       const ym = p.dal.slice(0, 7);
@@ -7255,8 +7257,8 @@ function useReportData({ prenotazioni, contracts, cassa, customers, fleet, opera
         confermata: 0, bozza: 0, n: 0,
       };
       previsioneMap[ym].n += 1;
-      if (p.stato === 'confermata') previsioneMap[ym].confermata += (Number(p.prezzo)||0);
-      if (p.stato === 'bozza')      previsioneMap[ym].bozza      += (Number(p.prezzo)||0);
+      if (p.stato === 'confermata') previsioneMap[ym].confermata += safePrezzo(p);
+      if (p.stato === 'bozza')      previsioneMap[ym].bozza      += safePrezzo(p);
     });
     const previsioneList = Object.values(previsioneMap).sort((a,b) => a.ym.localeCompare(b.ym)).slice(0, 9);
     const maxPrev = Math.max(...previsioneList.map(m => m.confermata + m.bozza), 1);
@@ -7434,7 +7436,7 @@ function ReportPage({ prenotazioni, contracts, cassa, customers, fleet, operator
     return mesiLabels.map((label, mi) => {
       const meseStr = `${year}-${String(mi+1).padStart(2,'0')}`;
       const prenoMese = (prenotazioni||[]).filter(p => (p.dal||'').startsWith(meseStr) && p.stato !== 'annullata' && p.stato !== 'cancellata');
-      const revenueMese = prenoMese.reduce((s,p) => s + (Number(p.prezzo)||0), 0);
+      const revenueMese = prenoMese.reduce((s,p) => s + safePrezzo(p), 0);
       const cassaMese = (cassa||[]).filter(k => (k.data||'').startsWith(meseStr) && k.importo > 0).reduce((s,k) => s + (Number(k.importo)||0), 0);
       const fleetCount = (fleet||[]).length || 1;
       const giorni = new Date(Number(year), mi+1, 0).getDate();
@@ -7455,7 +7457,7 @@ function ReportPage({ prenotazioni, contracts, cassa, customers, fleet, operator
     return mesiLabels.map((label, mi) => {
       const meseStr = `${prevYear}-${String(mi+1).padStart(2,'0')}`;
       const prenoMese = (prenotazioni||[]).filter(p => (p.dal||'').startsWith(meseStr) && p.stato !== 'annullata' && p.stato !== 'cancellata');
-      const revenueMese = prenoMese.reduce((s,p) => s + (Number(p.prezzo)||0), 0);
+      const revenueMese = prenoMese.reduce((s,p) => s + safePrezzo(p), 0);
       const cassaMese = (cassa||[]).filter(k => (k.data||'').startsWith(meseStr) && k.importo > 0).reduce((s,k) => s + (Number(k.importo)||0), 0);
       const fleetCount = (fleet||[]).length || 1;
       const giorni = new Date(Number(prevYear), mi+1, 0).getDate();
@@ -10919,7 +10921,7 @@ function ClienteStoricoPanel({ cliente, prenotazioni, contracts, onClose }) {
     return (contracts||[]).filter(c => c.record?.cognome?.toLowerCase() === (cliente.cognome||'').toLowerCase()).sort((a,b) => b.createdAt.localeCompare(a.createdAt));
   }, [contracts, cliente]);
 
-  const spesaTotale  = preno.reduce((s,p) => s + (Number(p.prezzo)||0), 0);
+  const spesaTotale  = preno.reduce((s,p) => s + safePrezzo(p), 0);
   const accontiTotali = preno.reduce((s,p) => s + (Number(p.acconto)||0), 0);
   const ultimaVisita = preno.length > 0 ? preno[0].dal : null;
   const catCount     = {};
@@ -11289,22 +11291,35 @@ function RitiriWidget({ prenotazioni, agency, setPage }) {
     );
   };
 
+  const [aperto, setAperto] = useState(false);
+
   return (
     <div className="card-paper" style={{ marginBottom: 20 }}>
-      <div className="px-5 py-4 border-b flex items-center justify-between" style={{ borderColor: 'var(--border)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <PhoneCall className="w-4 h-4" style={{ color: '#27ae60' }} />
-          <h3 className="serif text-lg font-medium">Reminder WhatsApp</h3>
-          <span style={{ fontSize: 11, color: 'var(--muted)' }}>{total} movimenti</span>
+      {/* Header cliccabile — collassa/espande il widget */}
+      <button
+        type="button"
+        onClick={() => setAperto(o => !o)}
+        style={{ width: '100%', padding: '10px 20px', display: 'flex', alignItems: 'center', gap: 10,
+          background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}
+      >
+        <PhoneCall className="w-4 h-4" style={{ color: '#27ae60' }} />
+        <span className="serif font-medium" style={{ fontSize: 15 }}>Reminder WhatsApp</span>
+        <span style={{ fontSize: 11, color: 'var(--muted)', background: 'var(--surface-2)',
+          padding: '1px 7px', borderRadius: 10, fontWeight: 600 }}>
+          {total}
+        </span>
+        <ChevronDown className="w-4 h-4 ml-auto" style={{ color: 'var(--muted)',
+          transform: aperto ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
+      </button>
+
+      {/* Contenuto espandibile */}
+      {aperto && (
+        <div style={{ borderTop: '1px solid var(--border)' }}>
+          {ritiriOggi.map(p   => <Row key={p.id} p={p} tipo="ritiro_oggi" />)}
+          {rientriOggi.map(p  => <Row key={p.id} p={p} tipo="rientro" />)}
+          {ritiriDomani.map(p => <Row key={p.id} p={p} tipo="ritiro_domani" />)}
         </div>
-        <button type="button" onClick={() => setPage('prenotazioni')}
-          style={{ fontSize: 12, color: 'var(--ink-2)', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
-          Tutte <ChevronRight className="w-3 h-3" />
-        </button>
-      </div>
-      {ritiriOggi.map(p   => <Row key={p.id} p={p} tipo="ritiro_oggi" />)}
-      {rientriOggi.map(p  => <Row key={p.id} p={p} tipo="rientro" />)}
-      {ritiriDomani.map(p => <Row key={p.id} p={p} tipo="ritiro_domani" />)}
+      )}
     </div>
   );
 }
@@ -16939,7 +16954,7 @@ function VeicoloStatsModal({ vehicle, prenotazioni, onClose }) {
       return parseInt(year, 10) === anno;
     });
     const giorni = inAnno.reduce((s, p) => s + Math.max(0, daysDiff(p.dal, p.al)), 0);
-    const revenue = inAnno.reduce((s, p) => s + (Number(p.prezzo)||0), 0);
+    const revenue = inAnno.reduce((s, p) => s + safePrezzo(p), 0);
     const occupazione = Math.min(100, Math.round(giorni / 365 * 100));
     return { n: inAnno.length, giorni, revenue, occupazione };
   }, [prenotazioni, vehicle]);
@@ -16953,7 +16968,7 @@ function VeicoloStatsModal({ vehicle, prenotazioni, onClose }) {
     p.stato !== 'annullata' && p.stato !== 'cancellata' && p.stato !== 'bozza'
   );
   const lifetimeGiorni  = prenoTutte.reduce((s, p) => s + Math.max(0, daysDiff(p.dal || '', p.al || '')), 0);
-  const lifetimeRevenue = prenoTutte.reduce((s, p) => s + (Number(p.prezzo)||0), 0);
+  const lifetimeRevenue = prenoTutte.reduce((s, p) => s + safePrezzo(p), 0);
 
   const card = (label, value, sub, color = 'var(--ink)') => (
     <div style={{ background: 'var(--surface-2)', borderRadius: 8, padding: '12px 16px', flex: 1, minWidth: 0 }}>
@@ -17852,7 +17867,7 @@ function CustomersPage({ customers, setCustomers, prenotazioni, admin, onShowQR,
   const schedaPreno   = schedaCliente
     ? (prenotazioni || []).filter(p => p.clienteId === schedaCliente.id || (p.clienteCognome?.toLowerCase() === schedaCliente.cognome?.toLowerCase() && p.clienteNome?.toLowerCase() === schedaCliente.nome?.toLowerCase()))
     : [];
-  const schedaSpesa   = schedaPreno.filter(p => p.stato !== 'annullata' && p.stato !== 'cancellata').reduce((s, p) => s + (Number(p.prezzo)||0), 0);
+  const schedaSpesa   = schedaPreno.filter(p => p.stato !== 'annullata' && p.stato !== 'cancellata').reduce((s, p) => s + safePrezzo(p), 0);
 
   const toggleBlacklist = (c) => {
     if (!setCustomers) return;
