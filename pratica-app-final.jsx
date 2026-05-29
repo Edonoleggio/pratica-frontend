@@ -21,10 +21,52 @@ import Tesseract from 'tesseract.js';
 // Convenzione: x.y.z dove x = major rewrite, y = feature, z = fix.
 // La data accanto aiuta a verificare al volo che il deploy sia andato a buon fine.
 const APP_VERSION = {
-  number: '0.43.4',
-  codename: 'Fix migratePartners: aggiunge strutture mancanti (s23, s24) oltre a patchare quelle esistenti',
-  date: '2026-05-28',
+  number: '0.43.25',
+  codename: 'categoriaOverbooking: fermiFlotta + targa normalization',
+  date: '2026-05-29',
   changelog: [
+    // v0.43.25 — 2026-05-29
+    'Fix categoriaOverbooking (banner "X/Y liberi" in PrenoForm): (1) fermiFlotta non era conteggiato — un veicolo in manutenzione risultava "libero" nel banner anche se bloccato; aggiunto loop fermiFlotta con tipo-check contro allVehicles. (2) vehicleId legacy (targa) non normalizzato a fleet.id prima di add() al Set — la stessa prenotazione con vehicleId=targa poteva essere de-duplicata male se lo stesso veicolo aveva un altro booking con vehicleId=fleet.id; aggiunto normalizeVid() con fleetIdByTarga lookup. (3) tipoP lookup usava v.id === p.vehicleId esatto — ora usa matchVehicle per retrocompatibilità. Impatto: solo cosmetic (il blocco reale è in bookedIds/availableVehicles), ma il banner mostrava liberi gonfiati.',
+    // v0.43.24 — 2026-05-29
+    'Fix importBackup: solo migratePrenotazioni applicata ai dati ripristinati da backup; fleet/partners/agency/operators/listino caricati senza migration — nella sessione corrente i dati sarebbero stati non-migrati fino al reload. Fix: ogni set del backup ora chiama la relativa migrate function (migrateFleet, migratePartners, migrateAgency, migrateOperators, migrateListino). Fix FleetPage inNoleggio: mappa keyed da p.vehicleId (che può essere targa legacy) ma cercata con v.id (fleet UUID) → badge "In noleggio" spariva per prenotazioni legacy; ora risolve p.vehicleId a fleet.id via matchVehicle prima di popolare la mappa. Fix OggiPage occupatiIds: stesso problema targa/id — i veicoli occupati da prenotazioni legacy non venivano marcati come occupati nel pannello Situazione flotta; aggiunto resolveVehicleId_oggi() che traduce targa→fleet.id prima di add() al Set.',
+    // v0.43.23 — 2026-05-29
+    'Fix fermiFlotta completato — propagazione a tre aree mancanti: (1) CalendarioFlottaPage: aggiunto prop fermiFlotta, nuovo fermiMap (vehicleId|day→fermo), celle dei fermi mostrano striatura grigia 🔧 e tooltip con motivo/date, click su cella fermo non apre nuova prenotazione. (2) SostituzioneModal: aggiunto prop fermiFlotta, occupati set ora include vehicleId e targa dei fermi sovrapposti al periodo dataGuasto→preno.al — veicoli fermi non appaiono più come candidati sostituzione. (3) ConsegnaModal: aggiunto prop fermiFlotta, vehicleFitScore controlla fermi in occupato check e in freeCount loop — veicoli con manutenzione programmata ricevono score=-1 e appaiono in fondo alla lista. Aggiornati call site (PrenotazioniPage) e render site (app root line calendario).',
+    // v0.43.22 — 2026-05-29
+    'Fix Step3Vehicle disponibilità veicoli wizard: (1) p.vehicleId !== v.id sostituito con matchVehicle(p.vehicleId, v.id, v.targa) — prenotazioni legacy con vehicleId=targa non escludevano il veicolo dal picker; (2) confronto date prenotazioni cambiato da Date objects (UTC midnight off-by-one) a confronto ISO stringa "p.dal <= alISO && p.al >= dalISO" — coerente con calcAvailability; (3) aggiunto controllo stato "annullata" oltre a cancellata/completata. Refactored: fromDate/toDate sostituiti con dalISO/alISO estratti da formato DD/MM/YYYY pratica. Fix OggiPage occupatiIds: i fermi programmati non erano sottratti dai veicoli "liberi" nel pannello Situazione flotta — aggiunto blocco fermiFlotta||[].forEach dopo prenotazioni.',
+    // v0.43.21 — 2026-05-29
+    'Fix fermiFlotta propagato a getVehiclesForCat (BancoRapido e Preventivi) e a QuoteCard.disponibilita: i fermi programmati non erano considerati nel set "occupati" usato per determinare libero/occupato per i singoli veicoli nei modal. BancoRapidoPage.getVehiclesForCat e PreventiviPage.getVehiclesForCat aggiungono ora i vehicleId dei fermi sovrapposti alle date. QuoteCard riceve fermiFlotta come prop e lo include nel calcolo dei liberi. Aggiornato dependency array useMemo di QuoteCard (aggiunto fermiFlotta). PreventiviPage e QuoteCard aggiornati anche al call site principale (line 14755 e 6011).',
+    // v0.43.20 — 2026-05-29
+    'Fix calcAvailability fermiFlotta: i fermi programmati (blocchi manutenzione) non erano considerati nella disponibilità mostrata a BancoRapido, DisponibilitaView, OggiPage walk-in e sidebar alert. Aggiunto parametro opzionale fermiFlotta a calcAvailability; dentro il loop per gruppo aggiunge vehicleId del fermo a busy se sovrappone le date. Aggiornati call site: BancoRapidoPage (nuova prop fermiFlotta), DisponibilitaView (prop + call), OggiPage walk-in, sidebar rentmeAlertCount. Fix toFixed residui: CassaPage record.importo.toFixed(2) nel toast e r.importo.toFixed(2) nel display righe → (Number(x)||0).toFixed(2).',
+    // v0.43.19 — 2026-05-29
+    'Fix timezone UTC residui: OggiPage today/tomorrow usavano now.toISOString() (UTC) → ora todayISO()/localDateISO(1); docAlert30 usava new Date(today) senza noon anchor → ora new Date(today+"T12:00:00"); CassaPage getRange "settimana" lun.toISOString() → ora local getFullYear/getMonth/getDate; GraficoPeriodi days loop new Date() → noon-anchored con today+"T12:00:00". Fix VeicoloStatsModal: filtri p.vehicleId === vehicle.id || targa sostituiti con matchVehicle per retrocompatibilità. Fix FleetPage vPreno: stesso pattern p.vehicleId === sv.id → matchVehicle. Fix importBackup: setPrenotazioni(data.prenotazioni) senza migration → ora applica migratePrenotazioni. Fix calcAvailability: RentMe vehicles skippati con if(!v.id)return — i veicoli RentMe non hanno v.id ma hanno v.targa; ora usa id = v.id||v.targa||v.rentmeCode.',
+    // v0.43.18 — 2026-05-29
+    'Fix coercioni numeriche cassa/report: tutti i reduce su r.importo, k.importo, p.prezzo, p.acconto ora usano Number(x)||0 per prevenire NaN su entry null e string-concatenation su dati anomali. Fix su ChiusuraGiornalieraModal (perTipo, perMetodo, totaleIncassato, totaleRimborsi), CassaPage (totale, rimborsi, perMetodo), useReportData (incassoCassa, rimborsiCassa, revCassa, metodi, tipi), grafici cassa mese, clienti e operatori. Fix pushBooking RentMe: Set busy sempre vuoto → il push mandava sempre al primo veicolo della categoria a prescindere dalla disponibilità; ora popola busy controllando gli impegni RentMe sovrapposti alle date richieste.',
+    // v0.43.17 — 2026-05-28
+    'Fix handleRicrea off-by-one: il calcolo newAl faceva d.setDate(oggi + durataGiorni) invece di d.setDate(oggi + durataGiorni - 1). Il periodo [dal,al] è inclusivo in entrambi gli estremi, quindi per durataGiorni=4 il newAl corretto è oggi+3 (non oggi+4). Effetto: ogni prenotazione ricreata tramite "Ricrea" era sistematicamente 1 giorno più lunga dell\'originale.',
+    // v0.43.16 — 2026-05-28
+    'Fix conflitto PrenoForm: (1) sostituita uguaglianza diretta p.vehicleId===f.vehicleId con matchVehicle(p.vehicleId, f.vehicleId, f.vehicleTarga) per retrocompatibilità targa/id; (2) aggiunto check su vehicleSchedule segments — un veicolo assegnato via combinazione multi-mezzo ora genera correttamente il banner "⚠️ Mezzo già occupato". Fix coercioni numeriche: reduce avgTicket usa Number(p.prezzo)||0; cassaMese grafici usa Number(k.importo)||0 invece di k.importo nudo (string concatenation su dati anomali).',
+    // v0.43.15 — 2026-05-28
+    'Fix STATO_COLOR mancante cancellata: i due STATO_COLOR (OggiPage e SearchModal) avevano annullata:#c85050 ma non cancellata — prenotazioni cancellate mostravano colore grigio/muted invece che rosso. Fix: aggiunto cancellata:#c85050 a entrambe le mappe. Fix migratePrenotazioni: aggiunta normalizzazione stato=annullata→cancellata per dati storici ante-v0.43.12. Fix tooltip report: testo aggiornato per menzionare cancellata.',
+    // v0.43.14 — 2026-05-28
+    'Fix timezone: todayISO() riscritta con getFullYear/getMonth/getDate (ora locale) invece di new Date().toISOString() (UTC). Bug: tra mezzanotte e le 2 AM in Italia, todayISO() restituiva ieri — consegne/rientri oggi/domani, disponibilità, filtri mensili mostravano dati sbagliati. Aggiunta localDateISO(n) per date future (+1g tomorrow, +7g, +30g). Tutte le 24 occorrenze inline new Date().toISOString().slice(0,10) sostituite con todayISO(); Date.now()+N*ms con localDateISO(N).',
+    // v0.43.13 — 2026-05-28
+    'Fix vehicleSchedule ignorato in 5 occupati-set: QuoteCard.disponibilita, Preventivi getVehiclesForCat, BancoRapido getVehiclesForCat, ConsegnaModal candidati sostituzione, OggiPage occupatiIds (Situazione flotta ora) — tutti costruivano il Set di veicoli occupati da soli p.vehicleId. I veicoli assegnati tramite combinazione multi-mezzo (vehicleSchedule) risultavano sempre "liberi". Fix: forEach aggiunge sia p.vehicleId che ogni s.vehicleId dei segmenti vehicleSchedule con overlap sulle date.',
+    // v0.43.12 — 2026-05-28
+    'Fix sistemico stato "cancellata": PRENO_STATI usa "cancellata" (non "annullata") ma 23+ filtri controllano solo !== annullata — prenotazioni cancellate venivano trattate come attive. Fix: tutti i filtri ora escludono sia annullata che cancellata. Impatto: (1) calcAvailability e bookedIds non contano più slot per prenotazioni cancellate; (2) freeSegments esclude cancellate; (3) vehicleFitScore esclude cancellate; (4) revenue/incasso esclude cancellate; (5) partenze/rientri oggi/domani escludono cancellate; (6) widget "Ricrea" ora visibile anche per cancellate; (7) pulsante deposito nascosto su cancellate.',
+    // v0.43.11 — 2026-05-28
+    'Fix backward-compat targa in tutte le check di occupazione veicolo: (1) matchVehicle() helper accetta sia fleet.v.id che targa come vehicleId; (2) bookedIds in PrenoForm ora traduce targa→fleet.id con fleetIdByTarga; (3) freeSegments() in findBestVehicleCombination ora usa matchVehicle(p.vehicleId, vehicleId, vehicleTarga) e passa best.targa al secondo call; (4) vehicleFitScore in ConsegnaModal usa matchVehicle per i check occupato e busy. Corregge assegnazione automatica veicoli e punteggio idoneità quando vehicleId storico = targa.',
+    // v0.43.10 — 2026-05-28
+    'Fix critico vehicleId/targa mismatch: (1) PrenoForm.allVehicles e ConsegnaModal.allVehicles ora usano fleet.v.id come vehicleId quando il veicolo RentMe ha un corrispondente in flotta (prima usavano targa.toUpperCase() causando vehicleId≠fleet.id); (2) calcAvailability aggiunge mapping targa→key retrocompatibile per riconoscere anche prenotazioni vecchie con vehicleId=targa. Effetto: le prenotazioni create via wizard ora vengono correttamente conteggiate come "occupate" in calcAvailability, catMatch, QuoteCard.disponibilita → veicoli non mostrano più liberi quando sono prenotati.',
+    // v0.43.9 — 2026-05-28
+    'Fix getVehicleCategoria fast path auto: invece di ritornare sempre CHIUSA per tutti i non-CABRIO/SUPERIOR/MEHARI, ora converte v.categoria a slug (rimuove spazi, uppercase) e ritorna il codice RentMe preciso ("5 Posti"→"5POSTI", "Base"→"BASE", "Serie 2"→"SERIE2") se presente in RENTME_CATEGORIE_MAP.auto, altrimenti CHIUSA. Questo corregge le chip di filtro categoria in FleetPage (5POSTI/BASE/APERTA mostavano 0 veicoli locali); normalizeAutoCategoria continua a mappare tutto a BASE per i confronti LISTINO in calcAvailability/catMatch/QuoteCard.',
+    // v0.43.8 — 2026-05-28
+    'Fix normalizzazione completa categorie auto: aggiunta helper normalizeAutoCategoria(cat) che mappa qualsiasi codice non-LISTINO (CHIUSA, 5POSTI, 6POSTI, 7POSTI, APERTA, AUTOMATICA, SERIE2, STANDARD) a BASE. Applicata in: calcAvailability (grouping), QuoteCard disponibilita filter, catMatch PreventiviPage, catMatch BancoRapido. Prima solo CHIUSA→BASE era gestita — i veicoli con categorie da RentMe keyword detection (5POSTI, APERTA…) non erano inclusi nel conteggio BASE.',
+    // v0.43.7 — 2026-05-28
+    'Fix OCR lettore targa (PlateScanModal): (1) doppia passata Tesseract — pageseg_mode 7 (riga singola, funziona con targa inquadrata stretta) poi 11 (sparse, funziona con foto veicolo intero); (2) estrattore targa ora usa regex pattern (moderno IT: AA000AA, vecchio IT: AA0000A, fallback ≥5 char) invece di .slice(0,8) cieco che prendeva rumore OCR.',
+    // v0.43.6 — 2026-05-28
+    'Fix lettura MRZ documenti: (1) parseMRZ TD1 ora accetta tipo "C" (CIE elettronica 3.0 e altri formati) oltre a "I" e "A" — era il motivo principale del fallimento su CIE moderne; (2) parser TD3/TD1 ora scorre tutte le righe OCR per trovare sequenze MRZ valide anche quando Tesseract produce righe extra da sfondo/foto; (3) runDocOcr adotta strategia 2 passate: 1ª immagine intera pageseg_mode 11 (sparse), 2ª crop zona inferiore 55% pageseg_mode 6 (blocco uniforme) — risolve il caso in cui mappa/sfondo/foto tessera confondevano il riconoscimento; funzione cropMrzZone aggiunta.',
+    // v0.43.5 — 2026-05-28
+    'Fix getVehicleCategoria fast path per tipo=auto: la UI salvava categorie miste ("5 Posti", "6 Posti", "Aperta", "Serie 2", "Automatica", "Cabrio" minuscolo) che non matchavano le costanti LISTINO uppercase (CABRIO/SUPERIOR/MEHARI/BASE). Ora il fast path normalizza esplicitamente: CABRIO/SUPERIOR/MEHARI riconosciute case-insensitive, tutto il resto → CHIUSA → BASE. Corregge il conteggio di "Auto chiusa" in Preventivi e BancoRapido (37 → 49 veicoli effettivi).',
     // v0.43.4 — 2026-05-28
     'Fix migratePartners: aggiunge al array persistito i partner di INITIAL_PARTNERS non ancora presenti (es. s23 Rifugio dei Naviganti, s24 Il Maestro di Nodi) — stesso pattern toAdd di migrateListino. Il backend aveva solo s1–s22, s23/s24 non venivano mai sincronizzati.',
     // v0.43.3 — 2026-05-28
@@ -515,7 +557,31 @@ function getVehicleCategoria(v) {
   // indistintamente). Lasciamo che il targa-check sotto distingua correttamente.
   // isQuad: gestisce anche i tipi diretti di RentMe ('quad150', 'quad300', 'quad50')
   const isQuad = tipo === 'quad' || tipo.startsWith('quad') || ['mxu', 'xwolf', 'atv', 'kymco'].includes(tipo);
-  if (v?.categoria && !isQuad) return v.categoria;
+  if (v?.categoria && !isQuad) {
+    // Per gli AUTO: normalizza il valore salvato nella flotta alle 4 costanti LISTINO.
+    // La UI salva varianti miste ('Cabrio', 'Base', '5 Posti', '6 Posti', 'Serie 2'…)
+    // che non matchano le costanti uppercase di LISTINO/calcAvailability/catMatch.
+    // Le categorie non riconosciute (5 Posti, 6 Posti, Aperta, Automatica, Serie 2…)
+    // ricadono tutte in CHIUSA → normalizzata a BASE più avanti.
+    if (tipo === 'auto') {
+      const cu = v.categoria.toUpperCase().trim();
+      if (cu === 'CABRIO')   return 'CABRIO';
+      if (cu === 'SUPERIOR') return 'SUPERIOR';
+      if (cu === 'MEHARI')   return 'MEHARI';
+      // Converte varianti con spazio ('5 Posti'→'5POSTI', 'Serie 2'→'SERIE2', 'Base'→'BASE')
+      // e restituisce il codice RentMe preciso se riconosciuto, altrimenti CHIUSA.
+      // In questo modo FleetPage.getCat mostra le chip corrette (5POSTI, BASE, APERTA…)
+      // e normalizeAutoCategoria mappa poi tutto a BASE per i confronti LISTINO.
+      // Sinonimi legacy: CHIUSA e STANDARD erano usati dai vecchi CSV → BASE
+      if (cu === 'CHIUSA' || cu === 'STANDARD') return 'BASE';
+      // Converte spazi: '5 Posti'→'5POSTI', 'Serie 2'→'SERIE2'
+      const slug = cu.replace(/\s+/g, '');
+      const autoMap = RENTME_CATEGORIE_MAP.auto || [];
+      if (autoMap.includes(slug)) return slug;
+      return 'CHIUSA'; // valori non riconosciuti → base
+    }
+    return v.categoria;
+  }
   // idRentme può essere vuoto per import vecchi — usa modello come fallback
   // (il parser vecchio salvava il codice RentMe in modello anziché idRentme)
   const rmId = (v.idRentme || v.rentmeId || v.modello || '').toLowerCase().trim();
@@ -561,6 +627,36 @@ function getVehicleCategoria(v) {
   // Default: auto non riconosciuta → CHIUSA (base/standard)
   if (tipo === 'auto') return 'CHIUSA';
   return null;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// SHARED UTILITY — normalizeAutoCategoria
+// Normalizza qualsiasi stringa categoria di un'auto alle 4 costanti
+// LISTINO valide: BASE | CABRIO | SUPERIOR | MEHARI.
+// Tutti i codici non-LISTINO (CHIUSA, 5POSTI, 6POSTI, 7POSTI,
+// APERTA, AUTOMATICA, SERIE2, STANDARD …) ricadono in BASE.
+// Usare ovunque si confronti la categoria di un auto con quella di
+// una voce LISTINO (calcAvailability, QuoteCard, catMatch…).
+// ═══════════════════════════════════════════════════════════════════
+const AUTO_LISTINO_CATS = new Set(['BASE', 'CABRIO', 'SUPERIOR', 'MEHARI']);
+function normalizeAutoCategoria(cat) {
+  const c = (cat || '').toUpperCase().trim();
+  return AUTO_LISTINO_CATS.has(c) ? c : 'BASE';
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// SHARED UTILITY — matchVehicle
+// Verifica se un vehicleId salvato in una prenotazione corrisponde a
+// un dato veicolo, gestendo due formati storici:
+//   • fleet.v.id  (UUID o 'migrated-xxx') — formato attuale post-v0.43.10
+//   • targa.toUpperCase()                 — formato legacy pre-v0.43.10
+// Usare ovunque si confronta p.vehicleId con un veicolo della flotta.
+// ═══════════════════════════════════════════════════════════════════
+function matchVehicle(bookingVehicleId, fleetId, fleetTarga) {
+  if (!bookingVehicleId) return false;
+  if (bookingVehicleId === fleetId) return true;
+  if (fleetTarga && bookingVehicleId.toUpperCase() === fleetTarga.toUpperCase().trim()) return true;
+  return false;
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -1417,9 +1513,11 @@ function parseMRZ(ocrText) {
   };
 
   // TD3 — Passaporto: 2 righe da 44 char
-  if (lines.length >= 2 && lines[0].length >= 44 && lines[1].length >= 44) {
-    const l1 = lines[0].padEnd(44, '<');
-    const l2 = lines[1].padEnd(44, '<');
+  // Cerca le 2 righe MRZ anche se precedute da rumore OCR (immagine intera)
+  const td3Candidates = lines.filter(l => l.length >= 44);
+  for (let i = 0; i < td3Candidates.length - 1; i++) {
+    const l1 = td3Candidates[i].padEnd(44, '<');
+    const l2 = td3Candidates[i + 1].padEnd(44, '<');
     if (l1[0] === 'P') {
       const natCode = l1.slice(2, 5).replace(/</g, '');
       const names = decodeName(l1.slice(5, 44));
@@ -1433,22 +1531,26 @@ function parseMRZ(ocrText) {
     }
   }
 
-  // TD1 — Carta d'Identità italiana: 3 righe da 30 char
-  if (lines.length >= 3 && lines[0].length >= 30) {
-    const l1 = lines[0].padEnd(30, '<');
-    const l2 = lines[1].padEnd(30, '<');
-    const l3 = lines[2].padEnd(30, '<');
-    if (l1[0] === 'I' || l1[0] === 'A') {
+  // TD1 — Carta d'Identità: 3 righe da 30 char
+  // Tipi validi: I (CIE standard), A (vecchia CI), C (alcuni formati CI/CIE 3.0)
+  // Cerca le 3 righe MRZ anche se l'OCR ha prodotto righe extra (immagine intera)
+  const td1Candidates = lines.filter(l => l.length >= 28);
+  for (let i = 0; i < td1Candidates.length - 2; i++) {
+    const l1 = td1Candidates[i].padEnd(30, '<');
+    const l2 = td1Candidates[i + 1].padEnd(30, '<');
+    const l3 = td1Candidates[i + 2].padEnd(30, '<');
+    if (l1[0] === 'I' || l1[0] === 'A' || l1[0] === 'C') {
       const natCode = l1.slice(2, 5).replace(/</g, '') || 'ITA';
       result.docNum = l1.slice(5, 14).replace(/<+$/, '');
       result.docTipo = 'CI';
       result.nascita = mrzDate(l2.slice(0, 6));
-      const natCode2 = l2.slice(15, 18).replace(/</, '');
+      const natCode2 = l2.slice(15, 18).replace(/<+/g, '');
       result.cittadinanza = NATION[natCode2 || natCode] || (natCode2 || natCode);
       const names = decodeName(l3.slice(0, 30));
       result.cognome = names.cognome;
       result.nome = names.nome;
-      return result;
+      // Risultato valido solo se almeno cognome o numero documento trovati
+      if (result.cognome || result.docNum) return result;
     }
   }
 
@@ -1457,6 +1559,28 @@ function parseMRZ(ocrText) {
   const docMatch = ocrText.match(/\b([A-Z]{2}\d{7}[A-Z]?)\b/);
   if (docMatch) result.docNum = docMatch[1];
   return Object.keys(result).length > 0 ? result : null;
+}
+
+// ─── Preprocessing MRZ ───────────────────────────────────────────────────────
+// Ritaglia la zona inferiore dell'immagine dove si trova tipicamente la banda MRZ.
+// Usato come secondo tentativo OCR se la prima passata (immagine intera) fallisce.
+function cropMrzZone(dataUrl, fromFraction = 0.55) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        const startY = Math.floor(img.height * fromFraction);
+        canvas.width  = img.width;
+        canvas.height = img.height - startY;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, startY, img.width, canvas.height, 0, 0, img.width, canvas.height);
+        resolve(canvas.toDataURL('image/jpeg', 0.95));
+      } catch { resolve(dataUrl); }
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
 }
 
 // DocumentScanner — componente in-line per scansione documenti o QR cliente
@@ -1473,7 +1597,13 @@ function DocumentScanner({ mode = 'document', customers, onPick, onUpload, onOcr
   const fileInputRef = useRef(null);
   const { videoRef, error: camError, ready, capture } = useCameraStream(stage === 'camera');
 
-  // OCR Tesseract on-device: riconosce MRZ documento e chiama onOcrResult
+  // OCR Tesseract on-device: riconosce MRZ documento e chiama onOcrResult.
+  // Strategia a 2 passate:
+  //   1ª passata — immagine intera, pageseg_mode 11 (sparse: trova tutto il testo
+  //      anche in mezzo a foto/mappe/sfondi). Cattura MRZ se il documento è ben inquadrato.
+  //   2ª passata — crop zona inferiore (55–100% altezza immagine) + pageseg_mode 6
+  //      (blocco uniforme). Funziona quando la 1ª passata produce rumore dall'immagine
+  //      completa (sfondo, mappa, foto tessera, barcode ecc.).
   const runDocOcr = async (dataUrl) => {
     if (mode !== 'document') return;
     setOcrRunning(true);
@@ -1487,13 +1617,29 @@ function DocumentScanner({ mode = 'document', customers, onPick, onUpload, onOcr
           }
         },
       });
+      const MRZ_WHITELIST = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789<';
+
+      // ── 1ª PASSATA: immagine intera, sparse ───────────────────────
+      setOcrStatus('🔍 Lettura documento (1/2)…');
       await worker.setParameters({
-        tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789<',
-        tessedit_pageseg_mode: 6, // assume un blocco uniforme di testo
+        tessedit_char_whitelist: MRZ_WHITELIST,
+        tessedit_pageseg_mode: 11, // sparse text — trova righe ovunque nell'immagine
       });
-      setOcrStatus('🔍 Lettura documento in corso…');
-      const { data: { text } } = await worker.recognize(dataUrl);
-      const parsed = parseMRZ(text);
+      const { data: { text: fullText } } = await worker.recognize(dataUrl);
+      let parsed = parseMRZ(fullText);
+
+      // ── 2ª PASSATA: crop zona MRZ (parte inferiore), blocco uniforme ─
+      if (!parsed || !Object.keys(parsed).length) {
+        setOcrStatus('🔍 Lettura zona MRZ (2/2)…');
+        const croppedUrl = await cropMrzZone(dataUrl, 0.55);
+        await worker.setParameters({
+          tessedit_char_whitelist: MRZ_WHITELIST,
+          tessedit_pageseg_mode: 6, // blocco uniforme — ottimale per righe MRZ isolate
+        });
+        const { data: { text: croppedText } } = await worker.recognize(croppedUrl);
+        parsed = parseMRZ(croppedText);
+      }
+
       if (parsed && Object.keys(parsed).length > 0) {
         setOcrResult(parsed);
         setOcrStatus('✅ Dati estratti — verifica e conferma');
@@ -2030,8 +2176,18 @@ function fmtEuro(n) {
   return num % 1 === 0 ? String(num) : num.toFixed(2);
 }
 
+// Restituisce la data locale di oggi come YYYY-MM-DD.
+// ⚠️  new Date().toISOString() usa UTC: tra mezzanotte e le 2 AM in Italia
+//     restituisce IERI. Usiamo i metodi local getFullYear/getMonth/getDate.
 function todayISO() {
-  return new Date().toISOString().slice(0, 10);
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+// Restituisce la data locale di oggi + offsetDays come YYYY-MM-DD.
+function localDateISO(offsetDays = 0) {
+  const d = new Date();
+  d.setDate(d.getDate() + offsetDays);
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
 
 // ── PrenoStatPill ────────────────────────────────────────────────────
@@ -2061,7 +2217,7 @@ function PrenoCard({ p, onEdit, onConvert, onDelete, onFoto, onContratto, onFirm
   const buildPagamentoMsg = useCallback(() => {
     const ag = agency || {};
     const cliente = [p.clienteCognome, p.clienteNome].filter(Boolean).join(' ') || 'Cliente';
-    const importo = sp.residuo > 0 ? sp.residuo : (p.prezzo || 0);
+    const importo = sp.residuo > 0 ? sp.residuo : (Number(p.prezzo)||0);
     const causale = `Noleggio ${p.id || ''} ${cliente} ${p.dal || ''}-${p.al || ''}`.trim();
     let msg = `💳 Pagamento noleggio — *${cliente}*\n`;
     msg += `Importo da saldare: *€${importo}*\n\n`;
@@ -2080,7 +2236,7 @@ function PrenoCard({ p, onEdit, onConvert, onDelete, onFoto, onContratto, onFirm
   const paypalUrl = (() => {
     const ag = agency || {};
     if (!ag.paypalMe) return null;
-    const importo = sp.residuo > 0 ? sp.residuo : (p.prezzo || 0);
+    const importo = sp.residuo > 0 ? sp.residuo : (Number(p.prezzo)||0);
     return `https://paypal.me/${ag.paypalMe}/${importo}`;
   })();
   return (
@@ -2363,7 +2519,7 @@ function PrenoCard({ p, onEdit, onConvert, onDelete, onFoto, onContratto, onFirm
             🔧 Sostituzione
           </button>
         )}
-        {p.stato !== 'annullata' && !p.depositoRegistrato && (
+        {p.stato !== 'annullata' && p.stato !== 'cancellata' && !p.depositoRegistrato && (
           <button type="button" onClick={() => onDeposito && onDeposito(p, 'prendi')}
             style={{ fontSize: 11, padding: '4px 10px', borderRadius: 4, border: '1px solid #e8c88a',
               background: 'transparent', color: '#b87333', cursor: 'pointer' }}>
@@ -2401,7 +2557,7 @@ function PrenoCard({ p, onEdit, onConvert, onDelete, onFoto, onContratto, onFirm
           </button>
         )}
         
-        {(p.stato === 'completata' || p.stato === 'annullata') && onRicrea && (
+        {(p.stato === 'completata' || p.stato === 'annullata' || p.stato === 'cancellata') && onRicrea && (
           <button type="button" onClick={() => onRicrea(p)}
             style={{ fontSize: 11, padding: '4px 10px', borderRadius: 4, border: '1px solid #1f5d83',
               background: 'transparent', color: '#1f5d83', cursor: 'pointer', fontWeight: 600 }}>
@@ -2434,25 +2590,29 @@ function findBestVehicleCombination(tipo, dal, al, vehicles, prenotazioni, exclu
 
   // Prenotazioni attive (escluso quella in modifica)
   const activePreno = (prenotazioni || []).filter(p =>
-    p.stato !== 'annullata' && p.stato !== 'completata' && p.id !== excludeBookingId
+    p.stato !== 'annullata' && p.stato !== 'cancellata' && p.stato !== 'completata' && p.id !== excludeBookingId
   );
 
-  // Per ogni mezzo, calcola i giorni liberi come array di {da, a} segmenti liberi
-  function freeSegments(vehicleId) {
+  // Per ogni mezzo, calcola i giorni liberi (retrocompatibile: p.vehicleId può essere targa o fleet.id)
+  function freeSegments(vehicleId, vehicleTarga) {
     const busy = activePreno
-      .filter(p => p.vehicleId === vehicleId || (p.vehicleSchedule || []).some(s => s.vehicleId === vehicleId))
+      .filter(p =>
+        matchVehicle(p.vehicleId, vehicleId, vehicleTarga) ||
+        (p.vehicleSchedule || []).some(s => matchVehicle(s.vehicleId, vehicleId, vehicleTarga))
+      )
       .flatMap(p => {
-        if (p.vehicleSchedule) return p.vehicleSchedule.filter(s => s.vehicleId === vehicleId).map(s => ({ dal: s.dal, al: s.al }));
+        if (p.vehicleSchedule) {
+          const segs = p.vehicleSchedule.filter(s => matchVehicle(s.vehicleId, vehicleId, vehicleTarga));
+          return segs.length ? segs.map(s => ({ dal: s.dal, al: s.al })) : [{ dal: p.dal, al: p.al }];
+        }
         return [{ dal: p.dal, al: p.al }];
       });
-    // Semplifica: il mezzo è libero dal..al se nessuna prenotazione si sovrappone
-    // Restituisce true/false per un sotto-intervallo
     return { vehicleId, isFreeOn: (d) => !busy.some(b => b.dal <= d && b.al >= d) };
   }
 
   // Controlla se un mezzo è libero per TUTTO il periodo
   const fullyCovering = pool.find(v => {
-    const seg = freeSegments(v.id);
+    const seg = freeSegments(v.id, v.targa);
     let d = new Date(dal + 'T12:00:00');
     const end = new Date(al + 'T12:00:00');
     while (d <= end) {
@@ -2476,7 +2636,7 @@ function findBestVehicleCombination(tipo, dal, al, vehicles, prenotazioni, exclu
     let bestDays = 0;
     for (const v of pool) {
       if (usedVehicles.has(v.id)) continue; // ogni mezzo usato una volta sola nel trip
-      const seg = freeSegments(v.id);
+      const seg = freeSegments(v.id, v.targa);
       if (!seg.isFreeOn(cursorISO)) continue;
       // Conta giorni consecutivi liberi a partire da cursor
       let count = 0;
@@ -2494,7 +2654,7 @@ function findBestVehicleCombination(tipo, dal, al, vehicles, prenotazioni, exclu
     // Fine segmento: fino a quando il mezzo è libero (o fine periodo)
     const segStart = cursorISO;
     let segEnd = cursor;
-    const seg = freeSegments(best.id);
+    const seg = freeSegments(best.id, best.targa);
     let probe = new Date(cursor);
     while (probe <= endDate && seg.isFreeOn(probe.toISOString().slice(0, 10))) {
       segEnd = new Date(probe);
@@ -2566,47 +2726,61 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
 
-  // Anti-overbooking: esclude i veicoli già prenotati nel periodo selezionato
-  // Controlla sia vehicleId principale che singoli segmenti del vehicleSchedule
+  // Anti-overbooking: esclude i veicoli già prenotati nel periodo selezionato.
+  // Controlla sia vehicleId principale che singoli segmenti del vehicleSchedule.
+  // Retrocompatibilità: le prenotazioni pre-v0.43.10 hanno vehicleId=TARGA mentre
+  // allVehicles ora usa fleet.v.id → si aggiunge anche l'id attuale del veicolo corrispondente.
   const bookedIds = useMemo(() => {
     if (!f.dal || !f.al) return new Set();
+    // Mappa targa→fleet.id per tradurre booking legacy
+    const fleetIdByTarga = {};
+    (fleet || []).forEach(fv => { if (fv.targa && fv.id) fleetIdByTarga[fv.targa.toUpperCase().trim()] = fv.id; });
+    const addId = (vid) => {
+      if (!vid) return;
+      ids.add(vid);
+      const translated = fleetIdByTarga[vid.toUpperCase()];
+      if (translated) ids.add(translated); // aggiunge anche fleet.id se vid era una targa
+    };
     const ids = new Set();
     (prenotazioni || [])
-      .filter(p => p.stato !== 'annullata' && p.stato !== 'completata' && p.id !== initial?.id)
+      .filter(p => p.stato !== 'annullata' && p.stato !== 'cancellata' && p.stato !== 'completata' && p.id !== initial?.id)
       .forEach(p => {
-        // Blocca vehicleId principale se il periodo si sovrappone
-        if (p.vehicleId && p.dal <= f.al && p.al >= f.dal) ids.add(p.vehicleId);
-        // Blocca anche ogni segmento del vehicleSchedule che si sovrappone
+        if (p.vehicleId && p.dal <= f.al && p.al >= f.dal) addId(p.vehicleId);
         if (p.vehicleSchedule) {
-          p.vehicleSchedule.forEach(s => {
-            if (s.vehicleId && s.dal <= f.al && s.al >= f.dal) ids.add(s.vehicleId);
-          });
+          p.vehicleSchedule.forEach(s => { if (s.vehicleId && s.dal <= f.al && s.al >= f.dal) addId(s.vehicleId); });
         }
       });
-    // Blocca anche i fermi programmati che si sovrappongono al periodo
-    (fermiFlotta || []).forEach(fermo => {
-      if (fermo.vehicleId && fermo.dal <= f.al && fermo.al >= f.dal) {
-        ids.add(fermo.vehicleId);
-      }
-    });
+    (fermiFlotta || []).forEach(fermo => { if (fermo.vehicleId && fermo.dal <= f.al && fermo.al >= f.dal) addId(fermo.vehicleId); });
     return ids;
-  }, [prenotazioni, fermiFlotta, f.dal, f.al, initial?.id]);
+  }, [prenotazioni, fermiFlotta, fleet, f.dal, f.al, initial?.id]);
 
-  // Lista mezzi: preferisce rentmeVehicles (fonte EDOX) se disponibili, altrimenti usa fleet locale
+  // Lista mezzi: preferisce rentmeVehicles (fonte EDOX) se disponibili, altrimenti usa fleet locale.
+  // IMPORTANTE: usa fleet.v.id come vehicleId quando il veicolo RentMe ha un corrispondente in flotta.
+  // Questo garantisce che il vehicleId salvato nelle prenotazioni corrisponda a quello usato
+  // da calcAvailability (che traccia per fleet v.id, non per targa) → conteggio occupati corretto.
   const allVehicles = useMemo(() => {
     if (rentmeVehicles && rentmeVehicles.length > 0) {
+      // Indice targa→fleet per lookup O(1)
+      const fleetByTarga = {};
+      (fleet || []).forEach(fv => {
+        if (fv.targa) fleetByTarga[fv.targa.toUpperCase().trim()] = fv;
+      });
       const fromRentMe = rentmeVehicles
         .filter(v => v.targa)
-        .map(v => ({
-          id:      (v.targa || '').trim().toUpperCase(), // targa = vehicleId univoco
-          tipo:    v.tipo || 'auto',
-          marca:   '',
-          modello: v.nome || '',
-          targa:   (v.targa || '').trim().toUpperCase(),
-          stato:   'available',
-          _source: 'rentme',
-        }));
-      const rmTargas = new Set(fromRentMe.map(v => v.id));
+        .map(v => {
+          const targa    = (v.targa || '').trim().toUpperCase();
+          const fleetV   = fleetByTarga[targa]; // veicolo locale corrispondente (se presente)
+          return {
+            id:      fleetV?.id || targa,        // fleet.v.id se disponibile → vehicleId consistente con calcAvailability
+            tipo:    fleetV?.tipo || v.tipo || 'auto',
+            marca:   fleetV?.marca || '',
+            modello: fleetV?.modello || v.nome || '',
+            targa,
+            stato:   fleetV?.stato || 'available',
+            _source: 'rentme',
+          };
+        });
+      const rmTargas = new Set(fromRentMe.map(v => v.targa));
       const extraFleet = (fleet || []).filter(v => v.stato === 'available' && !rmTargas.has((v.targa||'').toUpperCase()));
       return [...fromRentMe, ...extraFleet];
     }
@@ -2644,12 +2818,19 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
   // Conflitto diretto: il veicolo scelto è già prenotato in quel periodo
   const conflitto = useMemo(() => {
     if (!f.vehicleId || !f.dal || !f.al) return null;
-    return (prenotazioni || []).find(p =>
-      p.vehicleId === f.vehicleId && p.id !== initial?.id &&
-      p.stato !== 'annullata' && p.stato !== 'completata' &&
-      p.dal <= f.al && p.al >= f.dal
-    ) || null;
-  }, [prenotazioni, f.vehicleId, f.dal, f.al, initial?.id]);
+    return (prenotazioni || []).find(p => {
+      if (p.id === initial?.id) return false;
+      if (p.stato === 'annullata' || p.stato === 'cancellata' || p.stato === 'completata') return false;
+      if (p.dal > f.al || p.al < f.dal) return false;
+      // Controlla vehicleId principale con matchVehicle (retrocompatibile targa/id)
+      if (matchVehicle(p.vehicleId, f.vehicleId, f.vehicleTarga)) return true;
+      // Controlla segmenti vehicleSchedule: veicolo assegnato via combinazione multi-mezzo
+      if ((p.vehicleSchedule || []).some(s =>
+        matchVehicle(s.vehicleId, f.vehicleId, f.vehicleTarga) && s.dal <= f.al && s.al >= f.dal
+      )) return true;
+      return false;
+    }) || null;
+  }, [prenotazioni, f.vehicleId, f.vehicleTarga, f.dal, f.al, initial?.id]);
 
   function handleVehicleChange(e) {
     const id = e.target.value;
@@ -2719,16 +2900,21 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
     if (f.vehicleId || !f.vehicleType || !f.dal || !f.al) return null;
     const totale = allVehicles.filter(v => v.tipo === f.vehicleType).length;
     if (totale === 0) return null;
+    // Lookup targa→fleet.id per normalizzare vehicleId legacy
+    const fleetIdByTarga_cat = {};
+    (fleet || []).forEach(fv => { if (fv.targa && fv.id) fleetIdByTarga_cat[(fv.targa||'').toUpperCase().trim()] = fv.id; });
+    const normalizeVid = (vid) => vid ? (fleetIdByTarga_cat[(vid||'').toUpperCase()] || vid) : null;
+
     const occupatiVehicleIds = new Set();
     let occupatiSenzaId = 0;
     (prenotazioni || []).forEach(p => {
-      if (p.stato === 'annullata' || p.stato === 'completata') return;
+      if (p.stato === 'annullata' || p.stato === 'cancellata' || p.stato === 'completata') return;
       if (p.id === initial?.id) return;
       if (p.dal > f.al || p.al < f.dal) return;
-      const tipoP = p.vehicleType || allVehicles.find(v => v.id === p.vehicleId)?.tipo || '';
+      const tipoP = p.vehicleType || allVehicles.find(v => v.id === p.vehicleId || matchVehicle(p.vehicleId, v.id, v.targa))?.tipo || '';
       if (tipoP !== f.vehicleType) return;
       if (p.vehicleId) {
-        occupatiVehicleIds.add(p.vehicleId);
+        occupatiVehicleIds.add(normalizeVid(p.vehicleId));
       } else {
         // Booking senza targa assegnata: conta come slot consumato
         occupatiSenzaId++;
@@ -2736,13 +2922,21 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
       // Controlla anche i segmenti vehicleSchedule
       if (p.vehicleSchedule) {
         p.vehicleSchedule.forEach(s => {
-          if (s.vehicleId && s.dal <= f.al && s.al >= f.dal) occupatiVehicleIds.add(s.vehicleId);
+          if (s.vehicleId && s.dal <= f.al && s.al >= f.dal) occupatiVehicleIds.add(normalizeVid(s.vehicleId));
         });
       }
     });
+    // Fermi programmati: riduce i "liberi" per categoria
+    (fermiFlotta || []).forEach(fermo => {
+      if (!fermo.vehicleId || !fermo.dal || !fermo.al) return;
+      if (fermo.dal > f.al || fermo.al < f.dal) return;
+      const fermoVid = normalizeVid(fermo.vehicleId);
+      const fermoV = allVehicles.find(v => v.id === fermoVid);
+      if (fermoV && fermoV.tipo === f.vehicleType) occupatiVehicleIds.add(fermoVid);
+    });
     const occupati = occupatiVehicleIds.size + occupatiSenzaId;
     return { totale, occupati, liberi: Math.max(0, totale - occupati) };
-  }, [prenotazioni, allVehicles, fleet, f.vehicleType, f.vehicleId, f.dal, f.al, initial?.id]);
+  }, [prenotazioni, fermiFlotta, allVehicles, fleet, f.vehicleType, f.vehicleId, f.dal, f.al, initial?.id]);
 
   // ── Targa search: suggerimenti da allVehicles (anche occupati) ──────
   const targaSuggestions = useMemo(() => {
@@ -3544,7 +3738,9 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rent
       : 1;
     const newAl = (() => {
       const d = new Date(t);
-      d.setDate(d.getDate() + durataGiorni);
+      // +durataGiorni-1 perché il periodo [dal, al] include entrambi gli estremi:
+      // es. durata=4 → al = oggi+3 (oggi, dom, lun, mar = 4 giorni)
+      d.setDate(d.getDate() + durataGiorni - 1);
       return d.toISOString().slice(0, 10);
     })();
     const prefill = {
@@ -3791,7 +3987,7 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rent
                       {items.length} prenotazion{items.length === 1 ? 'e' : 'i'}
                     </span>
                     <span style={{ fontSize: 11, color: 'var(--muted)' }}>
-                      €{items.reduce((s, p) => s + (p.prezzo || 0), 0).toLocaleString('it-IT')}
+                      €{items.reduce((s, p) => s + (Number(p.prezzo)||0), 0).toLocaleString('it-IT')}
                     </span>
                     <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
                   </div>
@@ -3911,7 +4107,7 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rent
           {showDisp ? '▲ Nascondi calendario' : '▼ Mostra disponibilità 4 settimane'}
         </button>
       </div>
-      {showDisp && <DisponibilitaView prenotazioni={prenotazioni} rentmeVehicles={rentmeVehicles || []} fleet={fleet} />}
+      {showDisp && <DisponibilitaView prenotazioni={prenotazioni} rentmeVehicles={rentmeVehicles || []} fleet={fleet} fermiFlotta={fermiFlotta} />}
 
       {/* Form modal */}
       {form && (
@@ -3973,6 +4169,7 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rent
           prenotazioni={prenotazioni}
           fleet={fleet}
           rentmeVehicles={rentmeVehicles}
+          fermiFlotta={fermiFlotta}
           onConfirm={applySostituzione}
           onClose={() => setSostituzionePreno(null)}
         />
@@ -3983,6 +4180,7 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rent
           prenotazioni={prenotazioni}
           fleet={fleet}
           rentmeVehicles={rentmeVehicles}
+          fermiFlotta={fermiFlotta}
           onConfirm={handleConsegna}
           onClose={() => setConsegnaPreno(null)}
         />
@@ -4055,7 +4253,7 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rent
 // Chiude la prenotazione corrente alla data guasto, crea la nuova
 // sullo stesso cliente con mezzo sostitutivo. Collega via groupId.
 // ═══════════════════════════════════════════════════════════════════
-function SostituzioneModal({ preno, prenotazioni, fleet, rentmeVehicles, onConfirm, onClose }) {
+function SostituzioneModal({ preno, prenotazioni, fleet, rentmeVehicles, onConfirm, onClose, fermiFlotta }) {
   const today = todayISO();
   const [dataGuasto,  setDataGuasto]  = useState(today);
   const [motivazione, setMotivazione] = useState('guasto');
@@ -4083,18 +4281,33 @@ function SostituzioneModal({ preno, prenotazioni, fleet, rentmeVehicles, onConfi
     );
 
     // Liberi nel periodo dataGuasto → preno.al
-    const occupati = new Set(
-      (prenotazioni || [])
-        .filter(p =>
-          p.id !== preno.id &&
-          p.stato !== 'annullata' && p.stato !== 'completata' &&
-          p.dal <= preno.al && p.al >= dataGuasto
-        )
-        .map(p => p.vehicleId)
-    );
+    const occupati = new Set();
+    (prenotazioni || [])
+      .filter(p =>
+        p.id !== preno.id &&
+        p.stato !== 'annullata' && p.stato !== 'cancellata' && p.stato !== 'completata' &&
+        p.dal <= preno.al && p.al >= dataGuasto
+      )
+      .forEach(p => {
+        if (p.vehicleId) occupati.add(p.vehicleId);
+        (p.vehicleSchedule || []).forEach(s => {
+          if (s.vehicleId && s.dal <= preno.al && s.al >= dataGuasto) occupati.add(s.vehicleId);
+        });
+      });
+    // Fermi programmati — aggiungiamo sia fleet UUID che targa (pool può usare entrambi)
+    const fleetIdToTarga = {};
+    (fleet || []).forEach(fv => { if (fv.id && fv.targa) fleetIdToTarga[fv.id] = (fv.targa||'').trim().toUpperCase(); });
+    (fermiFlotta || []).forEach(f => {
+      if (!f.vehicleId || !f.dal || !f.al) return;
+      if (f.dal <= preno.al && f.al >= dataGuasto) {
+        occupati.add(f.vehicleId);
+        const targa = fleetIdToTarga[f.vehicleId];
+        if (targa) occupati.add(targa);
+      }
+    });
 
     return stessoTipo.filter(v => !occupati.has(v.id));
-  }, [dataGuasto, preno, prenotazioni, fleet, rentmeVehicles]);
+  }, [dataGuasto, preno, prenotazioni, fleet, rentmeVehicles, fermiFlotta]);
 
   const inp = {
     padding: '7px 10px', border: '1px solid var(--border)', borderRadius: 5,
@@ -4241,21 +4454,27 @@ function SostituzioneModal({ preno, prenotazioni, fleet, rentmeVehicles, onConfi
 // L'operatore sceglie il mezzo esatto (con griglia smart), registra
 // km partenza e livello carburante, poi imposta stato → in_corso.
 // ═══════════════════════════════════════════════════════════════════
-function ConsegnaModal({ preno, prenotazioni, fleet, rentmeVehicles, onConfirm, onClose }) {
+function ConsegnaModal({ preno, prenotazioni, fleet, rentmeVehicles, onConfirm, onClose, fermiFlotta }) {
   const today = todayISO();
 
-  // Costruisce lista mezzi disponibili (stessa logica di PrenoForm)
+  // Costruisce lista mezzi disponibili (stessa logica di PrenoForm con fix id=fleet.v.id)
   const allVehicles = useMemo(() => {
     if (rentmeVehicles && rentmeVehicles.length > 0) {
-      const fromRentMe = rentmeVehicles.filter(v => v.targa).map(v => ({
-        id: (v.targa || '').trim().toUpperCase(),
-        tipo: v.tipo || 'auto',
-        modello: v.nome || '',
-        targa: (v.targa || '').trim().toUpperCase(),
-        stato: 'available',
-        _source: 'rentme',
-      }));
-      const rmTargas = new Set(fromRentMe.map(v => v.id));
+      const fleetByTarga = {};
+      (fleet || []).forEach(fv => { if (fv.targa) fleetByTarga[fv.targa.toUpperCase().trim()] = fv; });
+      const fromRentMe = rentmeVehicles.filter(v => v.targa).map(v => {
+        const targa  = (v.targa || '').trim().toUpperCase();
+        const fleetV = fleetByTarga[targa];
+        return {
+          id:      fleetV?.id || targa, // usa fleet.v.id se disponibile → vehicleId consistente
+          tipo:    fleetV?.tipo || v.tipo || 'auto',
+          modello: fleetV?.modello || v.nome || '',
+          targa,
+          stato:   fleetV?.stato || 'available',
+          _source: 'rentme',
+        };
+      });
+      const rmTargas = new Set(fromRentMe.map(v => v.targa));
       return [...fromRentMe, ...(fleet || []).filter(v => v.stato === 'available' && !rmTargas.has((v.targa||'').toUpperCase()))];
     }
     return (fleet || []).filter(v => v.stato === 'available');
@@ -4271,11 +4490,16 @@ function ConsegnaModal({ preno, prenotazioni, fleet, rentmeVehicles, onConfirm, 
     const nNoleggio = Math.round((new Date(alDate+'T12:00:00') - new Date(dalDate+'T12:00:00')) / 86400000) + 1;
 
     candidates.forEach(v => {
-      // Trova occupazioni di questo veicolo nel periodo
+      // Trova occupazioni di questo veicolo nel periodo (prenotazioni + fermi programmati)
       const occupato = (prenotazioni || []).some(p =>
-        p.id !== preno.id && p.stato !== 'annullata' && p.stato !== 'completata' &&
-        (p.vehicleId === v.id || (p.vehicleSchedule||[]).some(s => s.vehicleId === v.id && s.dal <= alDate && s.al >= dalDate)) &&
+        p.id !== preno.id && p.stato !== 'annullata' && p.stato !== 'cancellata' && p.stato !== 'completata' &&
+        (matchVehicle(p.vehicleId, v.id, v.targa) ||
+         (p.vehicleSchedule||[]).some(s => matchVehicle(s.vehicleId, v.id, v.targa) && s.dal <= alDate && s.al >= dalDate)) &&
         p.dal <= alDate && p.al >= dalDate
+      ) || (fermiFlotta || []).some(f =>
+        f.vehicleId && f.dal && f.al &&
+        matchVehicle(f.vehicleId, v.id, v.targa) &&
+        f.dal <= alDate && f.al >= dalDate
       );
       if (occupato) { scores[v.id] = -1; return; }
 
@@ -4284,8 +4508,11 @@ function ConsegnaModal({ preno, prenotazioni, fleet, rentmeVehicles, onConfirm, 
       let freeCount = 0;
       while (cursor <= alDate) {
         const busy = (prenotazioni || []).some(p =>
-          p.id !== preno.id && p.stato !== 'annullata' && p.stato !== 'completata' &&
-          (p.vehicleId === v.id) && p.dal <= cursor && p.al >= cursor
+          p.id !== preno.id && p.stato !== 'annullata' && p.stato !== 'cancellata' && p.stato !== 'completata' &&
+          matchVehicle(p.vehicleId, v.id, v.targa) && p.dal <= cursor && p.al >= cursor
+        ) || (fermiFlotta || []).some(f =>
+          f.vehicleId && f.dal && f.al &&
+          matchVehicle(f.vehicleId, v.id, v.targa) && f.dal <= cursor && f.al >= cursor
         );
         if (busy) break;
         freeCount++;
@@ -4296,7 +4523,7 @@ function ConsegnaModal({ preno, prenotazioni, fleet, rentmeVehicles, onConfirm, 
       scores[v.id] = freeCount;
     });
     return scores;
-  }, [allVehicles, prenotazioni, preno]);
+  }, [allVehicles, prenotazioni, preno, fermiFlotta]);
 
   // Tipologie disponibili (filtra per tipo del noleggio)
   const tipo = preno.vehicleType || preno.tipo || '';
@@ -5017,6 +5244,8 @@ function migrateFleet(fl) {
 // ── migratePrenotazioni ──────────────────────────────────────────
 // • aggiunge codice EDO mancante (prenotazioni ante-v0.38)
 // • aggiunge fonte='manuale' se assente (ante-v0.38)
+// • normalizza stato='annullata' → 'cancellata' (annullata non è mai stato
+//   in PRENO_STATI ma potrebbe esistere in dati storici ante-v0.43.12)
 // Nota: generateBookingCode() è deterministicamente random —
 // in caso di doppio caricamento (localStorage poi backend) il codice
 // potrebbe differire, ma al secondo avvio app il backend ha già il
@@ -5028,6 +5257,7 @@ function migratePrenotazioni(ps) {
     const patch = {};
     if (!p.codice) patch.codice = generateBookingCode();
     if (!p.fonte)  patch.fonte  = 'manuale';
+    if (p.stato === 'annullata') patch.stato = 'cancellata'; // normalizza legacy
     if (!Object.keys(patch).length) return p;
     changed = true;
     return { ...p, ...patch };
@@ -5119,7 +5349,7 @@ function calcPreventivo(cat, dal, al) {
 }
 
 // ── QuoteCard — singola categoria con prezzo calcolato ───────────────
-function QuoteCard({ cat, dal, al, onPrenota, fleet, rentmeVehicles, prenotazioni }) {
+function QuoteCard({ cat, dal, al, onPrenota, fleet, rentmeVehicles, prenotazioni, fermiFlotta }) {
   const [open, setOpen] = useState(false);
   const [lang, setLang] = useState('it');
   // Codice univoco generato una volta per questo preventivo — segue fino alla prenotazione
@@ -5147,21 +5377,34 @@ function QuoteCard({ cat, dal, al, onPrenota, fleet, rentmeVehicles, prenotazion
     let stessoTipo = source.filter(tipoMatch);
     // Secondo filtro: sottocategoria (cc/categoria) se la card ha un campo categoria
     if (cat.categoria && stessoTipo.length > 0) {
-      stessoTipo = stessoTipo.filter(v => getVehicleCategoria(v) === cat.categoria);
+      stessoTipo = stessoTipo.filter(v => {
+        let vcat = getVehicleCategoria(v) || '';
+        if ((v.tipo || '').toLowerCase() === 'auto') vcat = normalizeAutoCategoria(vcat);
+        const targetCat = (v.tipo || '').toLowerCase() === 'auto' ? normalizeAutoCategoria(cat.categoria) : cat.categoria;
+        return vcat === targetCat;
+      });
     }
     if (!stessoTipo.length) return null;
-    const occupati = new Set(
-      (prenotazioni || [])
-        .filter(p => p.dal <= al && p.al >= dal && p.stato !== 'annullata' && p.stato !== 'completata')
-        .map(p => p.vehicleId).filter(Boolean)
-    );
+    const occupati = new Set();
+    (prenotazioni || [])
+      .filter(p => p.dal <= al && p.al >= dal && p.stato !== 'annullata' && p.stato !== 'cancellata' && p.stato !== 'completata')
+      .forEach(p => {
+        if (p.vehicleId) occupati.add(p.vehicleId);
+        (p.vehicleSchedule || []).forEach(s => {
+          if (s.vehicleId && s.dal <= al && s.al >= dal) occupati.add(s.vehicleId);
+        });
+      });
+    // Fermi programmati: manutenzione blocca il veicolo
+    (fermiFlotta || []).forEach(f => {
+      if (f.vehicleId && f.dal <= al && f.al >= dal) occupati.add(f.vehicleId);
+    });
     // Normalizza id: rentmeVehicles usa targa come vehicleId (come in PrenoForm)
     const liberi = stessoTipo.filter(v => {
       const id = (v.targa || v.id || '').toUpperCase().trim();
       return !id || !occupati.has(id);
     }).length;
     return { liberi, totale: stessoTipo.length };
-  }, [fleet, rentmeVehicles, prenotazioni, dal, al, cat.tipo, cat.categoria]);
+  }, [fleet, rentmeVehicles, prenotazioni, fermiFlotta, dal, al, cat.tipo, cat.categoria]);
   // Modal dati cliente prima di generare il PDF
   const [showClienteModal, setShowClienteModal] = useState(false);
   const [clientePdf, setClientePdf] = useState({ nome: '', tel: '', email: '', note: '' });
@@ -5543,7 +5786,7 @@ function ListinoTable({ filter }) {
 }
 
 // ── PreventiviPage ───────────────────────────────────────────────────
-function PreventiviPage({ setPage, setPrenotazioniPrefill, listino: listinoProps, fleet, rentmeVehicles, prenotazioni, pushToast }) {
+function PreventiviPage({ setPage, setPrenotazioniPrefill, listino: listinoProps, fleet, rentmeVehicles, prenotazioni, pushToast, fermiFlotta }) {
   // Merge: recupera 'categoria' dalla costante LISTINO se mancante nel dato persistito
   // Aggiorna sempre tipo e categoria dalla costante LISTINO per evitare valori obsoleti in localStorage
   // (es. bici_muscolare.tipo era 'ebike' nelle versioni precedenti a v0.40.x)
@@ -5552,7 +5795,7 @@ function PreventiviPage({ setPage, setPrenotazioniPrefill, listino: listinoProps
     if (!master) return cat;
     return { ...cat, tipo: master.tipo, categoria: master.categoria };
   });
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayISO();
   const [dal, setDal] = useState(today);
   const [al, setAl]   = useState('');
   const [vehicleModal, setVehicleModal] = useState(null); // null | { cat, vehicles, totale }
@@ -5568,8 +5811,10 @@ function PreventiviPage({ setPage, setPrenotazioniPrefill, listino: listinoProps
     const catMatch = v => {
       if (!cat.categoria) return true;
       let vcat = getVehicleCategoria(v) || '';
-      if ((v.tipo || '').toLowerCase() === 'auto' && vcat === 'CHIUSA') vcat = 'BASE';
-      return vcat === cat.categoria;
+      const isAuto = (v.tipo || '').toLowerCase() === 'auto';
+      if (isAuto) vcat = normalizeAutoCategoria(vcat);
+      const targetCat = isAuto ? normalizeAutoCategoria(cat.categoria) : cat.categoria;
+      return vcat === targetCat;
     };
     const fleetVehicles = (fleet || [])
       .filter(v => v.stato !== 'venduto' && v.stato !== 'fuori_uso' && tipoMatch(v.tipo) && catMatch(v))
@@ -5593,12 +5838,21 @@ function PreventiviPage({ setPage, setPrenotazioniPrefill, listino: listinoProps
       seen.add(id);
       merged.push(v);
     }
-    const occupati = new Set(
+    const occupati = new Set();
+    if (dal && al) {
       (prenotazioni || [])
-        .filter(p => dal && al && p.dal <= al && p.al >= dal && p.stato !== 'annullata' && p.stato !== 'completata' && p.stato !== 'cancellata')
-        .map(p => p.vehicleId)
-        .filter(Boolean)
-    );
+        .filter(p => p.dal <= al && p.al >= dal && p.stato !== 'annullata' && p.stato !== 'cancellata' && p.stato !== 'completata')
+        .forEach(p => {
+          if (p.vehicleId) occupati.add(p.vehicleId);
+          (p.vehicleSchedule || []).forEach(s => {
+            if (s.vehicleId && s.dal <= al && s.al >= dal) occupati.add(s.vehicleId);
+          });
+        });
+      // Fermi programmati: manutenzione blocca il veicolo
+      (fermiFlotta || []).forEach(f => {
+        if (f.vehicleId && f.dal <= al && f.al >= dal) occupati.add(f.vehicleId);
+      });
+    }
     return merged.map(v => ({ ...v, libero: !occupati.has(v.id) }));
   }
 
@@ -5797,7 +6051,7 @@ function PreventiviPage({ setPage, setPrenotazioniPrefill, listino: listinoProps
       ) : giorni > 0 ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {categorieVisibili.map(cat => (
-            <QuoteCard key={cat.id} cat={cat} dal={dal} al={al} onPrenota={handlePrenota} fleet={fleet} rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} />
+            <QuoteCard key={cat.id} cat={cat} dal={dal} al={al} onPrenota={handlePrenota} fleet={fleet} rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} fermiFlotta={fermiFlotta} />
           ))}
         </div>
       ) : (
@@ -5933,8 +6187,8 @@ function PreventiviPage({ setPage, setPrenotazioniPrefill, listino: listinoProps
 // Mostra saturazione per categoria su 4 settimane
 // ═══════════════════════════════════════════════════════════════════
 
-function DisponibilitaView({ prenotazioni, rentmeVehicles, fleet }) {
-  const [refDate, setRefDate] = useState(() => new Date().toISOString().slice(0,10));
+function DisponibilitaView({ prenotazioni, rentmeVehicles, fleet, fermiFlotta }) {
+  const [refDate, setRefDate] = useState(() => todayISO());
 
   // Costruisce array di 28 giorni a partire dal lunedì della settimana di refDate
   const days = useMemo(() => {
@@ -5949,7 +6203,7 @@ function DisponibilitaView({ prenotazioni, rentmeVehicles, fleet }) {
     return arr;
   }, [refDate]);
 
-  const today = new Date().toISOString().slice(0,10);
+  const today = todayISO();
 
   // Categorie: da RentMe se disponibili, altrimenti hardcoded
   const defaultCats = ['Auto chiusa','Auto cabrio','Auto superior','Mehari',
@@ -5969,7 +6223,7 @@ function DisponibilitaView({ prenotazioni, rentmeVehicles, fleet }) {
       days.forEach(day => {
         // Usa calcAvailability per i dati reali quando disponibili
         if (rentmeVehicles && rentmeVehicles.length > 0) {
-          const av = calcAvailability(day, day, rentmeVehicles, prenotazioni, fleet);
+          const av = calcAvailability(day, day, rentmeVehicles, prenotazioni, fleet, fermiFlotta);
           const match = av.find(c => c.nome === cat || c.id === cat);
           result[cat][day] = match ? match.booked : 0;
         } else {
@@ -6109,10 +6363,10 @@ function useReportData({ prenotazioni, contracts, cassa, customers, fleet, opera
     const totContratti = allC.length;
     // Revenue prenotazioni: somma dei prezzi di tutte le prenotazioni NON annullate
     // Questo è il numero principale che risponde a "quanto abbiamo fatturato"
-    const incassoPreno = allP.filter(p => p.stato !== 'annullata').reduce((s,p) => s + (p.prezzo||0), 0);
+    const incassoPreno = allP.filter(p => p.stato !== 'annullata' && p.stato !== 'cancellata').reduce((s,p) => s + (Number(p.prezzo)||0), 0);
     // Incasso cassa: movimenti fisici registrati nel registro (acconto/saldo)
-    const incassoCassa = allK.filter(k => k.tipo !== 'rimborso').reduce((s,k) => s + (k.importo||0), 0);
-    const rimborsiCassa= allK.filter(k => k.tipo === 'rimborso').reduce((s,k) => s + (k.importo||0), 0);
+    const incassoCassa = allK.filter(k => k.tipo !== 'rimborso').reduce((s,k) => s + (Number(k.importo)||0), 0);
+    const rimborsiCassa= allK.filter(k => k.tipo === 'rimborso').reduce((s,k) => s + (Number(k.importo)||0), 0);
     // Netto = revenue prenotazioni − rimborsi registrati
     const nettoCassa   = incassoPreno - rimborsiCassa;
     // Da incassare ancora (prezzo prenotazione − quanto già registrato in cassa)
@@ -6122,13 +6376,14 @@ function useReportData({ prenotazioni, contracts, cassa, customers, fleet, opera
     const mesi = Array.from({length:12}, (_,i) => {
       const ym = `${year}-${String(i+1).padStart(2,'0')}`;
       const prenoMese = allP.filter(p => (p.dal||'').startsWith(ym));
+      const prenoMeseAttive = prenoMese.filter(p => p.stato !== 'annullata' && p.stato !== 'cancellata');
       const cassaMese = allK.filter(k => (k.data||'').startsWith(ym) && k.tipo !== 'rimborso');
       const label = new Date(`${ym}-15`).toLocaleDateString('it-IT', { month:'short' });
       return {
         ym, label, i,
         preno: prenoMese.length,
-        revPreno: prenoMese.reduce((s,p) => s+(p.prezzo||0), 0),
-        revCassa: cassaMese.reduce((s,k) => s+(k.importo||0), 0),
+        revPreno: prenoMeseAttive.reduce((s,p) => s+(Number(p.prezzo)||0), 0),
+        revCassa: cassaMese.reduce((s,k) => s+(Number(k.importo)||0), 0),
       };
     });
     const maxPreno = Math.max(...mesi.map(m => m.preno), 1);
@@ -6149,9 +6404,10 @@ function useReportData({ prenotazioni, contracts, cassa, customers, fleet, opera
       tipiVehicle.forEach(tipo => {
         const total = (fleetByTipo[tipo] || 0) * daysInMonth;
         if (total === 0) { result[tipo] = 0; return; }
-        // Conta giorni-prenotazione per questo tipo in questo mese
+        // Conta giorni-prenotazione per questo tipo in questo mese (escluse cancellate/annullate)
         let giorni = 0;
         allP.filter(p => {
+          if (p.stato === 'annullata' || p.stato === 'cancellata') return false;
           const vt = (p.vehicleType||'').toLowerCase();
           const vl = (p.vehicleLabel||'').toLowerCase();
           return vt === tipo || vt === ({auto:'a',scooter:'m',quad:'m',ebike:'e'}[tipo]||'') || vl.startsWith(tipo);
@@ -6179,7 +6435,7 @@ function useReportData({ prenotazioni, contracts, cassa, customers, fleet, opera
     allK.filter(k => k.prenotazioneId && k.tipo !== 'rimborso').forEach(k => {
       const id = k.clienteId || k.prenotazioneId;
       if (!clienteSpesa[id]) clienteSpesa[id] = { id, nome: k.clienteNome || '—', spesa: 0, movimenti: 0 };
-      clienteSpesa[id].spesa     += (k.importo||0);
+      clienteSpesa[id].spesa     += (Number(k.importo)||0);
       clienteSpesa[id].movimenti += 1;
     });
     // Arricchisci con dati clienti se disponibili
@@ -6195,7 +6451,7 @@ function useReportData({ prenotazioni, contracts, cassa, customers, fleet, opera
     allK.filter(k => k.tipo !== 'rimborso').forEach(k => {
       const op = k.operatore || 'Non assegnato';
       if (!opRev[op]) opRev[op] = { nome: op, incasso: 0, movimenti: 0 };
-      opRev[op].incasso    += (k.importo||0);
+      opRev[op].incasso    += (Number(k.importo)||0);
       opRev[op].movimenti  += 1;
     });
     const topOp = Object.values(opRev).sort((a,b) => b.incasso - a.incasso);
@@ -6207,7 +6463,7 @@ function useReportData({ prenotazioni, contracts, cassa, customers, fleet, opera
     // ── KPI derivati ─────────────────────────────────────────────
     const prenoConPrezzo = allP.filter(p => p.prezzo > 0);
     const avgTicket = prenoConPrezzo.length > 0
-      ? Math.round(prenoConPrezzo.reduce((s,p) => s + p.prezzo, 0) / prenoConPrezzo.length) : 0;
+      ? Math.round(prenoConPrezzo.reduce((s,p) => s + (Number(p.prezzo)||0), 0) / prenoConPrezzo.length) : 0;
     const prenoConDate = allP.filter(p => p.dal && p.al);
     const avgDurata = prenoConDate.length > 0
       ? Math.round(prenoConDate.reduce((s,p) =>
@@ -6225,7 +6481,7 @@ function useReportData({ prenotazioni, contracts, cassa, customers, fleet, opera
     allK.filter(k => k.tipo !== 'rimborso').forEach(k => {
       const m = k.metodo || 'altro';
       if (!metodiMap[m]) metodiMap[m] = { metodo: m, importo: 0, count: 0 };
-      metodiMap[m].importo += (k.importo || 0);
+      metodiMap[m].importo += (Number(k.importo)||0);
       metodiMap[m].count   += 1;
     });
     const metodi = Object.values(metodiMap).sort((a,b) => b.importo - a.importo);
@@ -6234,7 +6490,7 @@ function useReportData({ prenotazioni, contracts, cassa, customers, fleet, opera
     const tipiCassa = { acconto: 0, saldo: 0, deposito: 0, rimborso: 0, altro: 0 };
     allK.forEach(k => {
       const t = tipiCassa.hasOwnProperty(k.tipo) ? k.tipo : 'altro';
-      tipiCassa[t] += (k.importo || 0);
+      tipiCassa[t] += (Number(k.importo)||0);
     });
 
     // ── Fonti prenotazione ───────────────────────────────────────
@@ -6275,7 +6531,7 @@ function useReportData({ prenotazioni, contracts, cassa, customers, fleet, opera
         tipo: p.vehicleType || p.tipo || '—',
         revenue: 0, giorni: 0, noleggi: 0,
       };
-      veicoloMap[key].revenue += (p.prezzo || 0);
+      veicoloMap[key].revenue += (Number(p.prezzo)||0);
       veicoloMap[key].noleggi += 1;
       veicoloMap[key].giorni  += p.dal && p.al
         ? Math.max(1, Math.round((new Date(p.al) - new Date(p.dal)) / 86400000) + 1) : 0;
@@ -6295,12 +6551,12 @@ function useReportData({ prenotazioni, contracts, cassa, customers, fleet, opera
     const tassoRetention     = clientiTotaliUnici > 0 ? Math.round((clientiRitornati / clientiTotaliUnici) * 100) : 0;
 
     // ── Previsione revenue futura ─────────────────────────────────
-    const todayStr = new Date().toISOString().slice(0, 10);
+    const todayStr = todayISO();
     const prenoFuture = (prenotazioni || []).filter(p =>
       p.dal > todayStr && (p.stato === 'confermata' || p.stato === 'bozza')
     );
-    const revenueFutura     = prenoFuture.filter(p => p.stato === 'confermata').reduce((s,p) => s+(p.prezzo||0), 0);
-    const revenuePotenziale = prenoFuture.filter(p => p.stato === 'bozza').reduce((s,p) => s+(p.prezzo||0), 0);
+    const revenueFutura     = prenoFuture.filter(p => p.stato === 'confermata').reduce((s,p) => s+(Number(p.prezzo)||0), 0);
+    const revenuePotenziale = prenoFuture.filter(p => p.stato === 'bozza').reduce((s,p) => s+(Number(p.prezzo)||0), 0);
     const previsioneMap = {};
     prenoFuture.forEach(p => {
       const ym = p.dal.slice(0, 7);
@@ -6309,8 +6565,8 @@ function useReportData({ prenotazioni, contracts, cassa, customers, fleet, opera
         confermata: 0, bozza: 0, n: 0,
       };
       previsioneMap[ym].n += 1;
-      if (p.stato === 'confermata') previsioneMap[ym].confermata += (p.prezzo||0);
-      if (p.stato === 'bozza')      previsioneMap[ym].bozza      += (p.prezzo||0);
+      if (p.stato === 'confermata') previsioneMap[ym].confermata += (Number(p.prezzo)||0);
+      if (p.stato === 'bozza')      previsioneMap[ym].bozza      += (Number(p.prezzo)||0);
     });
     const previsioneList = Object.values(previsioneMap).sort((a,b) => a.ym.localeCompare(b.ym)).slice(0, 9);
     const maxPrev = Math.max(...previsioneList.map(m => m.confermata + m.bozza), 1);
@@ -6467,7 +6723,7 @@ function ReportPage({ prenotazioni, contracts, cassa, customers, fleet, operator
   }, [prenotazioni, cassa, currentYear]);
 
   const d = useReportData({ prenotazioni, contracts, cassa, customers, fleet, operators, year });
-  const thisMonth = new Date().toISOString().slice(0,7);
+  const thisMonth = todayISO().slice(0,7);
 
   const TABS = [
     { id:'overview',    label:'Panoramica' },
@@ -6487,9 +6743,9 @@ function ReportPage({ prenotazioni, contracts, cassa, customers, fleet, operator
   const datiMensili = useMemo(() => {
     return mesiLabels.map((label, mi) => {
       const meseStr = `${year}-${String(mi+1).padStart(2,'0')}`;
-      const prenoMese = (prenotazioni||[]).filter(p => (p.dal||'').startsWith(meseStr) && p.stato !== 'annullata');
-      const revenueMese = prenoMese.reduce((s,p) => s + (p.prezzo||0), 0);
-      const cassaMese = (cassa||[]).filter(k => (k.data||'').startsWith(meseStr) && k.importo > 0).reduce((s,k) => s + k.importo, 0);
+      const prenoMese = (prenotazioni||[]).filter(p => (p.dal||'').startsWith(meseStr) && p.stato !== 'annullata' && p.stato !== 'cancellata');
+      const revenueMese = prenoMese.reduce((s,p) => s + (Number(p.prezzo)||0), 0);
+      const cassaMese = (cassa||[]).filter(k => (k.data||'').startsWith(meseStr) && k.importo > 0).reduce((s,k) => s + (Number(k.importo)||0), 0);
       const fleetCount = (fleet||[]).length || 1;
       const giorni = new Date(Number(year), mi+1, 0).getDate();
       const giorniOccupati = prenoMese.reduce((s,p) => {
@@ -6508,9 +6764,9 @@ function ReportPage({ prenotazioni, contracts, cassa, customers, fleet, operator
   const datiMensiliPrev = useMemo(() => {
     return mesiLabels.map((label, mi) => {
       const meseStr = `${prevYear}-${String(mi+1).padStart(2,'0')}`;
-      const prenoMese = (prenotazioni||[]).filter(p => (p.dal||'').startsWith(meseStr) && p.stato !== 'annullata');
-      const revenueMese = prenoMese.reduce((s,p) => s + (p.prezzo||0), 0);
-      const cassaMese = (cassa||[]).filter(k => (k.data||'').startsWith(meseStr) && k.importo > 0).reduce((s,k) => s + k.importo, 0);
+      const prenoMese = (prenotazioni||[]).filter(p => (p.dal||'').startsWith(meseStr) && p.stato !== 'annullata' && p.stato !== 'cancellata');
+      const revenueMese = prenoMese.reduce((s,p) => s + (Number(p.prezzo)||0), 0);
+      const cassaMese = (cassa||[]).filter(k => (k.data||'').startsWith(meseStr) && k.importo > 0).reduce((s,k) => s + (Number(k.importo)||0), 0);
       const fleetCount = (fleet||[]).length || 1;
       const giorni = new Date(Number(prevYear), mi+1, 0).getDate();
       const giorniOccupati = prenoMese.reduce((s,p) => {
@@ -6614,7 +6870,7 @@ function ReportPage({ prenotazioni, contracts, cassa, customers, fleet, operator
                 <strong>Durata media</strong> — media giorni tra <em>dal</em> e <em>al</em> delle prenotazioni non annullate.
               </div>
               <div>
-                <strong>Clienti unici</strong> — clienti distinti per cognome+nome o ID. Il tasso annullamento è la % di prenotazioni con stato "annullata".
+                <strong>Clienti unici</strong> — clienti distinti per cognome+nome o ID. Il tasso annullamento è la % di prenotazioni con stato "cancellata" (o il legacy "annullata").
               </div>
             </div>
           </div>
@@ -7121,9 +7377,9 @@ function ReportPage({ prenotazioni, contracts, cassa, customers, fleet, operator
             <div style={{ display:'flex', alignItems:'flex-end', gap:6, height:130, marginBottom:6 }}>
               {d.mesi.map(m => {
                 const allKmese = (d.allK||[]).filter(k => (k.data||'').startsWith(m.ym));
-                const entrate  = allKmese.filter(k => k.tipo !== 'rimborso').reduce((s,k) => s+(k.importo||0), 0);
-                const uscite   = allKmese.filter(k => k.tipo === 'rimborso').reduce((s,k) => s+(k.importo||0), 0);
-                const maxE = Math.max(...d.mesi.map(mx => (d.allK||[]).filter(k=>(k.data||'').startsWith(mx.ym)&&k.tipo!=='rimborso').reduce((s,k)=>s+(k.importo||0),0)), 1);
+                const entrate  = allKmese.filter(k => k.tipo !== 'rimborso').reduce((s,k) => s+(Number(k.importo)||0), 0);
+                const uscite   = allKmese.filter(k => k.tipo === 'rimborso').reduce((s,k) => s+(Number(k.importo)||0), 0);
+                const maxE = Math.max(...d.mesi.map(mx => (d.allK||[]).filter(k=>(k.data||'').startsWith(mx.ym)&&k.tipo!=='rimborso').reduce((s,k)=>s+(Number(k.importo)||0),0)), 1);
                 const hE = Math.round((entrate / maxE) * 110);
                 const hU = Math.round((uscite  / maxE) * 110);
                 return (
@@ -7818,8 +8074,8 @@ const RENTME_USER_ID  = '02zq4lkb-44yy-6j4h-53dg-4752198po90p';
 // v0.43.1: grouping per tipo+categoria (usa getVehicleCategoria sul pool
 // unificato fleet+RentMe), così le sotto-categorie auto (5 Posti, Cabrio,
 // ecc.) appaiono come card distinte nel Banco Rapido / Walk-in.
-function calcAvailability(dal, al, rentmeVehicles, prenotazioni, fleet) {
-  const dalS = dal || new Date().toISOString().slice(0,10);
+function calcAvailability(dal, al, rentmeVehicles, prenotazioni, fleet, fermiFlotta) {
+  const dalS = dal || todayISO();
   const alS  = al  || dalS;
 
   // ── Pool unificato: fleet locale + RentMe, dedup per id ─────────
@@ -7837,21 +8093,27 @@ function calcAvailability(dal, al, rentmeVehicles, prenotazioni, fleet) {
   });
 
   (rentmeVehicles || []).forEach(v => {
-    if (!v.id) return;
-    if (seenIds.has(v.id)) return;
-    seenIds.add(v.id);
-    allVehicles.push(v);
+    // I veicoli RentMe non hanno v.id — usano v.targa come chiave univoca
+    const id = v.id || v.targa || v.rentmeCode;
+    if (!id) return;
+    if (seenIds.has(id)) return;   // già in flotta locale → skip (dedup)
+    seenIds.add(id);
+    allVehicles.push({ ...v, id });  // inietta id per il resto della pipeline
   });
 
   if (allVehicles.length > 0) {
     // ── Raggruppa per tipo + categoria ──────────────────────────
     const TIPO_ORDER = ['auto','scooter','moto','quad','ebike','bici','altro'];
     const byKey = {};
+    // Mapping targa→key per retrocompatibilità: prenotazioni pre-fix salvano vehicleId=TARGA
+    // (PrenoForm usava targa come id quando RentMe era sincronizzato). Questo mapping
+    // permette di riconoscerle anche se grp.ids contiene l'UUID/migrated-id del veicolo.
+    const targaToKey = {};
     allVehicles.forEach(v => {
       const tipo = (v.tipo || '').toLowerCase();
       let cat = getVehicleCategoria(v) || 'BASE';
-      // Normalizza CHIUSA→BASE per gli auto (LISTINO usa 'BASE' come auto base)
-      if (tipo === 'auto' && cat === 'CHIUSA') cat = 'BASE';
+      // Normalizza tutte le categorie non-LISTINO a BASE (CHIUSA, 5POSTI, 6POSTI, 7POSTI, APERTA, AUTOMATICA, SERIE2…)
+      if (tipo === 'auto') cat = normalizeAutoCategoria(cat);
       const key = `${tipo}|${cat}`;
       if (!byKey[key]) {
         // Display name da LISTINO, altrimenti composto
@@ -7861,6 +8123,8 @@ function calcAvailability(dal, al, rentmeVehicles, prenotazioni, fleet) {
       }
       const id = v.id || v.targa;
       if (id) byKey[key].ids.add(id);
+      // Registra targa→key (uppercase, senza spazi) per match retrocompatibile
+      if (v.targa) targaToKey[v.targa.toUpperCase().trim()] = key;
     });
 
     return Object.values(byKey).map(grp => {
@@ -7873,15 +8137,28 @@ function calcAvailability(dal, al, rentmeVehicles, prenotazioni, fleet) {
         if (b.al < dalS || b.dal > alS) return;
         const vidB = b.vehicleId || '';
         if (vidB && grp.ids.has(vidB)) {
+          // Match diretto: vehicleId = fleet v.id (UUID o migrated-xxx)
+          busy.add(vidB);
+        } else if (vidB && targaToKey[vidB.toUpperCase()] === grp.key) {
+          // Match retrocompatibile: vehicleId era la targa (booking pre-v0.43.10 o da RentMe sync)
           busy.add(vidB);
         } else if (!vidB && b.vehicleType === grp.tipo) {
-          // prenotazione tipo-only senza vehicleId: consuma 1 slot generico
+          // Prenotazione tipo-only senza vehicleId: consuma 1 slot generico
           busyNoId++;
         }
         if (b.vehicleSchedule) {
           b.vehicleSchedule.forEach(s => {
-            if (s.vehicleId && grp.ids.has(s.vehicleId) && s.dal <= alS && s.al >= dalS) busy.add(s.vehicleId);
+            if (!s.vehicleId || s.dal > alS || s.al < dalS) return;
+            if (grp.ids.has(s.vehicleId) || targaToKey[s.vehicleId.toUpperCase()] === grp.key) busy.add(s.vehicleId);
           });
+        }
+      });
+      // Fermi flotta: blocchi manutenzione che riducono disponibilità
+      (fermiFlotta || []).forEach(fermo => {
+        if (!fermo.vehicleId || !fermo.dal || !fermo.al) return;
+        if (fermo.al < dalS || fermo.dal > alS) return; // no overlap
+        if (grp.ids.has(fermo.vehicleId) || targaToKey[(fermo.vehicleId||'').toUpperCase()] === grp.key) {
+          busy.add(fermo.vehicleId);
         }
       });
       const booked    = busy.size + busyNoId;
@@ -8423,7 +8700,12 @@ function useRentMeSync({ fleet, rentmeVehicles, setRentmeVehicles, setPrenotazio
     const veicoli = rentmeVehicles || [];
     const catVehs = veicoli.filter(v => v.slug === slug);
     if (!catVehs.length) throw new Error('Nessun mezzo RentMe per questa categoria');
+    // Marca occupati i veicoli che hanno già impegni sovrapposti alle date richieste
     const busy = new Set();
+    catVehs.forEach(v => {
+      const overla = (v.impegni || []).some(imp => imp.al >= booking.dal && imp.dal <= booking.al);
+      if (overla) busy.add(v.targa);
+    });
     const freeVeh = catVehs.find(v => !busy.has(v.targa)) || catVehs[0];
     const payload = {
       uuidDittaAssociata: freeVeh.uuidDittaAssociata || RENTME_USER_ID,
@@ -8498,16 +8780,16 @@ function useRentMeSync({ fleet, rentmeVehicles, setRentmeVehicles, setPrenotazio
 // Schermata veloce per il banco: seleziona date, vedi cosa è libero,
 // un tap → apre il form prenotazione prefillato per quella categoria.
 // ═══════════════════════════════════════════════════════════════════
-function BancoRapidoPage({ rentmeVehicles, prenotazioni, fleet, setPage, setPrenotazioniPrefill, listino, pushToast, rentmeSyncStatus, onRentmeSync, rentmeLastSync }) {
-  const today = new Date().toISOString().slice(0,10);
+function BancoRapidoPage({ rentmeVehicles, prenotazioni, fleet, setPage, setPrenotazioniPrefill, listino, pushToast, rentmeSyncStatus, onRentmeSync, rentmeLastSync, fermiFlotta }) {
+  const today = todayISO();
   const [dal, setDal] = useState(today);
   const [al,  setAl]  = useState(today);
   // Modal veicoli: categoria selezionata o null
   const [vehicleModal, setVehicleModal] = useState(null); // null | { cat, vehicles }
 
   const availability = useMemo(
-    () => calcAvailability(dal, al, rentmeVehicles, prenotazioni, fleet),
-    [dal, al, rentmeVehicles, prenotazioni, fleet]
+    () => calcAvailability(dal, al, rentmeVehicles, prenotazioni, fleet, fermiFlotta),
+    [dal, al, rentmeVehicles, prenotazioni, fleet, fermiFlotta]
   );
 
   // Alert: categorie sotto soglia
@@ -8524,8 +8806,10 @@ function BancoRapidoPage({ rentmeVehicles, prenotazioni, fleet, setPage, setPren
     const catMatch = v => {
       if (!cat.categoria) return true;
       let vcat = getVehicleCategoria(v) || '';
-      if ((v.tipo || '').toLowerCase() === 'auto' && vcat === 'CHIUSA') vcat = 'BASE';
-      return vcat === cat.categoria;
+      const isAuto = (v.tipo || '').toLowerCase() === 'auto';
+      if (isAuto) vcat = normalizeAutoCategoria(vcat);
+      const targetCat = isAuto ? normalizeAutoCategoria(cat.categoria) : cat.categoria;
+      return vcat === targetCat;
     };
 
     // Fleet locale: filtra per tipo + categoria, arricchisci label e targa
@@ -8556,13 +8840,20 @@ function BancoRapidoPage({ rentmeVehicles, prenotazioni, fleet, setPage, setPren
       merged.push(v);
     }
 
-    // Mark occupati nelle date selezionate
-    const occupati = new Set(
-      (prenotazioni || [])
-        .filter(p => p.dal <= al && p.al >= dal && p.stato !== 'annullata' && p.stato !== 'completata' && p.stato !== 'cancellata')
-        .map(p => p.vehicleId)
-        .filter(Boolean)
-    );
+    // Mark occupati nelle date selezionate (inclusi segmenti vehicleSchedule multi-mezzo)
+    const occupati = new Set();
+    (prenotazioni || [])
+      .filter(p => p.dal <= al && p.al >= dal && p.stato !== 'annullata' && p.stato !== 'cancellata' && p.stato !== 'completata')
+      .forEach(p => {
+        if (p.vehicleId) occupati.add(p.vehicleId);
+        (p.vehicleSchedule || []).forEach(s => {
+          if (s.vehicleId && s.dal <= al && s.al >= dal) occupati.add(s.vehicleId);
+        });
+      });
+    // Fermi programmati: manutenzione blocca il veicolo
+    (fermiFlotta || []).forEach(f => {
+      if (f.vehicleId && f.dal <= al && f.al >= dal) occupati.add(f.vehicleId);
+    });
     return merged.map(v => ({ ...v, libero: !occupati.has(v.id) }));
   }
 
@@ -9426,7 +9717,7 @@ const CASSA_TIPI = {
 };
 
 function CassaFormModal({ onSave, onClose, prenotazioni, customers, operator }) {
-  const today = new Date().toISOString().slice(0,10);
+  const today = todayISO();
   const [form, setForm] = useState({
     data: today, clienteNome: '', prenotazioneId: '',
     importo: '', metodo: 'contanti', tipo: 'saldo', nota: '',
@@ -9561,24 +9852,24 @@ function CassaFormModal({ onSave, onClose, prenotazioni, customers, operator }) 
 // CHIUSURA GIORNALIERA — riepilogo cassa per data con stampa
 // ─────────────────────────────────────────────────────────────────────
 function ChiusuraGiornalieraModal({ cassa, initialDate, onClose }) {
-  const [selectedDate, setSelectedDate] = useState(initialDate || new Date().toISOString().slice(0,10));
+  const [selectedDate, setSelectedDate] = useState(initialDate || todayISO());
 
   const dayEntries = useMemo(() => (cassa || []).filter(r => r.data === selectedDate), [cassa, selectedDate]);
 
   const perTipo = useMemo(() => {
     const res = {};
-    Object.keys(CASSA_TIPI).forEach(k => { res[k] = dayEntries.filter(r => r.tipo === k).reduce((s,r) => s + r.importo, 0); });
+    Object.keys(CASSA_TIPI).forEach(k => { res[k] = dayEntries.filter(r => r.tipo === k).reduce((s,r) => s + (Number(r.importo)||0), 0); });
     return res;
   }, [dayEntries]);
 
   const perMetodo = useMemo(() => {
     const res = {};
-    Object.keys(CASSA_METODI).forEach(k => { res[k] = dayEntries.filter(r => r.metodo === k && r.tipo !== 'rimborso').reduce((s,r) => s + r.importo, 0); });
+    Object.keys(CASSA_METODI).forEach(k => { res[k] = dayEntries.filter(r => r.metodo === k && r.tipo !== 'rimborso').reduce((s,r) => s + (Number(r.importo)||0), 0); });
     return res;
   }, [dayEntries]);
 
-  const totaleIncassato = dayEntries.filter(r => r.tipo !== 'rimborso').reduce((s,r) => s + r.importo, 0);
-  const totaleRimborsi  = dayEntries.filter(r => r.tipo === 'rimborso').reduce((s,r) => s + r.importo, 0);
+  const totaleIncassato = dayEntries.filter(r => r.tipo !== 'rimborso').reduce((s,r) => s + (Number(r.importo)||0), 0);
+  const totaleRimborsi  = dayEntries.filter(r => r.tipo === 'rimborso').reduce((s,r) => s + (Number(r.importo)||0), 0);
   const netto    = totaleIncassato - totaleRimborsi;
   const mov      = dayEntries.length;
 
@@ -9715,14 +10006,16 @@ function RegistroCassaPage({ cassa, setCassa, prenotazioni, customers, operator,
   const [showForm, setShowForm] = useState(false);
   const [showChiusura, setShowChiusura] = useState(false);
 
-  const today = new Date().toISOString().slice(0,10);
+  const today = todayISO();
 
   const getRange = () => {
     const d = new Date();
     if (periodo === 'oggi')      return [today, today];
     if (periodo === 'settimana') {
       const lun = new Date(d); lun.setDate(d.getDate() - ((d.getDay()+6)%7));
-      return [lun.toISOString().slice(0,10), today];
+      // Usa ora locale (non UTC) per evitare offset notturno
+      const lunISO = `${lun.getFullYear()}-${String(lun.getMonth()+1).padStart(2,'0')}-${String(lun.getDate()).padStart(2,'0')}`;
+      return [lunISO, today];
     }
     if (periodo === 'mese') return [`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`, today];
     return [null, null];
@@ -9735,19 +10028,19 @@ function RegistroCassaPage({ cassa, setCassa, prenotazioni, customers, operator,
       if (al  && r.data > al)  return false;
       if (metodoFilter !== 'tutti' && r.metodo !== metodoFilter) return false;
       return true;
-    }).sort((a,b) => b.data.localeCompare(a.data) || b.createdAt.localeCompare(a.createdAt));
+    }).sort((a,b) => (b.data||'').localeCompare(a.data||'') || (b.createdAt||'').localeCompare(a.createdAt||''));
   }, [cassa, dal, al, metodoFilter]);
 
   // Totali
-  const totale     = filtered.filter(r => r.tipo !== 'rimborso').reduce((s,r) => s + r.importo, 0);
-  const rimborsi   = filtered.filter(r => r.tipo === 'rimborso').reduce((s,r) => s + r.importo, 0);
+  const totale     = filtered.filter(r => r.tipo !== 'rimborso').reduce((s,r) => s + (Number(r.importo)||0), 0);
+  const rimborsi   = filtered.filter(r => r.tipo === 'rimborso').reduce((s,r) => s + (Number(r.importo)||0), 0);
   const netto      = totale - rimborsi;
-  const perMetodo  = Object.fromEntries(Object.keys(CASSA_METODI).map(k => [k, filtered.filter(r => r.metodo === k && r.tipo !== 'rimborso').reduce((s,r)=>s+r.importo,0)]));
+  const perMetodo  = Object.fromEntries(Object.keys(CASSA_METODI).map(k => [k, filtered.filter(r => r.metodo === k && r.tipo !== 'rimborso').reduce((s,r)=>s+(Number(r.importo)||0),0)]));
 
   const handleSave = (record) => {
     setCassa(prev => [record, ...(prev||[])]);
     setShowForm(false);
-    pushToast({ tone: 'success', title: 'Incasso registrato', message: `€${record.importo.toFixed(2)} · ${CASSA_METODI[record.metodo]?.label}` });
+    pushToast({ tone: 'success', title: 'Incasso registrato', message: `€${(Number(record.importo)||0).toFixed(2)} · ${CASSA_METODI[record.metodo]?.label}` });
   };
 
   const handleDelete = (id) => {
@@ -9758,7 +10051,7 @@ function RegistroCassaPage({ cassa, setCassa, prenotazioni, customers, operator,
   const exportCSV = () => {
     const header = 'Data,Cliente,Mezzo,Tipo,Metodo,Importo,Nota,Operatore';
     const rows = filtered.map(r =>
-      [r.data, r.clienteNome, r.vehicleLabel||'', CASSA_TIPI[r.tipo]?.label||r.tipo, CASSA_METODI[r.metodo]?.label||r.metodo, r.importo.toFixed(2), r.nota||'', r.operatorName||''].map(x => `"${String(x).replace(/"/g,'""')}"`).join(',')
+      [r.data, r.clienteNome, r.vehicleLabel||'', CASSA_TIPI[r.tipo]?.label||r.tipo, CASSA_METODI[r.metodo]?.label||r.metodo, (Number(r.importo)||0).toFixed(2), r.nota||'', r.operatorName||''].map(x => `"${String(x).replace(/"/g,'""')}"`).join(',')
     );
     const blob = new Blob([[header, ...rows].join('\n')], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
@@ -9877,7 +10170,7 @@ function RegistroCassaPage({ cassa, setCassa, prenotazioni, customers, operator,
                       <span style={{ color: metodo?.color, fontWeight: 600, fontSize: 12 }}>{metodo?.icon} {metodo?.label}</span>
                     </td>
                     <td style={{ padding: '8px 12px', fontFamily: 'monospace', fontWeight: 700, textAlign: 'right', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap', color: r.tipo==='rimborso' ? '#c0392b' : '#27ae60' }}>
-                      {r.tipo==='rimborso' ? '-' : '+'}€{r.importo.toFixed(2)}
+                      {r.tipo==='rimborso' ? '-' : '+'}€{(Number(r.importo)||0).toFixed(2)}
                     </td>
                     <td style={{ padding: '8px 12px', color: 'var(--muted)', fontSize: 11, borderBottom: '1px solid var(--border)' }}>{r.nota||'—'}</td>
                     <td style={{ padding: '8px 12px', borderBottom: '1px solid var(--border)' }}>
@@ -9935,8 +10228,8 @@ function ClienteStoricoPanel({ cliente, prenotazioni, contracts, onClose }) {
     return (contracts||[]).filter(c => c.record?.cognome?.toLowerCase() === (cliente.cognome||'').toLowerCase()).sort((a,b) => b.createdAt.localeCompare(a.createdAt));
   }, [contracts, cliente]);
 
-  const spesaTotale  = preno.reduce((s,p) => s + (p.prezzo||0), 0);
-  const accontiTotali = preno.reduce((s,p) => s + (p.acconto||0), 0);
+  const spesaTotale  = preno.reduce((s,p) => s + (Number(p.prezzo)||0), 0);
+  const accontiTotali = preno.reduce((s,p) => s + (Number(p.acconto)||0), 0);
   const ultimaVisita = preno.length > 0 ? preno[0].dal : null;
   const catCount     = {};
   preno.forEach(p => { if (p.vehicleLabel) catCount[p.vehicleLabel] = (catCount[p.vehicleLabel]||0)+1; });
@@ -10110,7 +10403,7 @@ function ScadenzeModal({ vehicle, scadenze, onSave, onClose }) {
     setTimeout(() => { setSaved(false); onClose(); }, 900);
   };
 
-  const oggi = new Date().toISOString().slice(0,10);
+  const oggi = todayISO();
   const inputStyle = { width: '100%', padding: '7px 10px', border: '1px solid var(--border)', borderRadius: 5, fontSize: 13, background: 'var(--bg)', color: 'var(--ink)', fontFamily: 'var(--font-sans)', boxSizing: 'border-box' };
 
   return (
@@ -10176,7 +10469,7 @@ function ScadenzeModal({ vehicle, scadenze, onSave, onClose }) {
 
 // Widget scadenze per Dashboard — mostra i mezzi con problemi
 function ScadenzeWidget({ fleet, scadenze, onGoFlotta }) {
-  const today = new Date().toISOString().slice(0,10);
+  const today = todayISO();
 
   const problemi = useMemo(() => {
     const result = [];
@@ -10267,8 +10560,8 @@ function buildWAReminder(preno, agency, tipo) {
 }
 
 function RitiriWidget({ prenotazioni, agency, setPage }) {
-  const today    = new Date().toISOString().slice(0,10);
-  const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0,10);
+  const today    = todayISO();
+  const tomorrow = localDateISO(1);
 
   const ritiriOggi   = (prenotazioni||[]).filter(p => p.dal === today    && p.stato !== 'cancellata' && p.fonte !== 'rentme');
   const ritiriDomani = (prenotazioni||[]).filter(p => p.dal === tomorrow  && p.stato !== 'cancellata' && p.fonte !== 'rentme');
@@ -10913,9 +11206,9 @@ function useScadenzeNotifications(scadenze, fleet) {
     if (Notification.permission === 'denied') return;
     if (!scadenze || !fleet || fleet.length === 0) return;
 
-    const today = new Date().toISOString().slice(0, 10);
-    const in7  = new Date(Date.now() + 7  * 86400000).toISOString().slice(0, 10);
-    const in30 = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
+    const today = todayISO();
+    const in7  = localDateISO(7);
+    const in30 = localDateISO(30);
     const tipoLabel = { revisione: 'Revisione', assicurazione: 'Assicurazione', tagliando: 'Tagliando', bollo: 'Bollo' };
 
     const urgenti = [];
@@ -10972,7 +11265,7 @@ function useRitardiNotifications(prenotazioni) {
     if (Notification.permission === 'denied') return;
     if (!prenotazioni || prenotazioni.length === 0) return;
 
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayISO();
     const STATI_ATTIVI = new Set(['confermata', 'in_corso', 'prorogata']);
 
     const ritardi = prenotazioni.filter(p => {
@@ -11450,8 +11743,9 @@ function OggiPage({ prenotazioni, setPrenotazioni, fleet, scadenze, customers, s
     return () => clearInterval(id);
   }, []);
 
-  const today = now.toISOString().slice(0, 10);
-  const tomorrow = new Date(now.getTime() + 86400000).toISOString().slice(0, 10);
+  // todayISO() usa ora locale (fix timezone UTC): now aggiorna ogni minuto per l'orologio live
+  const today    = todayISO();          // data locale corrente (non UTC)
+  const tomorrow = localDateISO(1);     // domani in ora locale
 
   // Walk-in inline: date e form
   const [walkInDal, setWalkInDal] = useState(today);
@@ -11460,7 +11754,7 @@ function OggiPage({ prenotazioni, setPrenotazioni, fleet, scadenze, customers, s
 
   const STATO_COLOR = {
     confermata: '#2e6e3e', in_corso: '#1f5d83', attesa: '#b87333',
-    completata: '#888', annullata: '#c85050',
+    completata: '#888', annullata: '#c85050', cancellata: '#c85050',
   };
   const TIPO_EMOJI = { auto: '🚗', scooter: '🛵', quad: '🏎', ebike: '⚡', bici: '🚲' };
 
@@ -11507,14 +11801,14 @@ function OggiPage({ prenotazioni, setPrenotazioni, fleet, scadenze, customers, s
   const prenoList = prenotazioni || [];
   const fleetList = fleet || [];
 
-  const partenze  = prenoList.filter(p => p.dal === today && p.stato !== 'annullata');
-  const rientri   = prenoList.filter(p => p.al  === today && p.stato !== 'annullata');
+  const partenze  = prenoList.filter(p => p.dal === today && p.stato !== 'annullata' && p.stato !== 'cancellata');
+  const rientri   = prenoList.filter(p => p.al  === today && p.stato !== 'annullata' && p.stato !== 'cancellata');
   const inCorso   = prenoList.filter(p =>
     p.dal < today && p.al >= today && (p.stato === 'confermata' || p.stato === 'in_corso')
   );
 
   // Promemoria documenti clienti (consegne oggi con doc scaduto o in scadenza entro 30 gg)
-  const docAlert30 = new Date(today);
+  const docAlert30 = new Date(today + 'T12:00:00');  // noon-anchored per evitare UTC offset
   docAlert30.setDate(docAlert30.getDate() + 30);
   const docAlert30Str = docAlert30.toISOString().slice(0, 10);
   const docAlerts = [];
@@ -11530,13 +11824,32 @@ function OggiPage({ prenotazioni, setPrenotazioni, fleet, scadenze, customers, s
     if (stato) docAlerts.push({ preno: p, cliente: c, scad, stato });
   });
 
-  // Veicoli occupati oggi (dal <= today <= al, stato attivo)
-  const occupatiIds = new Set(
-    prenoList
-      .filter(p => p.dal <= today && p.al >= today && p.stato !== 'annullata' && p.stato !== 'completata')
-      .map(p => p.vehicleId)
-      .filter(Boolean)
-  );
+  // Lookup targa→fleet.id per retrocompatibilità (p.vehicleId legacy = targa)
+  const fleetIdByTarga_oggi = {};
+  (fleetList || []).forEach(fv => {
+    if (fv.targa) fleetIdByTarga_oggi[(fv.targa||'').toUpperCase().trim()] = fv.id;
+  });
+  function resolveVehicleId_oggi(vid) {
+    if (!vid) return null;
+    const upper = vid.toUpperCase().trim();
+    return fleetIdByTarga_oggi[upper] || vid;
+  }
+
+  // Veicoli occupati oggi (dal <= today <= al, stato attivo; inclusi segmenti vehicleSchedule)
+  // Normalizza vehicleId a fleet.id per retrocompatibilità con prenotazioni legacy (vehicleId=targa)
+  const occupatiIds = new Set();
+  prenoList
+    .filter(p => p.dal <= today && p.al >= today && p.stato !== 'annullata' && p.stato !== 'cancellata' && p.stato !== 'completata')
+    .forEach(p => {
+      if (p.vehicleId) occupatiIds.add(resolveVehicleId_oggi(p.vehicleId));
+      (p.vehicleSchedule || []).forEach(s => {
+        if (s.vehicleId && s.dal <= today && s.al >= today) occupatiIds.add(resolveVehicleId_oggi(s.vehicleId));
+      });
+    });
+  // Fermi programmati: veicoli in manutenzione non sono "liberi"
+  (fermiFlotta || []).forEach(f => {
+    if (f.vehicleId && f.dal <= today && f.al >= today) occupatiIds.add(f.vehicleId);
+  });
   const liberi = fleetList.filter(v => v.status !== 'fuori_uso' && !occupatiIds.has(v.id));
   const liberiCount = liberi.length;
   const totaleFlotta = fleetList.filter(v => v.status !== 'fuori_uso').length;
@@ -11556,15 +11869,15 @@ function OggiPage({ prenotazioni, setPrenotazioni, fleet, scadenze, customers, s
   scadenzeAlert.sort((a, b) => a.data.localeCompare(b.data));
 
   // Manutenzioni programmate in scadenza / scadute
-  const in30Str = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
+  const in30Str = localDateISO(30);
   const manutenzioniAlert = (manutenzioni || []).filter(m =>
     !m.completata && m.dataScadenza && m.dataScadenza <= in30Str
   ).sort((a, b) => a.dataScadenza.localeCompare(b.dataScadenza));
 
   // Prenotazioni domani (anticipo consegne)
-  const domani = prenoList.filter(p => p.dal === tomorrow && p.stato !== 'annullata');
+  const domani = prenoList.filter(p => p.dal === tomorrow && p.stato !== 'annullata' && p.stato !== 'cancellata');
   // Rientri domani — per promemoria WhatsApp mattina
-  const rientranoDomani = prenoList.filter(p => p.al === tomorrow && p.stato !== 'annullata');
+  const rientranoDomani = prenoList.filter(p => p.al === tomorrow && p.stato !== 'annullata' && p.stato !== 'cancellata');
 
   // Export ICS — scarica tutte le prenotazioni attive come calendario .ics
   function exportICS() {
@@ -11575,7 +11888,7 @@ function OggiPage({ prenotazioni, setPrenotazioni, fleet, scadenze, customers, s
     function icsEsc(s) {
       return (s || '').replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\n/g, '\\n');
     }
-    const attive = prenoList.filter(p => p.stato !== 'annullata');
+    const attive = prenoList.filter(p => p.stato !== 'annullata' && p.stato !== 'cancellata');
     const events = attive.map(p => {
       const uid    = `edo-${p.id}@edonoleggio.it`;
       const dal    = icsDate(p.dal);
@@ -11803,7 +12116,7 @@ function OggiPage({ prenotazioni, setPrenotazioni, fleet, scadenze, customers, s
 
       {/* ── WALK-IN ─────────────────────────────────────────────────── */}
       {(() => {
-        const walkAvail = calcAvailability(walkInDal, walkInAl, rentmeVehicles, prenoList, fleet);
+        const walkAvail = calcAvailability(walkInDal, walkInAl, rentmeVehicles, prenoList, fleet, fermiFlotta);
         const catColor = (cat) => {
           if (cat.free <= 0) return { bg: '#fdecea', border: '#c0392b', text: '#c0392b', label: 'Esaurito' };
           if (cat.alert)     return { bg: '#fff8e6', border: '#e67e22', text: '#d35400', label: 'Quasi esaurito' };
@@ -12371,7 +12684,7 @@ function GlobalSearchModal({ prenotazioni, customers, contracts, fleet, onClose,
 
   const totalCount = results.codiceMatch ? 1 : Object.values(results).reduce((n, arr) => Array.isArray(arr) ? n + arr.length : n, 0);
 
-  const STATO_COLOR = { confermata: '#2e6e3e', in_corso: '#1f5d83', attesa: '#b87333', completata: '#888', annullata: '#c85050' };
+  const STATO_COLOR = { confermata: '#2e6e3e', in_corso: '#1f5d83', attesa: '#b87333', completata: '#888', annullata: '#c85050', cancellata: '#c85050' };
 
   function Row({ icon, primary, secondary, pill, pillColor, onClick }) {
     return (
@@ -12553,7 +12866,7 @@ function GlobalSearchModal({ prenotazioni, customers, contracts, fleet, onClose,
 // ═══════════════════════════════════════════════════════════════════
 // CALENDARIO FLOTTA — griglia Gantt mezzo × giorno (4 settimane)
 // ═══════════════════════════════════════════════════════════════════
-function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, setPrenotazioniPrefill }) {
+function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, setPrenotazioniPrefill, fermiFlotta }) {
   const [weekOffset, setWeekOffset] = useState(0);
   const [tipoFilter, setTipoFilter] = useState('');         // filtro tipo mezzo
   const [selectedCell, setSelectedCell] = useState(null);  // {preno, vehicleId, day}
@@ -12563,12 +12876,13 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
   const today = todayISO();
 
   const days = useMemo(() => {
+    // Ancora a mezzogiorno per evitare UTC offset notturno (1-2 AM locale = UTC precedente)
     return Array.from({ length: COLS }, (_, i) => {
-      const d = new Date();
+      const d = new Date(today + 'T12:00:00');
       d.setDate(d.getDate() + weekOffset * 7 + i - d.getDay() + 1); // lunedì corrente
       return d.toISOString().slice(0, 10);
     });
-  }, [weekOffset]);
+  }, [weekOffset, today]);
 
   const STATO_COLOR = {
     confermata: '#2e6e3e',
@@ -12597,7 +12911,7 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
   }, [fleet, rentmeVehicles]);
 
   const prenoList = useMemo(() =>
-    (prenotazioni || []).filter(p => p.stato !== 'annullata' && p.stato !== 'completata'),
+    (prenotazioni || []).filter(p => p.stato !== 'annullata' && p.stato !== 'cancellata' && p.stato !== 'completata'),
     [prenotazioni]
   );
 
@@ -12641,6 +12955,21 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
     });
     return m;
   }, [prenoList, days]);
+
+  // Mappa (vehicleId|day) → fermo programmato — visivo, celle grigie striate
+  const fermiMap = useMemo(() => {
+    const m = {};
+    (fermiFlotta || []).forEach(f => {
+      if (!f.vehicleId || !f.dal || !f.al) return;
+      fleetFiltered.forEach(v => {
+        if (!matchVehicle(f.vehicleId, v.id, v.targa)) return;
+        days.forEach(d => {
+          if (f.dal <= d && f.al >= d) m[`${v.id}|${d}`] = f;
+        });
+      });
+    });
+    return m;
+  }, [fermiFlotta, fleetFiltered, days]);
 
   const COL_W = 36;
   const ROW_H = 44;
@@ -12793,6 +13122,8 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
               {/* Celle giorni */}
               {days.map(d => {
                 const preno = cellMap[`${v.id}|${d}`];
+                // Fermo programmato — visibile solo se la cella non è già occupata da prenotazione
+                const fermo = !preno ? fermiMap[`${v.id}|${d}`] : null;
                 const isToday = d === today;
                 const segDal  = preno?._segDal;
                 const segAl   = preno?._segAl;
@@ -12815,7 +13146,7 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
                       e.stopPropagation();
                       if (preno) {
                         setSelectedCell({ preno, vehicleId: v.id, day: d });
-                      } else {
+                      } else if (!fermo) {
                         // Slot libero → nuova prenotazione pre-compilata
                         setPrenotazioniPrefill && setPrenotazioniPrefill({
                           vehicleId:    v.id,
@@ -12829,17 +13160,36 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
                         setPage && setPage('prenotazioni');
                       }
                     }}
-                    title={preno ? '' : `+ Nuova prenotazione · ${v.targa || v.id} · ${d}`}
+                    title={
+                      preno  ? '' :
+                      fermo  ? `🔧 Fermo: ${fermo.motivo || 'manutenzione programmata'} (${formatDate(fermo.dal)}–${formatDate(fermo.al)})` :
+                               `+ Nuova prenotazione · ${v.targa || v.id} · ${d}`
+                    }
                     style={{
                       width: COL_W, height: ROW_H, flexShrink: 0, position: 'relative',
                       zIndex: isFirstVisible ? 1 : 0,
                       borderLeft: isToday ? '2px solid var(--accent)' : '1px solid var(--border)',
-                      background: preno ? 'transparent' : isToday ? 'rgba(46,110,62,.06)' : isWeekend ? 'rgba(0,0,0,.02)' : 'transparent',
-                      cursor: 'pointer',
+                      background: preno ? 'transparent' : fermo ? 'transparent' : isToday ? 'rgba(46,110,62,.06)' : isWeekend ? 'rgba(0,0,0,.02)' : 'transparent',
+                      cursor: fermo ? 'default' : 'pointer',
                     }}
-                    onMouseEnter={e => { if (!preno) e.currentTarget.style.background = 'rgba(200,52,52,.09)'; }}
-                    onMouseLeave={e => { if (!preno) e.currentTarget.style.background = isToday ? 'rgba(46,110,62,.06)' : isWeekend ? 'rgba(0,0,0,.02)' : 'transparent'; }}
+                    onMouseEnter={e => { if (!preno && !fermo) e.currentTarget.style.background = 'rgba(200,52,52,.09)'; }}
+                    onMouseLeave={e => { if (!preno && !fermo) e.currentTarget.style.background = isToday ? 'rgba(46,110,62,.06)' : isWeekend ? 'rgba(0,0,0,.02)' : 'transparent'; }}
                   >
+                    {/* Fermo programmato — striatura grigia */}
+                    {fermo && (
+                      <div style={{
+                        position: 'absolute', inset: 0,
+                        background: 'repeating-linear-gradient(135deg,rgba(0,0,0,.06) 0px,rgba(0,0,0,.06) 3px,transparent 3px,transparent 8px)',
+                        backgroundColor: '#f0f0f0',
+                        opacity: 0.7,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}>
+                        {/* Mostra "🔧" solo sul primo giorno del fermo nella vista */}
+                        {(fermo.dal === d || d === days[0]) && (
+                          <span style={{ fontSize: 9, opacity: 0.55, userSelect: 'none' }}>🔧</span>
+                        )}
+                      </div>
+                    )}
                     {preno && (
                       <div style={{
                         position: 'absolute',
@@ -12940,7 +13290,7 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
         const today      = todayISO();
         // Prenotazioni di questo veicolo — passate, attive, future
         const vPreno = prenoList
-          .filter(p => p.vehicleId === sv.id || p.vehicleId === sv.targa)
+          .filter(p => matchVehicle(p.vehicleId, sv.id, sv.targa))
           .sort((a, b) => b.dal.localeCompare(a.dal));
         const future  = vPreno.filter(p => p.dal >= today);
         const active  = vPreno.filter(p => p.dal <= today && p.al >= today);
@@ -13488,8 +13838,8 @@ function KioskView({ prenotazioni, setPrenotazioni, fleet, rentmeVehicles, scade
   const prenoList = prenotazioni || [];
 
   // KPI essenziali
-  const consegneOggi  = prenoList.filter(p => p.dal === today && p.stato !== 'annullata');
-  const rientri       = prenoList.filter(p => p.al  === today && p.stato !== 'annullata');
+  const consegneOggi  = prenoList.filter(p => p.dal === today && p.stato !== 'annullata' && p.stato !== 'cancellata');
+  const rientri       = prenoList.filter(p => p.al  === today && p.stato !== 'annullata' && p.stato !== 'cancellata');
   const inCorso       = prenoList.filter(p => p.stato === 'in_corso').length;
 
   return (
@@ -13684,7 +14034,7 @@ export default function App() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `edonoleggio-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `edonoleggio-backup-${todayISO()}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -13747,7 +14097,7 @@ export default function App() {
       operators, partners, agency, listino, stagioni, manutenzioni,
     };
     const jsonStr  = JSON.stringify(backupObj, null, 2);
-    const fileName = `edonoleggio-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    const fileName = `edonoleggio-backup-${todayISO()}.json`;
     const boundary = '-------boundary123456789';
     const body = [
       `--${boundary}`,
@@ -13898,7 +14248,7 @@ export default function App() {
 
         if (token) {
           const jsonStr  = JSON.stringify(backupObj, null, 2);
-          const fileName = `edonoleggio-backup-${new Date().toISOString().slice(0, 10)}.json`;
+          const fileName = `edonoleggio-backup-${todayISO()}.json`;
           const boundary = '-------boundary123456789';
           const body = [
             `--${boundary}`, 'Content-Type: application/json; charset=UTF-8', '',
@@ -13945,15 +14295,17 @@ export default function App() {
         if (!window.confirm(
           `Ripristinare backup v${data.version || '?'} del ${(data.exportedAt || '').slice(0,10) || '?'}?\n\n${counts}\n\nI dati attuali saranno sovrascritti.`
         )) return;
-        if (data.prenotazioni) setPrenotazioni(data.prenotazioni);
-        if (data.fleet)        setFleet(data.fleet);
+        // Applica le stesse migration di usePersistentState — così la sessione
+        // corrente usa dati già puliti senza aspettare il reload.
+        if (data.prenotazioni) setPrenotazioni(migratePrenotazioni(data.prenotazioni));
+        if (data.fleet)        setFleet(migrateFleet(data.fleet));
         if (data.customers)    setCustomers(data.customers);
         if (data.cassa)        setCassa(data.cassa);
         if (data.scadenze)     setScadenze(data.scadenze);
-        if (data.operators)    setOperators(data.operators);
-        if (data.partners)     setPartners(data.partners);
-        if (data.agency)       setAgency(data.agency);
-        if (data.listino)      setListino(data.listino);
+        if (data.operators)    setOperators(migrateOperators(data.operators));
+        if (data.partners)     setPartners(migratePartners(data.partners));
+        if (data.agency)       setAgency(migrateAgency(data.agency));
+        if (data.listino)      setListino(migrateListino(data.listino));
         if (data.stagioni)     setStagioni(data.stagioni);
         pushToast?.({ tone: 'success', title: 'Backup ripristinato', message: counts });
       } catch {
@@ -14476,7 +14828,7 @@ export default function App() {
     <>
       <Styles />
       <div className={`pratica-app flex${darkMode ? ' dark-mode' : ''}`}>
-        {!kioskMode && <Sidebar page={page} setPage={setPage} onNew={() => openWizard()} online={online && cargosConfig.enabled} agency={agency} rentmeSyncStatus={rentmeSync.status} rentmeAlertCount={rentmeSync.status === 'ok' ? calcAvailability(new Date().toISOString().slice(0,10), new Date().toISOString().slice(0,10), rentmeVehicles, prenotazioni, fleet).filter(c => c.alert).length : 0} />}
+        {!kioskMode && <Sidebar page={page} setPage={setPage} onNew={() => openWizard()} online={online && cargosConfig.enabled} agency={agency} rentmeSyncStatus={rentmeSync.status} rentmeAlertCount={rentmeSync.status === 'ok' ? calcAvailability(todayISO(), todayISO(), rentmeVehicles, prenotazioni, fleet, fermiFlotta).filter(c => c.alert).length : 0} />}
         <main className="flex-1 min-h-screen" id="main-content">
           <Topbar
             online={online} setOnline={setOnline} pendingQueue={pendingQueue}
@@ -14495,13 +14847,13 @@ export default function App() {
                 il boundary si resetta automaticamente (la key cambia → nuovo mount). */}
             <ErrorBoundary key={page}>
             <div key={page} className="page-fade">
-              {page === 'calendario' && <CalendarioFlottaPage prenotazioni={prenotazioni} fleet={fleet} rentmeVehicles={rentmeVehicles} setPage={setPage} setPrenotazioniPrefill={setPrenotazioniPrefill} />}
+              {page === 'calendario' && <CalendarioFlottaPage prenotazioni={prenotazioni} fleet={fleet} rentmeVehicles={rentmeVehicles} setPage={setPage} setPrenotazioniPrefill={setPrenotazioniPrefill} fermiFlotta={fermiFlotta} />}
               {page === 'oggi'       && <OggiPage prenotazioni={prenotazioni} fleet={fleet} scadenze={scadenze} customers={customers} setPage={setPage} rentmeVehicles={rentmeVehicles} setPrenotazioniPrefill={setPrenotazioniPrefill} pushToast={pushToast} setPrenotazioni={setPrenotazioni} operator={operator} fermiFlotta={fermiFlotta} rentmePush={rentmeSync.pushBooking} rentmeConnected={rentmeSync.status === 'ok'} manutenzioni={manutenzioni} />}
               {page === 'dashboard'  && <Dashboard onNew={() => openWizard()} setPage={setPage} operator={operator} fleet={fleet} contracts={localContracts} partners={partners} onMarkReturned={markContractReturned} scadenze={scadenze} prenotazioni={prenotazioni} agency={agency} />}
               {page === 'cassa'      && <RegistroCassaPage cassa={cassa} setCassa={setCassa} prenotazioni={prenotazioni} customers={customers} operator={operator} pushToast={pushToast} />}
-              {page === 'banco'      && <BancoRapidoPage rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} fleet={fleet} setPage={setPage} setPrenotazioniPrefill={setPrenotazioniPrefill} listino={listino} pushToast={pushToast} rentmeSyncStatus={rentmeSync.status} onRentmeSync={rentmeSync.sync} rentmeLastSync={rentmeSync.lastSync} />}
+              {page === 'banco'      && <BancoRapidoPage rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} fleet={fleet} setPage={setPage} setPrenotazioniPrefill={setPrenotazioniPrefill} listino={listino} pushToast={pushToast} rentmeSyncStatus={rentmeSync.status} onRentmeSync={rentmeSync.sync} rentmeLastSync={rentmeSync.lastSync} fermiFlotta={fermiFlotta} />}
               {page === 'report'        && <ReportPage prenotazioni={prenotazioni} contracts={localContracts} cassa={cassa} customers={customers} fleet={fleet} operators={operators} pushToast={pushToast} />}
-              {page === 'preventivi'    && <PreventiviPage setPage={setPage} setPrenotazioniPrefill={setPrenotazioniPrefill} listino={listino} fleet={fleet} rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} pushToast={pushToast} />}
+              {page === 'preventivi'    && <PreventiviPage setPage={setPage} setPrenotazioniPrefill={setPrenotazioniPrefill} listino={listino} fleet={fleet} rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} pushToast={pushToast} fermiFlotta={fermiFlotta} />}
               {page === 'prenotazioni' && <PrenotazioniPage prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} setCassa={setCassa} fleet={fleet} rentmeVehicles={rentmeVehicles} customers={customers} partners={partners} operator={operator} onOpenWizard={openWizard} pushToast={pushToast} prefill={prenotazioniPrefill} onClearPrefill={() => setPrenotazioniPrefill(null)} fermiFlotta={fermiFlotta} rentmePush={rentmeSync.pushBooking} rentmeConnected={rentmeSync.status === 'ok'} agency={agency} />}
               {page === 'contracts'  && <ContractsList contracts={localContracts} operators={operators} onRetry={retryContract} onMarkReturned={markContractReturned} online={online} />}
               {page === 'fleet'      && <FleetPage fleet={fleet} prenotazioni={prenotazioni} admin={admin} onAddVehicle={() => setModal('newVehicle')} onEditVehicle={(v) => setModal({ type: 'editVehicle', vehicle: v })} onDeleteVehicle={requestDeleteVehicle} onImportCSV={() => setShowCsvImport(true)} onResetFleet={() => setModal({ type: 'confirm', title: 'Azzera flotta?', message: <><strong>Tutti i {fleet.length} veicoli</strong> verranno eliminati dalla flotta. Le prenotazioni esistenti restano invariate. Dopo puoi reimportare con un CSV aggiornato. <strong>Azione irreversibile.</strong></>, confirmLabel: '🗑 Azzera flotta', variant: 'danger', onConfirm: () => { setFleet([]); pushToast({ tone: 'info', title: 'Flotta azzerata', message: 'Tutti i veicoli rimossi. Importa un nuovo CSV per ricaricare.' }); } })} onSetFleet={setFleet} scadenze={scadenze} setScadenze={setScadenze} fermiFlotta={fermiFlotta} setFermiFlotta={setFermiFlotta} rentmeVehicles={rentmeVehicles} manutenzioni={manutenzioni} setManutenzioni={setManutenzioni} />}
@@ -15762,14 +16114,14 @@ function ContractsList({ contracts, operators, onRetry, onMarkReturned, online }
 // ═══════════════════════════════════════════════════════════════════
 function VeicoloStatsModal({ vehicle, prenotazioni, onClose }) {
   const vLabel = makeVehicleLabel(vehicle);
-  const oggi = new Date().toISOString().slice(0, 10);
+  const oggi = todayISO();
   const annoCorr = new Date().getFullYear();
   const annoPrec = annoCorr - 1;
 
   const statsPerAnno = useCallback((anno) => {
     const prenoVeh = (prenotazioni || []).filter(p =>
-      (p.vehicleId === vehicle.id || p.vehicleId === vehicle.targa) &&
-      p.stato !== 'annullata' && p.stato !== 'bozza' &&
+      matchVehicle(p.vehicleId, vehicle.id, vehicle.targa) &&
+      p.stato !== 'annullata' && p.stato !== 'cancellata' && p.stato !== 'bozza' &&
       p.dal && p.al
     );
     const inAnno = prenoVeh.filter(p => {
@@ -15777,7 +16129,7 @@ function VeicoloStatsModal({ vehicle, prenotazioni, onClose }) {
       return parseInt(year, 10) === anno;
     });
     const giorni = inAnno.reduce((s, p) => s + Math.max(0, daysDiff(p.dal, p.al)), 0);
-    const revenue = inAnno.reduce((s, p) => s + (p.prezzo || 0), 0);
+    const revenue = inAnno.reduce((s, p) => s + (Number(p.prezzo)||0), 0);
     const occupazione = Math.min(100, Math.round(giorni / 365 * 100));
     return { n: inAnno.length, giorni, revenue, occupazione };
   }, [prenotazioni, vehicle]);
@@ -15787,11 +16139,11 @@ function VeicoloStatsModal({ vehicle, prenotazioni, onClose }) {
 
   // Lifetime
   const prenoTutte = (prenotazioni || []).filter(p =>
-    (p.vehicleId === vehicle.id || p.vehicleId === vehicle.targa) &&
-    p.stato !== 'annullata' && p.stato !== 'bozza'
+    matchVehicle(p.vehicleId, vehicle.id, vehicle.targa) &&
+    p.stato !== 'annullata' && p.stato !== 'cancellata' && p.stato !== 'bozza'
   );
   const lifetimeGiorni  = prenoTutte.reduce((s, p) => s + Math.max(0, daysDiff(p.dal || '', p.al || '')), 0);
-  const lifetimeRevenue = prenoTutte.reduce((s, p) => s + (p.prezzo || 0), 0);
+  const lifetimeRevenue = prenoTutte.reduce((s, p) => s + (Number(p.prezzo)||0), 0);
 
   const card = (label, value, sub, color = 'var(--ink)') => (
     <div style={{ background: 'var(--surface-2)', borderRadius: 8, padding: '12px 16px', flex: 1, minWidth: 0 }}>
@@ -15917,7 +16269,7 @@ function ManutenzioniModal({ vehicle, manutenzioni, setManutenzioni, onClose }) 
 
   const scaduteN = lista.filter(m => !m.completata && m.dataScadenza < today).length;
   const inScadenzaN = lista.filter(m => !m.completata && m.dataScadenza >= today &&
-    m.dataScadenza <= new Date(Date.now() + 30 * 86400000).toISOString().slice(0,10)).length;
+    m.dataScadenza <= localDateISO(30)).length;
 
   return (
     <ModalShell
@@ -15991,7 +16343,7 @@ function ManutenzioniModal({ vehicle, manutenzioni, setManutenzioni, onClose }) 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {[...lista].sort((a, b) => (a.completata ? 1 : 0) - (b.completata ? 1 : 0) || a.dataScadenza.localeCompare(b.dataScadenza)).map(m => {
             const scaduta = !m.completata && m.dataScadenza < today;
-            const in30 = !m.completata && !scaduta && m.dataScadenza <= new Date(Date.now() + 30 * 86400000).toISOString().slice(0,10);
+            const in30 = !m.completata && !scaduta && m.dataScadenza <= localDateISO(30);
             return (
               <div key={m.id} style={{
                 display: 'flex', alignItems: 'flex-start', gap: 10, padding: '10px 12px',
@@ -16056,18 +16408,20 @@ function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, on
   const [manutenzioniModalVeh, setManutenzioniModalVeh] = useState(null);
   const counts = useFleetCounts(fleet);
 
-  // Veicoli attualmente in noleggio (oggi)
+  // Veicoli attualmente in noleggio (oggi) — chiave normalizzata a fleet.v.id
+  // (retrocompatibile: p.vehicleId potrebbe essere targa legacy)
   const inNoleggio = useMemo(() => {
-    const oggi = new Date().toISOString().slice(0, 10);
+    const oggi = todayISO();
     const m = {};
     (prenotazioni || []).forEach(p => {
       if (!p.vehicleId) return;
       if ((p.stato === 'in_corso' || p.stato === 'confermata') && p.dal <= oggi && p.al >= oggi) {
-        m[p.vehicleId] = p;
+        const fleetV = (fleet || []).find(fv => matchVehicle(p.vehicleId, fv.id, fv.targa));
+        m[fleetV?.id || p.vehicleId] = p;
       }
     });
     return m;
-  }, [prenotazioni]);
+  }, [prenotazioni, fleet]);
 
   const statusCounts = useMemo(() => {
     const c = { all: fleet.length, available: 0, fermo: 0, incidentato: 0, venduto: 0 };
@@ -16349,7 +16703,7 @@ function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, on
                       style={{ fontSize: 11, borderRadius: 5, padding: '4px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4,
                         color: (() => {
                           const today2 = todayISO();
-                          const in30 = new Date(Date.now() + 30 * 86400000).toISOString().slice(0,10);
+                          const in30 = localDateISO(30);
                           const vMans = (manutenzioni || []).filter(m => m.vehicleId === v.id && !m.completata);
                           if (vMans.some(m => m.dataScadenza < today2)) return '#b22222';
                           if (vMans.some(m => m.dataScadenza <= in30)) return '#b87333';
@@ -16357,7 +16711,7 @@ function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, on
                         })(),
                         background: (() => {
                           const today2 = todayISO();
-                          const in30 = new Date(Date.now() + 30 * 86400000).toISOString().slice(0,10);
+                          const in30 = localDateISO(30);
                           const vMans = (manutenzioni || []).filter(m => m.vehicleId === v.id && !m.completata);
                           if (vMans.some(m => m.dataScadenza < today2)) return '#fff0f0';
                           if (vMans.some(m => m.dataScadenza <= in30)) return '#fff8e1';
@@ -16688,7 +17042,7 @@ function CustomersPage({ customers, setCustomers, prenotazioni, admin, onShowQR,
   const schedaPreno   = schedaCliente
     ? (prenotazioni || []).filter(p => p.clienteId === schedaCliente.id || (p.clienteCognome?.toLowerCase() === schedaCliente.cognome?.toLowerCase() && p.clienteNome?.toLowerCase() === schedaCliente.nome?.toLowerCase()))
     : [];
-  const schedaSpesa   = schedaPreno.filter(p => p.stato !== 'annullata').reduce((s, p) => s + (p.prezzo || 0), 0);
+  const schedaSpesa   = schedaPreno.filter(p => p.stato !== 'annullata' && p.stato !== 'cancellata').reduce((s, p) => s + (Number(p.prezzo)||0), 0);
 
   const toggleBlacklist = (c) => {
     if (!setCustomers) return;
@@ -17667,7 +18021,7 @@ function SettingsPage({ operator, operators, cargosConfig, admin, backendStatus,
               ☁️ Backup su Drive ora
             </button>
             <div style={{ fontSize: 11, color: 'var(--muted)', alignSelf: 'center' }}>
-              Il file JSON viene caricato su Drive con il nome <code className="mono">edonoleggio-backup-{new Date().toISOString().slice(0,10)}.json</code>
+              Il file JSON viene caricato su Drive con il nome <code className="mono">edonoleggio-backup-{todayISO()}.json</code>
             </div>
           </div>
           {/* Toggle backup automatico */}
@@ -18285,7 +18639,7 @@ function Wizard({ onClose, prefillCustomer, operator, fleet, customers, partners
             clienteNome: data.cliente?.nome || '',
             clienteCognome: data.cliente?.cognome || '',
             vehicleLabel: data.veicolo ? `${data.veicolo.marca} ${data.veicolo.modello}` : '',
-            dal: data.ritiroData || new Date().toISOString().slice(0, 10),
+            dal: data.ritiroData || todayISO(),
             firma: data.firma || null,
           }}
           onSave={(result) => { update('firma', result.firma); setFirmaOpen(false); }}
@@ -18553,40 +18907,41 @@ function Step3Vehicle({ data, update, fleet, prenotazioni }) {
     [fleet, data.tipoVeicolo]
   );
 
-  // Parsing date pratica (formato "DD/MM/YYYY HH:MM") → Date per filtro disponibilità
-  const fromDate = useMemo(() => {
+  // Estrai ISO date (YYYY-MM-DD) dal formato pratica "DD/MM/YYYY HH:MM"
+  const dalISO = useMemo(() => {
     const s = data.ritiroData;
     if (!s) return null;
-    const [datePart, timePart] = s.split(' ');
+    const [datePart] = s.split(' ');
     if (!datePart) return null;
     const [dd, mm, yyyy] = datePart.split('/');
     if (!yyyy || !mm || !dd) return null;
-    return new Date(`${yyyy}-${mm}-${dd}T${timePart || '00:00'}:00`);
+    return `${yyyy}-${String(mm).padStart(2,'0')}-${String(dd).padStart(2,'0')}`;
   }, [data.ritiroData]);
 
-  const toDate = useMemo(() => {
+  const alISO = useMemo(() => {
     const s = data.consegnaData;
     if (!s) return null;
-    const [datePart, timePart] = s.split(' ');
+    const [datePart] = s.split(' ');
     if (!datePart) return null;
     const [dd, mm, yyyy] = datePart.split('/');
     if (!yyyy || !mm || !dd) return null;
-    return new Date(`${yyyy}-${mm}-${dd}T${timePart || '00:00'}:00`);
+    return `${yyyy}-${String(mm).padStart(2,'0')}-${String(dd).padStart(2,'0')}`;
   }, [data.consegnaData]);
 
-  // Filtra per disponibilità: escludi veicoli con prenotazione attiva nel periodo
+  // Filtra per disponibilità: escludi veicoli con prenotazione attiva nel periodo.
+  // Usa confronto ISO stringhe (stessa logica di calcAvailability) per evitare
+  // off-by-one UTC su p.dal/p.al. Usa matchVehicle per retrocompatibilità targa→id.
   const availableFleet = useMemo(() => {
-    if (!fromDate || !toDate || isNaN(fromDate) || isNaN(toDate) || !(prenotazioni?.length)) return typeFleet;
+    if (!dalISO || !alISO || !(prenotazioni?.length)) return typeFleet;
     return typeFleet.filter(v =>
       !(prenotazioni || []).some(p => {
-        if (p.vehicleId !== v.id) return false;
-        if (['cancellata', 'completata'].includes(p.stato)) return false;
-        const pFrom = new Date(p.dal);
-        const pTo = new Date(p.al || p.dal);
-        return fromDate < pTo && toDate > pFrom; // sovrapposizione
+        if (!matchVehicle(p.vehicleId, v.id, v.targa)) return false;
+        if (['cancellata', 'completata', 'annullata'].includes(p.stato)) return false;
+        if (!p.dal || !p.al) return false;
+        return p.dal <= alISO && p.al >= dalISO; // sovrapposizione inclusiva
       })
     );
-  }, [typeFleet, fromDate, toDate, prenotazioni]);
+  }, [typeFleet, dalISO, alISO, prenotazioni]);
 
   const filtered = useMemo(() => {
     if (!query.trim()) return availableFleet;
@@ -18599,7 +18954,7 @@ function Step3Vehicle({ data, update, fleet, prenotazioni }) {
     });
   }, [availableFleet, query]);
 
-  const datesSet = !!(fromDate && toDate && !isNaN(fromDate) && !isNaN(toDate));
+  const datesSet = !!(dalISO && alISO);
 
   return (
     <div className="max-w-4xl mx-auto">
@@ -20177,16 +20532,50 @@ function PlateScanModal({ fleet, onClose }) {
     let worker;
     try {
       worker = await Tesseract.createWorker('eng', 1);
-      await worker.setParameters({
-        tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789',
-        tessedit_pageseg_mode: 7, // riga singola di testo (targa)
-      });
-      const { data: { text } } = await worker.recognize(dataUrl);
-      const clean = text.toUpperCase().replace(/[^A-Z0-9]/g, '').trim();
-      // Targa italiana: 2 lettere + 3 cifre + 2 lettere (7 char), oppure vecchio formato
-      if (clean.length >= 5) {
-        setPlateInput(clean.slice(0, 8));
+      const PLATE_WHITELIST = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+
+      // Estrae la targa dal testo OCR cercando il pattern italiano:
+      // Moderno: 2 lettere + 3 cifre + 2 lettere (es. DF197JW)
+      // Vecchio:  2 lettere + 4-6 cifre + 1-2 lettere (es. AG12345)
+      // Fallback: qualsiasi sequenza alfanumerica ≥5 char
+      function extractPlate(text) {
+        const clean = text.toUpperCase().replace(/[^A-Z0-9\s]/g, ' ');
+        // 1) Formato moderno IT
+        const modern = clean.match(/\b([A-Z]{2}[0-9]{3}[A-Z]{2})\b/);
+        if (modern) return modern[1];
+        // 2) Formato vecchio IT
+        const old = clean.match(/\b([A-Z]{2}[0-9]{4,6}[A-Z]{0,2})\b/);
+        if (old) return old[1];
+        // 3) Qualsiasi blocco alfanumerico ≥5 char
+        const tokens = clean.split(/\s+/).filter(t => /^[A-Z0-9]{5,8}$/.test(t));
+        return tokens[0] || '';
       }
+
+      // ── 1ª PASSATA: pageseg_mode 7 (riga singola) — funziona se la foto
+      //    inquadra solo la targa o targa + poco sfondo
+      await worker.setParameters({
+        tessedit_char_whitelist: PLATE_WHITELIST,
+        tessedit_pageseg_mode: 7,
+      });
+      const { data: { text: text7 } } = await worker.recognize(dataUrl);
+      let plate = extractPlate(text7);
+
+      // ── 2ª PASSATA: pageseg_mode 11 (sparse) — funziona se la foto
+      //    mostra il veicolo intero o più oggetti; Tesseract trova il testo
+      //    della targa in mezzo ad altro contenuto visivo
+      if (!plate) {
+        await worker.setParameters({
+          tessedit_char_whitelist: PLATE_WHITELIST,
+          tessedit_pageseg_mode: 11,
+        });
+        const { data: { text: text11 } } = await worker.recognize(dataUrl);
+        plate = extractPlate(text11);
+      }
+
+      if (plate) {
+        setPlateInput(plate);
+      }
+      // Se nessuna passata trova la targa, l'utente inserisce manualmente
     } catch (e) {
       // OCR fallito → l'utente corregge manualmente
     } finally {
