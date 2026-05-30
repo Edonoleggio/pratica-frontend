@@ -13573,22 +13573,33 @@ function GlobalSearchModal({ prenotazioni, customers, contracts, fleet, onClose,
 // CALENDARIO FLOTTA — griglia Gantt mezzo × giorno (4 settimane)
 // ═══════════════════════════════════════════════════════════════════
 function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, setPrenotazioniPrefill, fermiFlotta }) {
-  const [weekOffset, setWeekOffset] = useState(0);
+  const [monthOffset, setMonthOffset] = useState(0);
   const [tipoFilter, setTipoFilter] = useState('');         // filtro tipo mezzo
   const [selectedCell, setSelectedCell] = useState(null);  // {preno, vehicleId, day}
   const [selectedVehicle, setSelectedVehicle] = useState(null); // veicolo cliccato sulla label
   const [highlightCliente, setHighlightCliente] = useState(null); // chiave cliente evidenziata
-  const COLS = 28; // 4 settimane
   const today = todayISO();
 
+  // Vista mensile: tutti i giorni del mese selezionato (monthOffset: 0=corrente, ±1=prec/succ).
   const days = useMemo(() => {
-    // Ancora a mezzogiorno per evitare UTC offset notturno (1-2 AM locale = UTC precedente)
-    return Array.from({ length: COLS }, (_, i) => {
-      const d = new Date(today + 'T12:00:00');
-      d.setDate(d.getDate() + weekOffset * 7 + i - d.getDay() + 1); // lunedì corrente
+    const base = new Date(today + 'T12:00:00');
+    const year = base.getFullYear();
+    const month = base.getMonth() + monthOffset;
+    const daysInMonth = new Date(year, month + 1, 0).getDate(); // 28–31 = ultimo giorno del mese
+    return Array.from({ length: daysInMonth }, (_, i) => {
+      // Mezzogiorno per evitare l'offset UTC notturno
+      const d = new Date(year, month, 1 + i, 12, 0, 0);
       return d.toISOString().slice(0, 10);
     });
-  }, [weekOffset, today]);
+  }, [monthOffset, today]);
+  const COLS = days.length; // numero di giorni del mese visualizzato
+
+  // Etichetta "Mese Anno" del periodo mostrato (es. "Giugno 2026")
+  const meseLabel = useMemo(() => {
+    const base = new Date(today + 'T12:00:00');
+    const d = new Date(base.getFullYear(), base.getMonth() + monthOffset, 1);
+    return d.toLocaleDateString('it-IT', { month: 'long', year: 'numeric' });
+  }, [monthOffset, today]);
 
   const STATO_COLOR = {
     confermata: '#2e6e3e',
@@ -13698,7 +13709,7 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
     const ro = new ResizeObserver(compute);
     ro.observe(el);
     return () => ro.disconnect();
-  }, []);
+  }, [COLS]);
 
   // Mesi — etichetta quando cambia
   const monthChanges = useMemo(() => {
@@ -13743,16 +13754,17 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
             </button>
           ))}
           <div style={{ width: 1, height: 20, background: 'var(--border)', margin: '0 2px' }} />
-          {weekOffset !== 0 && (
-            <button type="button" onClick={e => { e.stopPropagation(); setWeekOffset(0); }} style={{
+          {monthOffset !== 0 && (
+            <button type="button" onClick={e => { e.stopPropagation(); setMonthOffset(0); }} style={{
               padding: '5px 12px', borderRadius: 6, fontSize: 12, cursor: 'pointer',
               border: 'none', background: 'var(--ink)', color: 'var(--bg)', fontWeight: 600,
             }}>Oggi</button>
           )}
-          <button type="button" onClick={e => { e.stopPropagation(); setWeekOffset(w => w - 1); }} style={{
+          <button type="button" onClick={e => { e.stopPropagation(); setMonthOffset(m => m - 1); }} style={{
             padding: '5px 14px', borderRadius: 6, fontSize: 13, cursor: 'pointer',
             border: '1px solid var(--border)', background: 'transparent', color: 'var(--ink-2)' }}>←</button>
-          <button type="button" onClick={e => { e.stopPropagation(); setWeekOffset(w => w + 1); }} style={{
+          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink-1)', minWidth: 130, textAlign: 'center', textTransform: 'capitalize' }}>{meseLabel}</span>
+          <button type="button" onClick={e => { e.stopPropagation(); setMonthOffset(m => m + 1); }} style={{
             padding: '5px 14px', borderRadius: 6, fontSize: 13, cursor: 'pointer',
             border: '1px solid var(--border)', background: 'transparent', color: 'var(--ink-2)' }}>→</button>
         </div>
