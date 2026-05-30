@@ -8789,7 +8789,9 @@ function ListinoEditor({ listino, onSave }) {
 // ═══════════════════════════════════════════════════════════════════
 const RENTME_API_BASE = 'https://rentmealtervista.duckdns.org/api/rest';
 const RENTME_PROXY    = 'https://rentme.altervista.org/edox-proxy.php';
-const RENTME_USER_ID  = '02zq4lkb-44yy-6j4h-53dg-4752198po90p';
+// RENTME_USER_ID (UUID azienda) NON è più nel codice del sito: vive solo sul
+// backend (env RENTME_USER_ID). I veicoli si leggono da GET /api/rentme/veicoli,
+// che li restituisce già filtrati per Edonoleggio.
 
 // ── calcAvailability ─────────────────────────────────────────────
 // Funzione pura: dato un periodo dal/al, restituisce array di categorie
@@ -9286,16 +9288,13 @@ function useRentMeSync({ fleet, rentmeVehicles, setRentmeVehicles, setPrenotazio
     setStatus('syncing');
     setErrorMsg(null);
     try {
-      const r = await fetch(`${RENTME_API_BASE}/user/getVeicoli/${RENTME_USER_ID}`);
+      // Veicoli letti dal nostro backend: l'UUID azienda resta sul server, non
+      // più nel codice del sito. Il backend restituisce già SOLO i veicoli di Edonoleggio.
+      const base = (typeof localStorage !== 'undefined' && localStorage.getItem('edo:v1:apiBase')) || DEFAULT_API_BASE;
+      const r = await fetch(`${base}/rentme/veicoli`);
       if (!r.ok) throw new Error(`Errore server RentMe: ${r.status}`);
       const data = await r.json();
-      // Filtra solo i veicoli di Edonoleggio: l'API restituisce tutti i mezzi
-      // accessibili all'utente (potenzialmente di più aziende sullo stesso account RentMe).
-      // uuidDittaAssociata === RENTME_USER_ID → appartiene a Edonoleggio.
-      // Se il campo manca (veicoli legacy senza UUID) li teniamo per sicurezza.
-      const veicoli = (data.listObject || []).filter(v =>
-        !v.uuidDittaAssociata || v.uuidDittaAssociata === RENTME_USER_ID
-      );
+      const veicoli = data.veicoli || [];
 
       // Mappa codice RentMe → targa reale
       // Priorità: 1) mappa statica censimento  2) fleet locale (edit manuale ha precedenza)
@@ -9432,7 +9431,7 @@ function useRentMeSync({ fleet, rentmeVehicles, setRentmeVehicles, setPrenotazio
     });
     const freeVeh = catVehs.find(v => !busy.has(v.targa)) || catVehs[0];
     const payload = {
-      uuidDittaAssociata: freeVeh.uuidDittaAssociata || RENTME_USER_ID,
+      uuidDittaAssociata: freeVeh.uuidDittaAssociata,
       targa:              freeVeh.targa,
       descrizione:        [booking.clienteCognome, booking.clienteNome].filter(Boolean).join(' '),
       dal:                booking.dal,
@@ -11465,12 +11464,12 @@ function ImportStoricoModal({ existingPreno, existingCustomers, onImport, onClos
     setStep('loading');
     setError(null);
     try {
-      const r = await fetch(`${RENTME_API_BASE}/user/getVeicoli/${RENTME_USER_ID}`);
+      // Veicoli dal backend (UUID azienda lato server, già filtrati per Edonoleggio).
+      const base = (typeof localStorage !== 'undefined' && localStorage.getItem('edo:v1:apiBase')) || DEFAULT_API_BASE;
+      const r = await fetch(`${base}/rentme/veicoli`);
       if (!r.ok) throw new Error(`RentMe API: ${r.status}`);
       const data = await r.json();
-      const veicoli = (data.listObject || []).filter(v =>
-        !v.uuidDittaAssociata || v.uuidDittaAssociata === RENTME_USER_ID
-      );
+      const veicoli = data.veicoli || [];
 
       const rows = [];
       veicoli.forEach(v => {
