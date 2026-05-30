@@ -13695,15 +13695,21 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
   // restano quindi sempre allineate.
   const ROW_H = 44;
   const LABEL_W = 170;
-  const COL_W_MIN = 36;
+  const COL_W_MIN = 18; // minimo basso: l'intero mese si adatta alla pagina senza scroll
+                        // (le colonne si restringono fin qui; sotto, scroll solo su schermi molto piccoli)
   const gridRef = useRef(null);
   const [COL_W, setColW] = useState(48);
   useEffect(() => {
     const el = gridRef.current;
     if (!el) return;
     const compute = () => {
-      const avail = el.clientWidth - LABEL_W;
-      if (avail > 0) setColW(Math.max(COL_W_MIN, Math.floor(avail / COLS)));
+      // el = area giorni reale (senza la colonna mezzi). -COLS tiene conto del
+      // bordo sinistro (1px) di ogni cella, -2 di margine: l'intero mese entra
+      // senza micro-scroll residuo.
+      // clientWidth dell'area giorni esclude già l'eventuale scrollbar verticale.
+      // -1px per cella (bordo sinistro) → l'intero mese entra senza scroll.
+      const avail = el.clientWidth;
+      if (avail > 0) setColW(Math.max(COL_W_MIN, Math.floor(avail / COLS) - 1));
     };
     compute();
     const ro = new ResizeObserver(compute);
@@ -13773,7 +13779,7 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
       {/* Griglia — struttura a due colonne per iOS Safari:
            colonna label FUORI dall'area scrollabile, celle giorni dentro.
            Evita il bug di position:sticky non funzionante dentro overflow:auto su iOS. */}
-      <div ref={gridRef} style={{ display: 'flex', border: '1px solid var(--border)', borderRadius: 8, background: 'var(--bg)', overflow: 'hidden' }}>
+      <div style={{ display: 'flex', border: '1px solid var(--border)', borderRadius: 8, background: 'var(--bg)', overflow: 'hidden' }}>
 
         {/* ── Colonna label FISSA (non scrolla) ─────────────────── */}
         <div style={{ flexShrink: 0, width: LABEL_W, borderRight: '1px solid var(--border)', zIndex: 2, background: 'var(--bg)' }}>
@@ -13811,7 +13817,7 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
         </div>
 
         {/* ── Area giorni SCROLLABILE ────────────────────────────── */}
-        <div style={{ flex: 1, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+        <div ref={gridRef} style={{ flex: 1, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
         <div style={{ minWidth: COLS * COL_W }}>
 
           {/* Header mesi — senza colonna label (è fissa a sinistra) */}
