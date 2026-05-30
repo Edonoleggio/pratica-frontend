@@ -1112,13 +1112,22 @@ function mapWizardToCargosRecord(data, operator, agency, partners) {
     CONDUCENTE_CONTRAENTE_COGNOME: c.cognome || '',
     CONDUCENTE_CONTRAENTE_NOME: c.nome || '',
     CONDUCENTE_CONTRAENTE_NASCITA_DATA: c.nascita || '',
-    CONDUCENTE_CONTRAENTE_NASCITA_LUOGO_COD: 0,  // backend risolve da c.luogoNascita
-    CONDUCENTE_CONTRAENTE_CITTADINANZA_COD: 0,   // backend risolve da c.cittadinanza
+    // Luoghi e cittadinanza: inviati come TESTO (campo affiancato senza _COD); il backend
+    // risolve il codice ISTAT/nazione dal testo. Prima i luoghi di rilascio doc/patente
+    // erano hardcoded ad agency.istatLuogo (Lampedusa): errato per clienti non lampedusani.
+    CONDUCENTE_CONTRAENTE_NASCITA_LUOGO: c.luogoNascita || '',
+    CONDUCENTE_CONTRAENTE_NASCITA_LUOGO_COD: 0,
+    CONDUCENTE_CONTRAENTE_CITTADINANZA: c.cittadinanza || '',
+    CONDUCENTE_CONTRAENTE_CITTADINANZA_COD: 0,
     CONDUCENTE_CONTRAENTE_DOCIDE_TIPO_COD: c.docTipo || 'CI',
     CONDUCENTE_CONTRAENTE_DOCIDE_NUMERO: c.docNum || '',
-    CONDUCENTE_CONTRAENTE_DOCIDE_LUOGORIL_COD: agency.istatLuogo,
-    CONDUCENTE_CONTRAENTE_PATENTE_NUMERO: c.patente || '',
-    CONDUCENTE_CONTRAENTE_PATENTE_LUOGORIL_COD: agency.istatLuogo,
+    CONDUCENTE_CONTRAENTE_DOCIDE_LUOGORIL: c.docLuogoRil || '',
+    CONDUCENTE_CONTRAENTE_DOCIDE_LUOGORIL_COD: 0,
+    // Fix: cliente.full usa "patenteNum", non "patente" — prima il numero patente
+    // veniva sempre inviato vuoto a CARGOS.
+    CONDUCENTE_CONTRAENTE_PATENTE_NUMERO: c.patenteNum || c.patente || '',
+    CONDUCENTE_CONTRAENTE_PATENTE_LUOGORIL: c.patenteLuogoRil || '',
+    CONDUCENTE_CONTRAENTE_PATENTE_LUOGORIL_COD: 0,
     CONDUCENTE_CONTRAENTE_RECAPITO: c.tel || undefined,
   };
 }
@@ -2214,12 +2223,36 @@ const PRENO_STATI = {
   cancellata:  { label: 'Cancellata', color: '#8a3030', bg: '#faeaea', dot: '#c85050' },
 };
 
+// Vocabolario unico delle fonti prenotazione (source of truth). Copre sia i
+// valori selezionabili a mano sia quelli scritti da codice (banco rapido,
+// calendario, preventivi, RentMe, migrazioni legacy).
 const PRENO_FONTI = {
   diretto:       'Diretto',
-  walkin:        'Walk-in',
+  walk_in:       'Walk-in',
   telefono:      'Telefono',
+  whatsapp:      'WhatsApp',
   online:        'Online',
+  sito:          'Sito web',
+  email:         'Email',
+  preventivo:    'Preventivo',
+  calendario:    'Calendario',
+  sostituzione:  'Sostituzione',
+  rentme:        'RentMe',
+  rentme_storico:'RentMe (storico)',
   tour_operator: 'Tour operator',
+  referral:      'Referral',
+  manuale:       'Manuale',
+};
+
+// Sottoinsieme mostrato nel dropdown del form (solo fonti scelte a mano).
+const FONTI_SELEZIONABILI = ['diretto', 'walk_in', 'telefono', 'whatsapp', 'online', 'sito', 'email', 'tour_operator', 'referral'];
+
+// Alias di valori legacy → chiave canonica (es. vecchio dropdown scriveva "walkin").
+const FONTE_ALIAS = { walkin: 'walk_in' };
+const normFonte = f => FONTE_ALIAS[f] || f || 'diretto';
+const fonteLabel = f => {
+  const k = normFonte(f);
+  return PRENO_FONTI[k] || (k ? k.charAt(0).toUpperCase() + k.slice(1).replace(/_/g, ' ') : '—');
 };
 
 function prenoId() {
@@ -2391,12 +2424,12 @@ function PrenoCard({ p, onEdit, onConvert, onDelete, onFoto, onContratto, onFirm
           )}
           {p.depositoRegistrato && !p.depositoRimborsato && (
             <span style={{ fontSize: 10, background: '#fef5e7', color: '#b87333', borderRadius: 10, padding: '2px 8px', fontWeight: 600 }}>
-              📦 dep. €{p.depositoImporto}
+              📦 caparra €{p.depositoImporto}
             </span>
           )}
           {p.depositoRimborsato && (
             <span style={{ fontSize: 10, background: '#f5eefa', color: '#7d3c98', borderRadius: 10, padding: '2px 8px', fontWeight: 600 }}>
-              ↩ dep. rimborsato
+              ↩ caparra rimborsata
             </span>
           )}
           {p.contractId && (
@@ -2432,7 +2465,7 @@ function PrenoCard({ p, onEdit, onConvert, onDelete, onFoto, onContratto, onFirm
           {formatDate(p.dal)} → {formatDate(p.al)}
           {p.prezzo != null && <> · <strong style={{ color: 'var(--ink)' }}>€{p.prezzo}</strong></>}
           {p.acconto != null && p.acconto > 0 && <> · acconto €{p.acconto}</>}
-          {p.fonte && <> · {PRENO_FONTI[p.fonte] || p.fonte}</>}
+          {p.fonte && <> · {fonteLabel(p.fonte)}</>}
           {/* Operatore che ha creato la pratica */}
           {p.operatorName && (
             <span style={{ marginLeft: 6, fontSize: 10, padding: '1px 5px', borderRadius: 3,
@@ -2654,7 +2687,7 @@ function PrenoCard({ p, onEdit, onConvert, onDelete, onFoto, onContratto, onFirm
           <button type="button" onClick={() => onDeposito && onDeposito(p, 'prendi')}
             style={{ fontSize: 11, padding: '4px 10px', borderRadius: 4, border: '1px solid #e8c88a',
               background: 'transparent', color: '#b87333', cursor: 'pointer' }}>
-            📦 Deposito
+            📦 Caparra
           </button>
         )}
         {p.depositoRegistrato && !p.depositoRimborsato && (
@@ -3633,7 +3666,7 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
             <div>
               <label style={lbl}>Fonte</label>
               <select style={inp} value={f.fonte} onChange={e => set('fonte', e.target.value)}>
-                {Object.entries(PRENO_FONTI).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                {FONTI_SELEZIONABILI.map(k => <option key={k} value={k}>{PRENO_FONTI[k]}</option>)}
               </select>
             </div>
           </div>
@@ -4885,7 +4918,7 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rent
             } : p));
             setDepositoPreno(null);
             pushToast && pushToast({ tone: 'success',
-              title: isRimborso ? '↩ Deposito rimborsato' : '📦 Deposito registrato',
+              title: isRimborso ? '↩ Caparra rimborsata' : '📦 Caparra registrata',
               message: `€${imp}` });
           }}
           onClose={() => setDepositoPreno(null)}
@@ -7188,7 +7221,7 @@ function useReportData({ prenotazioni, contracts, cassa, customers, fleet, opera
     // ── Fonti prenotazione ───────────────────────────────────────
     const fontiMap = {};
     allP.forEach(p => {
-      const f = p.fonte || 'diretto';
+      const f = normFonte(p.fonte);   // unifica alias legacy (walkin→walk_in)
       fontiMap[f] = (fontiMap[f] || 0) + 1;
     });
     const fonti = Object.entries(fontiMap).sort((a,b) => b[1]-a[1]);
@@ -7285,8 +7318,7 @@ function useReportData({ prenotazioni, contracts, cassa, customers, fleet, opera
         insights.push({ icon:'💶', text:`Ticket medio €${avgTicket} · durata media ${avgDurata} giorni a noleggio` });
       if (fonti.length > 0) {
         const tf = fonti[0];
-        const FNAME = { walk_in:'walk-in', sito:'sito web', whatsapp:'WhatsApp', telefono:'telefono', diretto:'canale diretto' };
-        insights.push({ icon:'📌', text:`${Math.round((tf[1]/totPreno)*100)}% delle prenotazioni arriva da ${FNAME[tf[0]]||tf[0]}` });
+        insights.push({ icon:'📌', text:`${Math.round((tf[1]/totPreno)*100)}% delle prenotazioni arriva da ${fonteLabel(tf[0])}` });
       }
       if (tassoAnnullamento > 15)
         insights.push({ icon:'⚠️', text:`Tasso annullamento elevato: ${tassoAnnullamento}% — verifica le cause` });
@@ -8105,7 +8137,7 @@ function ReportPage({ prenotazioni, contracts, cassa, customers, fleet, operator
               {[
                 { key:'acconto',  label:'Acconti',   color:'#b87333' },
                 { key:'saldo',    label:'Saldi',     color:'#2e6e3e' },
-                { key:'deposito', label:'Depositi',  color:'#1f5d83' },
+                { key:'deposito', label:'Caparre',   color:'#1f5d83' },
                 { key:'rimborso', label:'Rimborsi',  color:'#c85050' },
                 { key:'altro',    label:'Altro',     color:'var(--muted)' },
               ].map(({ key, label, color }) => {
@@ -8278,12 +8310,11 @@ function ReportPage({ prenotazioni, contracts, cassa, customers, fleet, operator
                 ? <div style={{ fontSize:12, color:'var(--muted)', fontStyle:'italic' }}>Nessun dato disponibile</div>
                 : d.fonti.map(([fonte, n], i) => {
                   const maxF = d.fonti[0][1] || 1;
-                  const FONTE_LABEL = { walk_in:'🚶 Walk-in', sito:'🌐 Sito web', whatsapp:'📲 WhatsApp', telefono:'📞 Telefono', email:'📧 Email', rentme:'🔗 RentMe', diretto:'📋 Diretto', referral:'👤 Referral' };
                   const COLORS = ['#1f5d83','#2e6e3e','#b87333','#6a3d8f','#c85050','#4a8aac','#888'];
                   return (
                     <div key={fonte} style={{ marginBottom:10 }}>
                       <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, marginBottom:3 }}>
-                        <span style={{ color:'var(--ink)', fontWeight:500 }}>{FONTE_LABEL[fonte]||('📌 '+fonte)}</span>
+                        <span style={{ color:'var(--ink)', fontWeight:500 }}>{fonteLabel(fonte)}</span>
                         <span style={{ color:'var(--muted)' }}>{n} ({Math.round((n/d.allP.length)*100)}%)</span>
                       </div>
                       <div style={{ height:7, background:'var(--surface-2)', borderRadius:3, overflow:'hidden' }}>
@@ -10405,7 +10436,7 @@ const CASSA_TIPI = {
   acconto:  { label: 'Acconto',   pill: 'pill-warn' },
   saldo:    { label: 'Saldo',     pill: 'pill-ok'   },
   rimborso: { label: 'Rimborso',  pill: 'pill-err'  },
-  deposito: { label: 'Deposito',  pill: 'pill-sea'  },
+  deposito: { label: 'Caparra',   pill: 'pill-sea'  },
   extra:    { label: 'Extra',     pill: 'pill-neutral' },
 };
 
@@ -14501,8 +14532,8 @@ function DepositoModal({ preno, operator, mode, onSave, onClose }) {
       metodo,
       tipo: isRimborso ? 'rimborso' : 'deposito',
       nota: isRimborso
-        ? `Rimborso deposito pren. ${formatDate(preno.dal)}→${formatDate(preno.al)}`
-        : `Deposito cauzione pren. ${formatDate(preno.dal)}→${formatDate(preno.al)}`,
+        ? `Rimborso caparra pren. ${formatDate(preno.dal)}→${formatDate(preno.al)}`
+        : `Caparra pren. ${formatDate(preno.dal)}→${formatDate(preno.al)}`,
       operatorId: operator?.id || '',
       operatorName: operator?.nome || '',
     };
@@ -14519,7 +14550,7 @@ function DepositoModal({ preno, operator, mode, onSave, onClose }) {
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
           <h2 style={{ margin: 0, fontSize: 18, fontFamily: 'var(--font-serif)', fontWeight: 600, color: accentColor }}>
-            {isRimborso ? '↩ Rimborsa deposito' : '📦 Deposito cauzione'}
+            {isRimborso ? '↩ Rimborsa caparra' : '📦 Caparra'}
           </h2>
           <button type="button" onClick={onClose}
             style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', fontSize: 20, padding: '0 4px' }}>✕</button>
@@ -14534,13 +14565,13 @@ function DepositoModal({ preno, operator, mode, onSave, onClose }) {
           <div style={{ color: 'var(--muted)' }}>{formatDate(preno.dal)} → {formatDate(preno.al)}</div>
           {isRimborso && preno.depositoImporto && (
             <div style={{ marginTop: 4, color: accentColor, fontWeight: 600 }}>
-              Deposito raccolto: €{preno.depositoImporto}
+              Caparra versata: €{preno.depositoImporto}
             </div>
           )}
         </div>
 
         <div style={{ marginBottom: 14 }}>
-          <label style={lbl}>{isRimborso ? 'Importo da rimborsare' : 'Importo cauzione'} *</label>
+          <label style={lbl}>{isRimborso ? 'Importo da rimborsare' : 'Importo caparra'} *</label>
           <input type="number" min="0" step="0.01" value={importo}
             onChange={e => { setImporto(e.target.value); setErr(''); }}
             style={{ ...inp, fontSize: 18, fontWeight: 600, borderColor: err ? '#c0392b' : 'var(--border)' }}
@@ -14568,7 +14599,7 @@ function DepositoModal({ preno, operator, mode, onSave, onClose }) {
           <button type="button" onClick={handleSave}
             style={{ padding: '9px 20px', borderRadius: 5, border: 'none',
               background: accentColor, color: 'white', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
-            {isRimborso ? 'Rimborsa' : 'Registra deposito'}
+            {isRimborso ? 'Rimborsa' : 'Registra caparra'}
           </button>
         </div>
       </div>
