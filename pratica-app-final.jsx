@@ -13677,9 +13677,28 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
     return m;
   }, [fermiFlotta, fleetFiltered, days]);
 
-  const COL_W = 36;
+  // Larghezza colonna giorno DINAMICA: le 4 settimane riempiono lo spazio
+  // disponibile (minimo 36px). Su schermi larghi le colonne si allargano così
+  // entrano tutti i giorni senza scroll né vuoto; su schermi stretti restano a
+  // 36px e l'area giorni scorre. COL_W è usato anche dalle celle/barre, che
+  // restano quindi sempre allineate.
   const ROW_H = 44;
   const LABEL_W = 170;
+  const COL_W_MIN = 36;
+  const gridRef = useRef(null);
+  const [COL_W, setColW] = useState(48);
+  useEffect(() => {
+    const el = gridRef.current;
+    if (!el) return;
+    const compute = () => {
+      const avail = el.clientWidth - LABEL_W;
+      if (avail > 0) setColW(Math.max(COL_W_MIN, Math.floor(avail / COLS)));
+    };
+    compute();
+    const ro = new ResizeObserver(compute);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   // Mesi — etichetta quando cambia
   const monthChanges = useMemo(() => {
@@ -13742,7 +13761,7 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
       {/* Griglia — struttura a due colonne per iOS Safari:
            colonna label FUORI dall'area scrollabile, celle giorni dentro.
            Evita il bug di position:sticky non funzionante dentro overflow:auto su iOS. */}
-      <div style={{ display: 'flex', width: 'fit-content', maxWidth: '100%', border: '1px solid var(--border)', borderRadius: 8, background: 'var(--bg)', overflow: 'hidden' }}>
+      <div ref={gridRef} style={{ display: 'flex', border: '1px solid var(--border)', borderRadius: 8, background: 'var(--bg)', overflow: 'hidden' }}>
 
         {/* ── Colonna label FISSA (non scrolla) ─────────────────── */}
         <div style={{ flexShrink: 0, width: LABEL_W, borderRight: '1px solid var(--border)', zIndex: 2, background: 'var(--bg)' }}>
