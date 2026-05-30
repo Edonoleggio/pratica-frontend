@@ -16153,10 +16153,20 @@ function Topbar({ online, setOnline, pendingQueue, operator, admin, setAdmin, on
   // Admin password modal
   const [showAdminPwd, setShowAdminPwd] = useState(false);
   const [adminPwdInput, setAdminPwdInput] = useState('');
-  const [adminPwdError, setAdminPwdError] = useState(false);
-  // Password admin letta da localStorage (impostata dall'operatore admin via Impostazioni)
-  // Fallback a 'edo2024!' se non ancora configurata — da cambiare prima del deploy!
-  const ADMIN_PASSWORD = (() => { try { const u = JSON.parse(localStorage.getItem('edo:v1:appUsers')||'[]'); return u.find(u=>u.role==='admin')?.password||'edo2024!'; } catch { return 'edo2024!'; } })();
+  const [adminPwdError, setAdminPwdError] = useState(false); // false | stringa messaggio
+  const [adminChecking, setAdminChecking] = useState(false);
+
+  // Fallback legacy: usato SOLO se il backend non ha ancora ADMIN_PASSWORD_HASH
+  // configurato (risposta 503). Una volta impostato l'hash su Render, la verifica
+  // avviene solo lato server e questo valore non viene più consultato.
+  const legacyAdminPassword = () => {
+    try { const u = JSON.parse(localStorage.getItem('edo:v1:appUsers')||'[]'); return u.find(x=>x.role==='admin')?.password || 'edo2024!'; }
+    catch { return 'edo2024!'; }
+  };
+  const apiBase = () => {
+    try { return localStorage.getItem('edo:v1:apiBase') || DEFAULT_API_BASE; }
+    catch { return DEFAULT_API_BASE; }
+  };
 
   function handleAdminToggle() {
     if (admin) {
@@ -16169,14 +16179,39 @@ function Topbar({ online, setOnline, pendingQueue, operator, admin, setAdmin, on
       setShowAdminPwd(true);
     }
   }
-  function confirmAdminPwd() {
-    if (adminPwdInput === ADMIN_PASSWORD) {
-      setAdmin(true);
-      setShowAdminPwd(false);
-      setAdminPwdInput('');
-      setAdminPwdError(false);
-    } else {
-      setAdminPwdError(true);
+  function grantAdmin() {
+    setAdmin(true);
+    setShowAdminPwd(false);
+    setAdminPwdInput('');
+    setAdminPwdError(false);
+  }
+  // Verifica la password admin sul server (non più nel browser). Casi:
+  //   200 → ok · 401 → password errata · 503 (hash non configurato) → fallback legacy
+  //   offline/errore rete → bloccato con avviso (la Modalità Admin richiede connessione)
+  async function confirmAdminPwd() {
+    if (adminChecking) return;
+    setAdminPwdError(false);
+    setAdminChecking(true);
+    try {
+      const res = await fetch(`${apiBase()}/auth/admin-verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: adminPwdInput }),
+      });
+      if (res.ok) { grantAdmin(); return; }
+      if (res.status === 503) {
+        // Backend non ancora configurato per l'auth admin → comportamento legacy
+        if (adminPwdInput === legacyAdminPassword()) { grantAdmin(); return; }
+        setAdminPwdError('Password errata. Riprova.');
+        return;
+      }
+      if (res.status === 429) { setAdminPwdError('Troppi tentativi. Riprova tra qualche minuto.'); return; }
+      setAdminPwdError('Password errata. Riprova.');
+    } catch {
+      // Server irraggiungibile (offline o in avvio): non si attiva l'Admin senza verifica.
+      setAdminPwdError('Server non raggiungibile — la Modalità Admin richiede una connessione.');
+    } finally {
+      setAdminChecking(false);
     }
   }
   return (
@@ -16345,25 +16380,26 @@ function Topbar({ online, setOnline, pendingQueue, operator, admin, setAdmin, on
             onChange={e => { setAdminPwdInput(e.target.value); setAdminPwdError(false); }}
             onKeyDown={e => { if (e.key === 'Enter') confirmAdminPwd(); if (e.key === 'Escape') setShowAdminPwd(false); }}
             placeholder="Password…"
+            disabled={adminChecking}
             style={{ width:'100%', padding:'9px 12px', border:`1.5px solid ${adminPwdError ? 'var(--accent)' : 'var(--border)'}`,
               borderRadius:7, fontSize:14, background:'var(--bg)', color:'var(--ink)', marginBottom:6,
               outline:'none', boxSizing:'border-box' }}
           />
           {adminPwdError && (
             <div style={{ fontSize:12, color:'var(--accent)', marginBottom:10, fontWeight:600 }}>
-              ✕ Password errata. Riprova.
+              ✕ {adminPwdError}
             </div>
           )}
           <div style={{ display:'flex', gap:8, marginTop:14 }}>
-            <button type="button" onClick={() => setShowAdminPwd(false)}
+            <button type="button" onClick={() => setShowAdminPwd(false)} disabled={adminChecking}
               style={{ flex:1, padding:'9px', borderRadius:6, border:'1px solid var(--border)',
                 background:'transparent', color:'var(--ink-2)', cursor:'pointer', fontSize:13 }}>
               Annulla
             </button>
-            <button type="button" onClick={confirmAdminPwd}
+            <button type="button" onClick={confirmAdminPwd} disabled={adminChecking}
               style={{ flex:1, padding:'9px', borderRadius:6, border:'none',
-                background:'var(--ink)', color:'var(--paper)', cursor:'pointer', fontSize:13, fontWeight:700 }}>
-              Accedi
+                background:'var(--ink)', color:'var(--paper)', cursor: adminChecking ? 'wait' : 'pointer', fontSize:13, fontWeight:700, opacity: adminChecking ? 0.7 : 1 }}>
+              {adminChecking ? 'Verifica…' : 'Accedi'}
             </button>
           </div>
         </div>
