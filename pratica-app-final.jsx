@@ -980,6 +980,17 @@ function getDefaultApiBase() {
 }
 const DEFAULT_API_BASE = getDefaultApiBase();
 
+// Legge l'URL del backend da localStorage. ATTENZIONE: usePersistentState salva
+// i valori con JSON.stringify, quindi il raw è '"https://..."' (con virgolette):
+// va fatto JSON.parse, altrimenti l'URL resta con le virgolette e le fetch danno 404.
+function getApiBase() {
+  try {
+    const raw = (typeof localStorage !== 'undefined') ? localStorage.getItem('edo:v1:apiBase') : null;
+    const v = raw ? JSON.parse(raw) : null;
+    return (typeof v === 'string' && v.trim()) ? v : DEFAULT_API_BASE;
+  } catch { return DEFAULT_API_BASE; }
+}
+
 // Errore tipizzato — distingue rete / validazione / server.
 // Il chiamante può inspect err.kind per decidere il toast e il rollback.
 class ApiError extends Error {
@@ -9290,7 +9301,7 @@ function useRentMeSync({ fleet, rentmeVehicles, setRentmeVehicles, setPrenotazio
     try {
       // Veicoli letti dal nostro backend: l'UUID azienda resta sul server, non
       // più nel codice del sito. Il backend restituisce già SOLO i veicoli di Edonoleggio.
-      const base = (typeof localStorage !== 'undefined' && localStorage.getItem('edo:v1:apiBase')) || DEFAULT_API_BASE;
+      const base = getApiBase();
       const r = await fetch(`${base}/rentme/veicoli`);
       if (!r.ok) throw new Error(`Errore server RentMe: ${r.status}`);
       const data = await r.json();
@@ -11465,7 +11476,7 @@ function ImportStoricoModal({ existingPreno, existingCustomers, onImport, onClos
     setError(null);
     try {
       // Veicoli dal backend (UUID azienda lato server, già filtrati per Edonoleggio).
-      const base = (typeof localStorage !== 'undefined' && localStorage.getItem('edo:v1:apiBase')) || DEFAULT_API_BASE;
+      const base = getApiBase();
       const r = await fetch(`${base}/rentme/veicoli`);
       if (!r.ok) throw new Error(`RentMe API: ${r.status}`);
       const data = await r.json();
@@ -16235,10 +16246,7 @@ function Topbar({ online, setOnline, pendingQueue, operator, admin, setAdmin, on
     try { const u = JSON.parse(localStorage.getItem('edo:v1:appUsers')||'[]'); return u.find(x=>x.role==='admin')?.password || 'edo2024!'; }
     catch { return 'edo2024!'; }
   };
-  const apiBase = () => {
-    try { return localStorage.getItem('edo:v1:apiBase') || DEFAULT_API_BASE; }
-    catch { return DEFAULT_API_BASE; }
-  };
+  const apiBase = getApiBase;
 
   function handleAdminToggle() {
     if (admin) {
