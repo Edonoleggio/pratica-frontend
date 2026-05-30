@@ -13739,14 +13739,52 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
         </div>
       </div>
 
-      {/* Griglia */}
-      <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: 8, background: 'var(--bg)' }}>
-        <div style={{ minWidth: LABEL_W + COLS * COL_W }}>
+      {/* Griglia — struttura a due colonne per iOS Safari:
+           colonna label FUORI dall'area scrollabile, celle giorni dentro.
+           Evita il bug di position:sticky non funzionante dentro overflow:auto su iOS. */}
+      <div style={{ display: 'flex', border: '1px solid var(--border)', borderRadius: 8, background: 'var(--bg)', overflow: 'hidden' }}>
 
-          {/* Header mesi */}
+        {/* ── Colonna label FISSA (non scrolla) ─────────────────── */}
+        <div style={{ flexShrink: 0, width: LABEL_W, borderRight: '1px solid var(--border)', zIndex: 2, background: 'var(--bg)' }}>
+          {/* Header mesi (spazio vuoto allineato) */}
+          <div style={{ height: 20, borderBottom: '1px solid var(--border)', background: 'var(--surface-2)' }} />
+          {/* Header giorni */}
+          <div style={{ padding: '6px 12px', fontSize: 10, fontWeight: 700, letterSpacing: '.06em',
+            color: 'var(--muted)', textTransform: 'uppercase', background: 'var(--surface-2)',
+            borderBottom: '2px solid var(--border)', height: ROW_H, display: 'flex', alignItems: 'center' }}>
+            MEZZO
+          </div>
+          {/* Righe label */}
+          {fleetFiltered.length === 0 ? null : fleetFiltered.map((v, vi) => {
+            const vr = resolveVehicleDisplay(v);
+            return (
+              <div key={v.id}
+                onClick={e => { e.stopPropagation(); setSelectedVehicle(v); setSelectedCell(null); }}
+                style={{ height: ROW_H, padding: '4px 12px', display: 'flex', flexDirection: 'column',
+                  justifyContent: 'center', cursor: 'pointer',
+                  borderTop: vi === 0 ? 'none' : '1px solid var(--border)',
+                  background: selectedVehicle?.id === v.id ? 'rgba(124,77,255,.08)'
+                    : vi % 2 === 1 ? 'var(--surface-2)' : 'var(--bg)',
+                  borderLeft: selectedVehicle?.id === v.id ? '3px solid #7c4dff' : '3px solid transparent',
+                }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--ink)',
+                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {vr.modello || vr.marca || vr.tipo || '—'}
+                </div>
+                <div style={{ fontSize: 10, color: 'var(--muted)', fontFamily: 'monospace', letterSpacing: '.05em' }}>
+                  {vr.targa || '—'}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* ── Area giorni SCROLLABILE ────────────────────────────── */}
+        <div style={{ flex: 1, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+        <div style={{ minWidth: COLS * COL_W }}>
+
+          {/* Header mesi — senza colonna label (è fissa a sinistra) */}
           <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', background: 'var(--surface-2)' }}>
-            <div style={{ width: LABEL_W, flexShrink: 0, borderRight: '1px solid var(--border)',
-              position: 'sticky', left: 0, background: 'var(--surface-2)', zIndex: 3 }} />
             {days.map((d, i) => (
               <div key={d} style={{ width: COL_W, flexShrink: 0, borderLeft: '1px solid var(--border)',
                 fontSize: 9, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase',
@@ -13756,14 +13794,8 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
             ))}
           </div>
 
-          {/* Header giorni */}
-          <div style={{ display: 'flex', borderBottom: '2px solid var(--border)', background: 'var(--surface-2)', position: 'sticky', top: 0, zIndex: 4 }}>
-            <div style={{ width: LABEL_W, flexShrink: 0, padding: '6px 12px',
-              fontSize: 10, fontWeight: 700, letterSpacing: '.06em', color: 'var(--muted)',
-              textTransform: 'uppercase', borderRight: '1px solid var(--border)',
-              position: 'sticky', left: 0, background: 'var(--surface-2)', zIndex: 3 }}>
-              MEZZO
-            </div>
+          {/* Header giorni — senza label (è nella colonna fissa) */}
+          <div style={{ display: 'flex', borderBottom: '2px solid var(--border)', background: 'var(--surface-2)' }}>
             {days.map(d => {
               const dt = new Date(d + 'T12:00:00');
               const isToday = d === today;
@@ -13786,44 +13818,16 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
             })}
           </div>
 
-          {/* Righe veicoli */}
+          {/* Righe veicoli — solo celle giorni (label è nella colonna fissa a sinistra) */}
           {fleetFiltered.length === 0 ? (
             <div style={{ padding: '48px', textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>
               Nessun mezzo attivo{tipoFilter ? ` di tipo "${tipoFilter}"` : ' in flotta'}
             </div>
           ) : fleetFiltered.map((v, vi) => {
-            const vr = resolveVehicleDisplay(v);
             return (
-            <div key={v.id} style={{ display: 'flex', alignItems: 'stretch',
+            <div key={v.id} style={{ display: 'flex', alignItems: 'stretch', height: ROW_H,
               borderTop: vi === 0 ? 'none' : '1px solid var(--border)',
               background: vi % 2 === 1 ? 'var(--surface-2)' : 'var(--bg)' }}>
-
-              {/* Label mezzo — sticky + cliccabile */}
-              <div
-                onClick={e => { e.stopPropagation(); setSelectedVehicle(v); setSelectedCell(null); }}
-                title={`${vr.modello || vr.tipo || '—'} · ${vr.targa || '—'} · clicca per info`}
-                style={{ width: LABEL_W, flexShrink: 0, padding: '8px 12px',
-                  borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column',
-                  justifyContent: 'center', position: 'sticky', left: 0, zIndex: 1,
-                  background: selectedVehicle?.id === v.id
-                    ? 'rgba(124,77,255,.08)'
-                    : vi % 2 === 1 ? 'var(--surface-2)' : 'var(--bg)',
-                  cursor: 'pointer',
-                  borderLeft: selectedVehicle?.id === v.id ? '3px solid #7c4dff' : '3px solid transparent',
-                  transition: 'background 0.12s',
-                }}
-                onMouseEnter={e => { if (selectedVehicle?.id !== v.id) e.currentTarget.style.background = 'rgba(124,77,255,.05)'; }}
-                onMouseLeave={e => { if (selectedVehicle?.id !== v.id) e.currentTarget.style.background = vi % 2 === 1 ? 'var(--surface-2)' : 'var(--bg)'; }}
-              >
-                <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--ink)',
-                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {vr.modello || vr.marca || vr.tipo || '—'}
-                </div>
-                <div style={{ fontSize: 10, color: 'var(--muted)', fontFamily: 'monospace', marginTop: 1, letterSpacing: '.05em' }}>
-                  {vr.targa || '—'}
-                </div>
-                {vr.colore && <div style={{ fontSize: 9, color: 'var(--muted)', marginTop: 1, textTransform: 'capitalize' }}>{vr.colore.toLowerCase()}</div>}
-              </div>
 
               {/* Celle giorni */}
               {days.map(d => {
@@ -13940,6 +13944,7 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
           })}
 
         </div>
+      </div>
       </div>
 
       {/* Legenda + filtro cliente */}
