@@ -13742,7 +13742,7 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
       {/* Griglia — struttura a due colonne per iOS Safari:
            colonna label FUORI dall'area scrollabile, celle giorni dentro.
            Evita il bug di position:sticky non funzionante dentro overflow:auto su iOS. */}
-      <div style={{ display: 'flex', border: '1px solid var(--border)', borderRadius: 8, background: 'var(--bg)', overflow: 'hidden' }}>
+      <div style={{ display: 'flex', width: 'fit-content', maxWidth: '100%', border: '1px solid var(--border)', borderRadius: 8, background: 'var(--bg)', overflow: 'hidden' }}>
 
         {/* ── Colonna label FISSA (non scrolla) ─────────────────── */}
         <div style={{ flexShrink: 0, width: LABEL_W, borderRight: '1px solid var(--border)', zIndex: 2, background: 'var(--bg)' }}>
