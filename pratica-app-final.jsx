@@ -13663,11 +13663,14 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
   const today = todayISO();
   const COLS = 28; // 4 settimane
 
-  // Vista a 4 settimane ancorata al lunedì della settimana corrente + weekOffset
+  // Vista a 4 settimane ancorata al lunedì della settimana corrente + weekOffset.
+  // Offset al lunedì = (getDay()+6)%7 → la DOMENICA resta nella sua settimana
+  // (lun–dom), così OGGI è sempre incluso nella finestra (fix off-by-one domenica).
   const days = useMemo(() => {
     return Array.from({ length: COLS }, (_, i) => {
       const d = new Date(today + 'T12:00:00');
-      d.setDate(d.getDate() + weekOffset * 7 + i - d.getDay() + 1);
+      const toMonday = (d.getDay() + 6) % 7;
+      d.setDate(d.getDate() + weekOffset * 7 + i - toMonday);
       return d.toISOString().slice(0, 10);
     });
   }, [weekOffset, today]);
@@ -13787,6 +13790,19 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
     return () => ro.disconnect();
   }, [COLS]);
 
+  // Centra la vista orizzontale su "oggi": al mount e quando si preme "Oggi".
+  // (Su schermi larghi tutti i 28 giorni entrano → nessuno scroll; su schermi
+  // stretti porta la colonna di oggi al centro dell'area visibile.)
+  const [centerReq, setCenterReq] = useState(0);
+  useEffect(() => {
+    const el = gridRef.current;
+    if (!el) return;
+    const idx = days.indexOf(today);
+    if (idx < 0) return;                       // oggi fuori dalla finestra (settimane diverse)
+    const target = idx * COL_W - el.clientWidth / 2 + COL_W / 2;
+    el.scrollTo({ left: Math.max(0, target), behavior: centerReq === 0 ? 'auto' : 'smooth' });
+  }, [centerReq, COL_W]);
+
   // Mesi — etichetta quando cambia
   const monthChanges = useMemo(() => {
     const out = {};
@@ -13832,7 +13848,7 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
           ))}
           <div style={{ width: 1, height: 20, background: 'var(--border)', margin: '0 2px' }} />
           {weekOffset !== 0 && (
-            <button type="button" onClick={e => { e.stopPropagation(); setWeekOffset(0); }} style={{
+            <button type="button" onClick={e => { e.stopPropagation(); setWeekOffset(0); setCenterReq(r => r + 1); }} style={{
               padding: '5px 12px', borderRadius: 6, fontSize: 12, cursor: 'pointer',
               border: 'none', background: 'var(--ink)', color: 'var(--bg)', fontWeight: 600,
             }}>Oggi</button>
@@ -13925,8 +13941,8 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
               return (
                 <div key={d} style={{
                   width: COL_W, flexShrink: 0, textAlign: 'center', padding: '5px 0',
-                  background: isToday ? 'var(--edo-sea)' : 'transparent',
-                  color: isToday ? 'white' : isWeekend ? 'var(--muted)' : 'var(--ink-2)',
+                  background: isToday ? 'var(--edo-sea)' : isWeekend ? 'rgba(184,115,51,.12)' : 'transparent',
+                  color: isToday ? 'white' : isWeekend ? 'var(--edo-coral)' : 'var(--ink-2)',
                   borderLeft: isToday ? '2px solid var(--edo-sea)' : '1px solid var(--border)',
                 }}>
                   <div style={{ fontSize: 13, fontWeight: isToday ? 700 : isWeekend ? 400 : 500, lineHeight: 1 }}>
@@ -14014,11 +14030,11 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
                       width: COL_W, height: ROW_H, flexShrink: 0, position: 'relative',
                       zIndex: isFirstVisible ? 1 : 0,
                       borderLeft: isToday ? '2px solid var(--edo-sea)' : '1px solid var(--border)',
-                      background: preno ? 'transparent' : fermo ? 'transparent' : isToday ? 'rgba(45,108,139,.07)' : isWeekend ? 'rgba(0,0,0,.02)' : 'transparent',
+                      background: preno ? 'transparent' : fermo ? 'transparent' : isToday ? 'rgba(45,108,139,.07)' : isWeekend ? 'rgba(184,115,51,.07)' : 'transparent',
                       cursor: fermo ? 'default' : 'pointer',
                     }}
                     onMouseEnter={e => { if (!preno && !fermo) e.currentTarget.style.background = 'rgba(200,52,52,.09)'; }}
-                    onMouseLeave={e => { if (!preno && !fermo) e.currentTarget.style.background = isToday ? 'rgba(45,108,139,.07)' : isWeekend ? 'rgba(0,0,0,.02)' : 'transparent'; }}
+                    onMouseLeave={e => { if (!preno && !fermo) e.currentTarget.style.background = isToday ? 'rgba(45,108,139,.07)' : isWeekend ? 'rgba(184,115,51,.07)' : 'transparent'; }}
                   >
                     {/* Fermo programmato — striatura grigia */}
                     {fermo && (
