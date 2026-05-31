@@ -9459,10 +9459,31 @@ function useRentMeSync({ fleet, rentmeVehicles, setRentmeVehicles, setPrenotazio
       setPrenotazioni(prev => {
         const existingRentme = (prev || []).filter(p => p.fonte === 'rentme');
         const local          = (prev || []).filter(p => p.fonte !== 'rentme');
+        // Rank stato per non far REGREDIRE quello impostato dall'operatore.
+        const RANK = { attesa: 0, confermata: 1, in_corso: 2, completata: 3, cancellata: 3, annullata: 3 };
         const rentmeWithCodes = rentmeRows.map(r => {
           const found = existingRentme.find(e => e.id === r.id);
-          // Riutilizza il codice esistente; altrimenti genera uno nuovo EDO-style
-          return { ...r, codice: found?.codice || generateBookingCode() };
+          if (!found) return { ...r, codice: generateBookingCode() };
+          // RentMe è "padrone" solo dei SUOI campi (date, cliente, prezzo, note RentMe).
+          // Tutto il resto sul booking esistente è lavoro dell'operatore (consegna,
+          // km, carburante, luogo, firma, contratto, riconsegna…) e va PRESERVATO:
+          // prima la sync rigenerava il booking da zero (stato→confermata) cancellando
+          // la consegna → "confermo ma non resta".
+          const rentmeOwned = {
+            clienteNome: r.clienteNome, clienteCognome: r.clienteCognome,
+            dal: r.dal, al: r.al, prezzo: r.prezzo, acconto: r.acconto,
+            note: r.note, vehicleType: r.vehicleType,
+            rentmeTarga: r.rentmeTarga, rentmeCode: r.rentmeCode, fonte: 'rentme',
+            updatedAt: r.updatedAt,
+          };
+          // Stato: tieni il locale se più avanzato (in_corso/completata/cancellata).
+          const stato = (RANK[found.stato] ?? 0) > (RANK[r.stato] ?? 0) ? found.stato : r.stato;
+          // Veicolo: se l'operatore ha già consegnato, vince il mezzo assegnato localmente;
+          // altrimenti usa quello di RentMe.
+          const veh = found.consegnaAt
+            ? { vehicleId: found.vehicleId || r.vehicleId, vehicleLabel: found.vehicleLabel || r.vehicleLabel, vehicleTarga: found.vehicleTarga || r.vehicleTarga }
+            : { vehicleId: r.vehicleId, vehicleLabel: r.vehicleLabel, vehicleTarga: r.vehicleTarga };
+          return { ...found, ...rentmeOwned, ...veh, stato, codice: found.codice || generateBookingCode() };
         });
         return [...local, ...rentmeWithCodes];
       });
