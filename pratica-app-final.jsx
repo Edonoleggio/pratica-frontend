@@ -12579,26 +12579,30 @@ function FirmaModal({ preno, onSave, onClose }) {
 // Legge gli arrivi dal backend (aggregatore multi-fonte FR24/AeroDataBox/
 // OpenSky). Online-only: degrada in modo pulito se offline o non configurato.
 function VoliLampedusaWidget() {
-  const [state, setState] = useState({ loading: true, data: null, error: null });
+  const [state, setState] = useState({ loading: true, data: null, error: null, at: null });
+  const [now, setNow] = useState(() => Date.now());
+  const mounted = useRef(true);
 
-  useEffect(() => {
-    let alive = true;
-    const load = async () => {
-      try {
-        const r = await fetch(`${getApiBase()}/voli/lampedusa`, { signal: AbortSignal.timeout(15000) });
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        const data = await r.json();
-        if (alive) setState({ loading: false, data, error: null });
-      } catch (e) {
-        if (alive) setState({ loading: false, data: null, error: e.message || 'errore' });
-      }
-    };
-    load();
-    const id = setInterval(load, 10 * 60 * 1000);  // refresh ogni 10 min
-    return () => { alive = false; clearInterval(id); };
+  const load = useCallback(async () => {
+    try {
+      const r = await fetch(`${getApiBase()}/voli/lampedusa`, { signal: AbortSignal.timeout(15000) });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const data = await r.json();
+      if (mounted.current) setState({ loading: false, data, error: null, at: Date.now() });
+    } catch (e) {
+      if (mounted.current) setState(s => ({ ...s, loading: false, error: e.message || 'errore', at: Date.now() }));
+    }
   }, []);
 
-  const { loading, data, error } = state;
+  useEffect(() => {
+    mounted.current = true;
+    load();
+    const idLoad = setInterval(load, 90 * 1000);    // refresh dati ogni 90s (live)
+    const idTick = setInterval(() => setNow(Date.now()), 30 * 1000); // countdown ogni 30s
+    return () => { mounted.current = false; clearInterval(idLoad); clearInterval(idTick); };
+  }, [load]);
+
+  const { loading, data, error, at } = state;
   const flights = data?.flights || [];
 
   const fmtOra = (iso) => {
@@ -12606,61 +12610,131 @@ function VoliLampedusaWidget() {
     const d = new Date(iso);
     return isNaN(d) ? '—' : d.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
   };
-  const statoPill = (s) => {
+  // tempo di arrivo "effettivo": stimato > atterrato > programmato
+  const arrIso = (f) => f.estimatedArrival || f.actualArrival || f.scheduledArrival;
+  // ritardo in minuti (stimato - programmato)
+  const delayMin = (f) => {
+    if (!f.estimatedArrival || !f.scheduledArrival) return 0;
+    const d = Math.round((new Date(f.estimatedArrival) - new Date(f.scheduledArrival)) / 60000);
+    return Number.isFinite(d) ? d : 0;
+  };
+  const isLanded = (f) => f.status === 'landed' || !!f.actualArrival;
+  // countdown all'atterraggio
+  const countdown = (f) => {
+    if (isLanded(f)) return { txt: `atterrato ${fmtOra(f.actualArrival || arrIso(f))}`, color: 'var(--status-conf-fg)' };
+    if (f.status === 'cancelled') return { txt: 'volo cancellato', color: 'var(--accent-deep)' };
+    const iso = arrIso(f); if (!iso) return { txt: '', color: 'var(--muted)' };
+    const min = Math.round((new Date(iso) - now) / 60000);
+    if (min <= 0) return { txt: 'in arrivo', color: 'var(--edo-sea)' };
+    if (min < 60) return { txt: `tra ${min} min`, color: min <= 30 ? 'var(--edo-sea)' : 'var(--muted)' };
+    return { txt: `tra ${Math.floor(min / 60)}h ${String(min % 60).padStart(2, '0')}m`, color: 'var(--muted)' };
+  };
+  const statoPill = (f) => {
+    const d = delayMin(f);
+    let key = f.status;
+    if (key !== 'landed' && key !== 'cancelled' && d >= 15) key = 'delayed';
     const map = {
       landed:    { bg: 'var(--status-conf-bg)',   fg: 'var(--status-conf-fg)',  label: 'Atterrato' },
       enroute:   { bg: 'var(--status-corso-bg)',  fg: 'var(--status-corso-fg)', label: 'In volo' },
-      delayed:   { bg: 'var(--warning-soft)',     fg: 'var(--warning)',         label: 'In ritardo' },
+      delayed:   { bg: 'var(--warning-soft)',     fg: 'var(--warning)',         label: `Ritardo +${d}m` },
       cancelled: { bg: 'var(--accent-soft)',      fg: 'var(--accent-deep)',     label: 'Cancellato' },
       scheduled: { bg: 'var(--surface-2)',        fg: 'var(--ink-2)',           label: 'Previsto' },
     };
-    const t = map[s] || map.scheduled;
-    return <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: t.bg, color: t.fg, whiteSpace: 'nowrap' }}>{t.label}</span>;
+    const t = map[key] || map.scheduled;
+    return <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 9px', borderRadius: 999, background: t.bg, color: t.fg, whiteSpace: 'nowrap' }}>{t.label}</span>;
   };
 
-  const Card = ({ children }) => (
+  const liveDot = (
+    <span className="pulse" style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--success)', display: 'inline-block', flexShrink: 0 }} />
+  );
+  const Card = ({ children, right }) => (
     <div className="card-paper" style={{ padding: '14px 16px', marginBottom: 24 }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+        {liveDot}
         <span style={{ fontFamily: 'var(--font-serif)', fontWeight: 600, fontSize: 15, color: 'var(--ink)' }}>Arrivi a Lampedusa</span>
-        <span className="label" style={{ color: 'var(--edo-sea)' }}>oggi</span>
+        <span className="label" style={{ color: 'var(--edo-sea)' }}>live · oggi</span>
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+          {at && <span style={{ fontSize: 10, color: 'var(--muted)' }}>agg. {new Date(at).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}</span>}
+          <button type="button" onClick={() => { setState(s => ({ ...s, loading: !s.data })); load(); }}
+            title="Aggiorna" style={{ border: '1px solid var(--border)', background: 'transparent', borderRadius: 6, padding: '3px 7px', cursor: 'pointer', color: 'var(--muted)', fontSize: 11 }}>↻</button>
+        </div>
       </div>
+      {right}
       {children}
     </div>
   );
 
   if (loading) return <Card><div style={{ fontSize: 12, color: 'var(--muted)' }}>Carico gli arrivi…</div></Card>;
-  // Offline o backend irraggiungibile → nota discreta, niente allarme.
-  if (error) return <Card><div style={{ fontSize: 12, color: 'var(--muted)' }}>Voli non disponibili ora (offline o servizio non raggiungibile).</div></Card>;
+  if (error && !data) return <Card><div style={{ fontSize: 12, color: 'var(--muted)' }}>Voli non disponibili ora (offline o servizio non raggiungibile).</div></Card>;
   if (data && !data.configured) return (
-    <Card>
-      <div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.5 }}>
-        Sorgente voli non ancora collegata. Per vedere gli arrivi reali, imposta una chiave
-        (FlightRadar24 o AeroDataBox) nelle variabili d'ambiente del backend su Render.
-      </div>
-    </Card>
+    <Card><div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.5 }}>
+      Sorgente voli non ancora collegata. Imposta una chiave (AeroDataBox o FlightRadar24) nelle env del backend su Render.
+    </div></Card>
   );
   if (flights.length === 0) return <Card><div style={{ fontSize: 12, color: 'var(--muted)' }}>Nessun arrivo previsto oggi a Lampedusa.</div></Card>;
 
+  // Riepilogo
+  const nLanded  = flights.filter(isLanded).length;
+  const nEnroute = flights.filter(f => !isLanded(f) && f.status === 'enroute').length;
+  const nDelayed = flights.filter(f => !isLanded(f) && f.status !== 'cancelled' && delayMin(f) >= 15).length;
+  const next = flights.filter(f => !isLanded(f) && f.status !== 'cancelled' && arrIso(f) && new Date(arrIso(f)) >= now)
+    .sort((a, b) => new Date(arrIso(a)) - new Date(arrIso(b)))[0];
+
+  const summaryChip = (n, label, color) => (
+    <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: 4, fontSize: 11, color: 'var(--muted)' }}>
+      <strong style={{ fontSize: 14, color, fontFamily: 'var(--font-serif)', fontWeight: 700 }}>{n}</strong>{label}
+    </span>
+  );
+
   return (
-    <Card>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-        {flights.map((f, i) => (
-          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '7px 0',
-            borderTop: i === 0 ? 'none' : '1px solid var(--border)' }}>
-            <div className="mono" style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)', minWidth: 48 }}>
-              {fmtOra(f.estimatedArrival || f.scheduledArrival || f.actualArrival)}
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {f.originName || f.originIata || f.originIcao || 'Origine ignota'}
+    <Card right={
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', marginBottom: 12,
+        paddingBottom: 12, borderBottom: '1px solid var(--border)' }}>
+        {summaryChip(flights.length, 'voli', 'var(--ink)')}
+        {summaryChip(nLanded, 'atterrati', 'var(--status-conf-fg)')}
+        {summaryChip(nEnroute, 'in volo', 'var(--status-corso-fg)')}
+        {nDelayed > 0 && summaryChip(nDelayed, 'in ritardo', 'var(--warning)')}
+        {next && (
+          <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--muted)' }}>
+            prossimo: <strong style={{ color: 'var(--edo-sea)' }}>{next.originName || next.originIata} {countdown(next).txt}</strong>
+          </span>
+        )}
+      </div>
+    }>
+      <div style={{ display: 'flex', flexDirection: 'column' }}>
+        {flights.map((f, i) => {
+          const d = delayMin(f);
+          const cd = countdown(f);
+          const arr = arrIso(f);
+          return (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '9px 0',
+              borderTop: i === 0 ? 'none' : '1px solid var(--border)', opacity: f.status === 'cancelled' ? 0.55 : 1 }}>
+              {/* Orario + countdown */}
+              <div style={{ minWidth: 66, flexShrink: 0 }}>
+                <div className="mono" style={{ fontSize: 16, fontWeight: 700, color: 'var(--ink)', lineHeight: 1.1 }}>
+                  {fmtOra(arr)}
+                </div>
+                {d >= 5 && !isLanded(f) && (
+                  <div style={{ fontSize: 10 }}>
+                    <span className="mono" style={{ textDecoration: 'line-through', color: 'var(--muted)' }}>{fmtOra(f.scheduledArrival)}</span>
+                    <span style={{ color: 'var(--warning)', fontWeight: 700, marginLeft: 4 }}>+{d}m</span>
+                  </div>
+                )}
+                <div style={{ fontSize: 10, fontWeight: 600, color: cd.color, marginTop: 1 }}>{cd.txt}</div>
               </div>
-              <div style={{ fontSize: 11, color: 'var(--muted)' }}>
-                {[f.flightNumber, f.airline].filter(Boolean).join(' · ') || '—'}
+              {/* Origine + dettagli */}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {f.originName || f.originIata || f.originIcao || 'Origine ignota'}
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {[f.flightNumber, f.airline, f.aircraftModel].filter(Boolean).join(' · ') || '—'}
+                </div>
               </div>
+              {statoPill(f)}
             </div>
-            {statoPill(f.status)}
-          </div>
-        ))}
+          );
+        })}
       </div>
     </Card>
   );
