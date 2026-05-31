@@ -12831,39 +12831,76 @@ function OggiPage({ prenotazioni, setPrenotazioni, fleet, scadenze, customers, s
   return (
     <div style={{ padding: '28px 32px', maxWidth: 860, margin: '0 auto' }}>
 
-      {/* Header — orologio live */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
-        <div>
-          <h1 style={{ margin: 0, fontSize: 26, fontFamily: 'var(--font-serif)', fontWeight: 600, letterSpacing: '-0.01em' }}>
-            Oggi
-          </h1>
-          <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--muted)', textTransform: 'capitalize' }}>
-            {dataLabel}
-          </p>
-        </div>
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ fontSize: 32, fontWeight: 700, fontFamily: 'var(--font-serif)', color: 'var(--ink)', lineHeight: 1 }}>
-            {ore}
+      {/* ── Hero del giorno ─────────────────────────────────────────── */}
+      <div style={{
+        background: 'linear-gradient(135deg, var(--edo-sea) 0%, var(--edo-sea-deep) 100%)',
+        color: 'white', borderRadius: 'var(--radius-lg)', padding: '24px 28px',
+        position: 'relative', overflow: 'hidden', marginBottom: 18, boxShadow: 'var(--shadow-md)',
+      }}>
+        {/* Sole + onda decorativi */}
+        <div style={{ position: 'absolute', bottom: -40, right: -40, width: 180, height: 180, borderRadius: '50%', background: 'var(--edo-sun)', opacity: 0.32, filter: 'blur(2px)', pointerEvents: 'none' }} />
+        <div style={{ position: 'absolute', bottom: -12, right: -12, width: 92, height: 92, borderRadius: '50%', background: 'var(--edo-sun)', pointerEvents: 'none' }} />
+        <svg style={{ position: 'absolute', left: 0, bottom: 0, width: '100%', height: 80, opacity: 0.18, pointerEvents: 'none' }} viewBox="0 0 800 80" preserveAspectRatio="none">
+          <path d="M 0 40 Q 200 10 400 40 T 800 40 V 80 H 0 Z" fill="white" />
+        </svg>
+
+        <div style={{ position: 'relative', zIndex: 2, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
+          <div style={{ flex: '1 1 320px', minWidth: 0 }}>
+            <div className="label" style={{ color: 'rgba(255,255,255,0.72)', marginBottom: 8 }}>{dataLabel}</div>
+            <h1 className="serif" style={{ fontSize: 34, fontWeight: 500, color: 'white', letterSpacing: '-0.02em', lineHeight: 1.05, margin: 0 }}>
+              {operator?.nome
+                ? <>Ciao, <em style={{ fontStyle: 'italic' }}>{operator.nome}</em>.</>
+                : <>Buongiorno.</>}
+            </h1>
+            <div style={{ marginTop: 16, fontSize: 13, color: 'rgba(255,255,255,0.82)', display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'baseline' }}>
+              <span><strong style={{ color: 'white', fontWeight: 600, fontSize: 15 }}>{partenze.length}</strong> consegne</span>
+              <span style={{ opacity: 0.4 }}>·</span>
+              <span><strong style={{ color: 'white', fontWeight: 600, fontSize: 15 }}>{rientri.length}</strong> rientri</span>
+              <span style={{ opacity: 0.4 }}>·</span>
+              <span><strong style={{ color: 'white', fontWeight: 600, fontSize: 15 }}>{liberiCount}/{totaleFlotta}</strong> mezzi liberi</span>
+            </div>
           </div>
-          <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 3 }}>
-            {liberiCount}/{totaleFlotta} mezzi liberi
-          </div>
-          {(partenze.length > 0 || rientri.length > 0) && (
-            <button type="button" onClick={exportMovimenti}
-              style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 5,
-                border: '1px solid var(--border)', background: 'transparent', color: 'var(--muted)',
-                fontSize: 11, cursor: 'pointer' }}>
-              <Download style={{ width: 11, height: 11 }} /> CSV movimenti
+
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 10 }}>
+            <div className="serif" style={{ fontSize: 30, fontWeight: 600, color: 'white', lineHeight: 1 }}>{ore}</div>
+            <button type="button" onClick={() => setPage('banco')}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 38, padding: '0 18px', borderRadius: 999,
+                border: 'none', background: 'var(--edo-sun)', color: 'var(--ink)', fontWeight: 700, fontSize: 13, cursor: 'pointer',
+                boxShadow: 'var(--shadow-inset)', whiteSpace: 'nowrap' }}>
+              Banco rapido →
             </button>
-          )}
-          <button type="button" onClick={exportICS}
-            title="Scarica tutte le prenotazioni come calendario .ics"
-            style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 5,
-              border: '1px solid var(--border)', background: 'transparent', color: 'var(--muted)',
-              fontSize: 11, cursor: 'pointer' }}>
-            <Download style={{ width: 11, height: 11 }} /> .ics calendario
-          </button>
+            <div style={{ display: 'flex', gap: 6 }}>
+              {(partenze.length > 0 || rientri.length > 0) && (
+                <button type="button" onClick={exportMovimenti}
+                  style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 9px', borderRadius: 6,
+                    border: '1px solid rgba(255,255,255,0.35)', background: 'rgba(255,255,255,0.10)', color: 'white', fontSize: 11, cursor: 'pointer' }}>
+                  <Download style={{ width: 11, height: 11 }} /> CSV
+                </button>
+              )}
+              <button type="button" onClick={exportICS} title="Scarica tutte le prenotazioni come calendario .ics"
+                style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 9px', borderRadius: 6,
+                  border: '1px solid rgba(255,255,255,0.35)', background: 'rgba(255,255,255,0.10)', color: 'white', fontSize: 11, cursor: 'pointer' }}>
+                <Download style={{ width: 11, height: 11 }} /> .ics
+              </button>
+            </div>
+          </div>
         </div>
+      </div>
+
+      {/* ── KPI del giorno (dati reali) ─────────────────────────────── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 24 }}>
+        {[
+          { label: 'Consegne',     value: partenze.length, sub: `${partenze.filter(p => p.stato === 'confermata').length} confermate`, color: 'var(--edo-sea)' },
+          { label: 'Rientri',      value: rientri.length,  sub: 'a fine giornata',  color: 'var(--success)' },
+          { label: 'In corso',     value: inCorso.length,  sub: 'oltre oggi',       color: 'var(--status-corso-fg)' },
+          { label: 'Mezzi liberi', value: `${liberiCount}/${totaleFlotta}`, sub: 'in flotta ora', color: 'var(--edo-sun-warm)' },
+        ].map((k, i) => (
+          <div key={i} className="card-paper" style={{ padding: '12px 14px', borderTop: `3px solid ${k.color}` }}>
+            <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '.07em', textTransform: 'uppercase', color: 'var(--muted)' }}>{k.label}</div>
+            <div className="serif" style={{ fontSize: 28, fontWeight: 600, color: 'var(--ink)', lineHeight: 1.1, marginTop: 4 }}>{k.value}</div>
+            <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{k.sub}</div>
+          </div>
+        ))}
       </div>
 
       {/* ── WALK-IN ─────────────────────────────────────────────────── */}
@@ -13016,12 +13053,9 @@ function OggiPage({ prenotazioni, setPrenotazioni, fleet, scadenze, customers, s
         />
       )}
 
-      {/* KPI strip */}
+      {/* Anteprima domani (le card "oggi" sono nell'hero/KPI sopra) */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 10, marginBottom: 4 }}>
         {[
-          { label: 'Consegne oggi',  value: partenze.length,        color: '#2e6e3e', emoji: '📤' },
-          { label: 'Rientri oggi',   value: rientri.length,         color: '#6a3d8f', emoji: '📥' },
-          { label: 'In corso',       value: inCorso.length,         color: '#1f5d83', emoji: '🔄' },
           { label: 'Consegne dom.',  value: domani.length,          color: '#b87333', emoji: '📅' },
           { label: 'Rientri dom.',   value: rientranoDomani.length, color: '#0d7a5e', emoji: '📲' },
         ].map(k => (
@@ -15878,164 +15912,324 @@ function LoginPage({ appUsers, onLogin }) {
 function Styles() {
   return (
     <style>{`
-      @import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;0,6..72,700;1,6..72,400&family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+      @import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;0,6..72,700;1,6..72,400;1,6..72,500&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+      /* ═══════════════════════════════════════════════════════════════
+         TOKEN LAYER — evoluzione del set live, additivo
+         ═══════════════════════════════════════════════════════════════ */
+      :root {
+        /* Core neutrals — 1:1 con la versione live */
+        --bg:            #faf7f2;
+        --paper:         #faf7f2;
+        --surface:       #ffffff;
+        --surface-2:     #f3eee5;
+        --surface-3:     #ece4d4;    /* NEW · sand più profonda per superfici annidate */
+        --bg-subtle:     #f3eee5;    /* alias usato in alcuni inline-style */
+        --ink:           #1a1815;
+        --ink-2:         #3a352e;
+        --ink-3:         #5a5047;    /* NEW · terzo livello per de-enfasi */
+        --muted:         #8a847b;
+        --border:        #e6dfd2;
+        --border-strong: #d4ccba;
+
+        /* Status — 1:1 con la versione live */
+        --accent:        #c83434;
+        --accent-deep:   #9c2424;
+        --accent-soft:   #f5e3df;
+        --success:       #4a6a30;
+        --success-soft:  #e8efde;
+        --success-deep:  #36501e;    /* NEW */
+        --warning:       #b07820;
+        --warning-soft:  #f5e8d0;
+        --warning-deep:  #815613;    /* NEW */
+        --sea:           #2d6c8b;
+        --sea-soft:      #d9e8f0;
+        --sea-deep:      #1d5070;    /* NEW */
+
+        /* Status pill triplets — per PRENO_STATI */
+        --status-attesa-fg:   #b87333;  --status-attesa-bg:   #fdf3e3;  --status-attesa-dot:   #e9a44c;
+        --status-conf-fg:     #2e6e3e;  --status-conf-bg:     #eaf4ec;  --status-conf-dot:     #4a9e5c;
+        --status-corso-fg:    #1f5d83;  --status-corso-bg:    #e8f2f9;  --status-corso-dot:    #3a8bbf;
+        --status-fatto-fg:    #5a5047;  --status-fatto-bg:    #f2ede8;  --status-fatto-dot:    #9a8a78;
+        --status-canc-fg:     #8a3030;  --status-canc-bg:     #faeaea;  --status-canc-dot:     #c85050;
+
+        /* WhatsApp tile */
+        --wa-green:      #25d366;
+
+        /* Brand layer — evoluzione (sea promosso a primario, sun come CTA positiva) */
+        --edo-sea:       #2d6c8b;
+        --edo-sea-deep:  #1d5070;
+        --edo-acqua:     #6FC7C0;
+        --edo-sun:       #e9a44c;
+        --edo-sun-warm:  #c88a2e;
+        --edo-coral:     #b87333;
+        --primary:       var(--edo-sea);
+        --primary-fg:    var(--paper);
+        --brand-accent:  var(--edo-sun);
+
+        /* Type */
+        --font-sans:  "IBM Plex Sans", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+        --font-serif: "Newsreader", "IBM Plex Serif", Georgia, "Times New Roman", serif;
+        --font-mono:  "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+
+        /* Scala di size */
+        --fs-2xs: 10px; --fs-xs: 11px; --fs-sm: 13px; --fs-base: 14px;
+        --fs-md: 17px;  --fs-lg: 21px; --fs-xl: 28px; --fs-2xl: 38px;
+        --fs-3xl: 52px; --fs-4xl: 76px; --fs-5xl: 104px;
+
+        --lh-tight: 1.04; --lh-snug: 1.2; --lh-base: 1.55; --lh-loose: 1.75;
+        --tracking-tight: -0.02em;
+        --tracking-display: -0.018em;
+        --tracking-eyebrow: 0.16em;
+        --tracking-utility: 0.07em;
+        --tracking-mono: -0.02em;
+
+        /* Spacing 4px base */
+        --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px;
+        --space-5: 20px; --space-6: 24px; --space-8: 32px; --space-10: 40px;
+        --space-12: 48px; --space-16: 64px;
+
+        /* Radii — utility piccoli (UI dense) + marketing larghi */
+        --radius-xs: 3px;
+        --radius-sm: 5px;
+        --radius-md: 8px;
+        --radius-lg: 14px;
+        --radius-xl: 22px;
+        --radius-2xl: 32px;
+        --radius-pill: 999px;
+        --radius: var(--radius-sm);   /* alias live-app */
+
+        /* Elevazione — tinta sea, mai nero duro */
+        --shadow-xs: 0 1px 0 rgba(26,24,21,0.04);
+        --shadow-sm: 0 2px 5px rgba(26,24,21,0.06), 0 1px 2px rgba(26,24,21,0.04);
+        --shadow-md: 0 8px 18px -6px rgba(26,24,21,0.10), 0 2px 6px -2px rgba(26,24,21,0.05);
+        --shadow-lg: 0 22px 40px -16px rgba(45,108,139,0.20), 0 6px 14px -6px rgba(26,24,21,0.06);
+        --shadow-xl: 0 42px 80px -28px rgba(45,108,139,0.28), 0 10px 24px -10px rgba(26,24,21,0.08);
+        --shadow-inset: inset 0 1px 0 rgba(255,255,255,0.55), inset 0 -1px 0 rgba(26,24,21,0.05);
+
+        /* Motion */
+        --ease-out: cubic-bezier(0.22, 0.61, 0.36, 1);
+        --ease-soft: cubic-bezier(0.45, 0.05, 0.25, 1);
+        --dur-fast: 140ms; --dur-base: 220ms; --dur-slow: 420ms;
+      }
+
+      .dark-mode {
+        --bg: #13120f; --paper: #13120f; --surface: #1e1c18; --surface-2: #2a2822; --surface-3: #353128;
+        --bg-subtle: #2a2822;
+        --ink: #f0ebe2; --ink-2: #c8c0b4; --ink-3: #a09686; --muted: #7a7268;
+        --accent: #e05050; --accent-deep: #c83434; --accent-soft: #3a1e1e;
+        --success: #6a9a50; --success-soft: #1e2e18; --success-deep: #4a6a30;
+        --warning: #d09830; --warning-soft: #2e2010; --warning-deep: #b07820;
+        --sea: #4d8cac; --sea-soft: #152030; --sea-deep: #2d6c8b;
+        --border: #302e28; --border-strong: #464238;
+      }
+
+      /* ═══════════════════════════════════════════════════════════════
+         BASE — invariato
+         ═══════════════════════════════════════════════════════════════ */
+      .pratica-app, .pratica-app * { font-family: var(--font-sans); box-sizing: border-box; }
+      .pratica-app .serif { font-family: var(--font-serif); font-feature-settings: 'liga', 'dlig'; }
+      .pratica-app .mono  { font-family: var(--font-mono); font-variant-numeric: tabular-nums; letter-spacing: var(--tracking-mono); }
+      .pratica-app { background: var(--bg); color: var(--ink); min-height: 100vh; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+
+      /* ═══════════════════════════════════════════════════════════════
+         FLASH — invariato
+         ═══════════════════════════════════════════════════════════════ */
       @keyframes prenoFlash {
         0%   { outline: 2.5px solid var(--accent); box-shadow: 0 0 0 5px color-mix(in srgb, var(--accent) 20%, transparent); }
         60%  { outline: 2.5px solid var(--accent); box-shadow: 0 0 0 5px color-mix(in srgb, var(--accent) 20%, transparent); }
         100% { outline: 2.5px solid transparent;   box-shadow: none; }
       }
       .preno-highlight { animation: prenoFlash 2.2s ease-out forwards; }
-      :root {
-        --bg: #faf7f2; --surface: #ffffff; --surface-2: #f3eee5;
-        --ink: #1a1815; --ink-2: #3a352e; --muted: #8a847b;
-        --accent: #c83434; --accent-deep: #9c2424; --accent-soft: #f5e3df;
-        --success: #4a6a30; --success-soft: #e8efde;
-        --warning: #b07820; --warning-soft: #f5e8d0;
-        --sea: #2d6c8b; --sea-soft: #d9e8f0;
-        --border: #e6dfd2; --border-strong: #d4ccba;
-        --radius: 5px;
-      }
-      .dark-mode {
-        --bg: #13120f; --surface: #1e1c18; --surface-2: #2a2822;
-        --ink: #f0ebe2; --ink-2: #c8c0b4; --muted: #7a7268;
-        --accent: #e05050; --accent-deep: #c83434; --accent-soft: #3a1e1e;
-        --success: #6a9a50; --success-soft: #1e2e18;
-        --warning: #d09830; --warning-soft: #2e2010;
-        --sea: #4d8cac; --sea-soft: #152030;
-        --border: #302e28; --border-strong: #464238;
-      }
-      .pratica-app, .pratica-app * { font-family: 'IBM Plex Sans', system-ui, sans-serif; box-sizing: border-box; }
-      .pratica-app .serif { font-family: 'Newsreader', Georgia, serif; font-feature-settings: 'liga', 'dlig'; }
-      .pratica-app .mono  { font-family: 'JetBrains Mono', ui-monospace, monospace; }
-      .pratica-app { background: var(--bg); color: var(--ink); min-height: 100vh; }
 
-      /* Navigation */
-      .nav-item { color: var(--muted); transition: all 0.15s ease; border-radius: var(--radius); }
+      /* ═══════════════════════════════════════════════════════════════
+         NAVIGAZIONE
+         ═══════════════════════════════════════════════════════════════ */
+      .nav-item { color: var(--muted); transition: all var(--dur-fast) var(--ease-out); border-radius: var(--radius); border: 1px solid transparent; }
       .nav-item:hover { color: var(--ink); background: var(--surface-2); }
       .nav-item.active { color: var(--ink); background: var(--surface); border-color: var(--border-strong) !important; }
       .nav-item.active .dot { opacity: 1; }
       .dot { opacity: 0; width: 4px; height: 4px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
 
-      /* Pills */
-      .pill { display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; letter-spacing: 0.02em; line-height: 1.4; }
+      /* ═══════════════════════════════════════════════════════════════
+         PILLS — esistenti + nuove .pill-{stato} mappate ai triplet
+         ═══════════════════════════════════════════════════════════════ */
+      .pill {
+        display: inline-flex; align-items: center; gap: 5px;
+        padding: 3px 8px; border-radius: 999px;
+        font-size: 11px; font-weight: 600; letter-spacing: 0.02em; line-height: 1.4;
+      }
       .pill-ok      { background: var(--success-soft); color: var(--success); }
       .pill-err     { background: var(--accent-soft);  color: var(--accent-deep); }
       .pill-warn    { background: var(--warning-soft); color: var(--warning); }
       .pill-neutral { background: var(--surface-2);    color: var(--ink-2); }
       .pill-sea     { background: var(--sea-soft);     color: var(--sea); }
 
-      /* Buttons */
-      .btn-primary { background: var(--ink); color: #f9f5ec; transition: background 0.15s, transform 0.1s; border-radius: var(--radius); }
+      /* NEW · pill PRENO_STATI con dot semantico */
+      .pill-attesa     { background: var(--status-attesa-bg); color: var(--status-attesa-fg); }
+      .pill-confermata { background: var(--status-conf-bg);   color: var(--status-conf-fg); }
+      .pill-corso      { background: var(--status-corso-bg);  color: var(--status-corso-fg); }
+      .pill-completata { background: var(--status-fatto-bg);  color: var(--status-fatto-fg); }
+      .pill-cancellata { background: var(--status-canc-bg);   color: var(--status-canc-fg); }
+
+      /* ═══════════════════════════════════════════════════════════════
+         BOTTONI — esistenti + nuovi .btn-brand .btn-sun .btn-wa
+         ═══════════════════════════════════════════════════════════════ */
+      .btn-primary { background: var(--ink); color: #f9f5ec; transition: background var(--dur-fast), transform var(--dur-fast); border-radius: var(--radius); }
       .btn-primary:hover:not(:disabled) { background: var(--accent); }
       .btn-primary:active:not(:disabled) { transform: translateY(1px); }
-      .btn-ghost  { color: var(--ink-2); transition: background 0.15s; border-radius: var(--radius); }
+
+      .btn-ghost { color: var(--ink-2); transition: background var(--dur-fast); border-radius: var(--radius); }
       .btn-ghost:hover:not(:disabled) { background: var(--surface-2); }
-      .btn-accent { background: var(--accent); color: white; transition: background 0.15s, transform 0.1s; border-radius: var(--radius); }
+
+      .btn-accent { background: var(--accent); color: white; transition: background var(--dur-fast), transform var(--dur-fast); border-radius: var(--radius); }
       .btn-accent:hover:not(:disabled) { background: var(--accent-deep); }
       .btn-accent:active:not(:disabled) { transform: translateY(1px); }
+
+      /* NEW · brand mediterraneo per CTA "informazione" */
+      .btn-brand { background: var(--edo-sea); color: white; transition: background var(--dur-fast), transform var(--dur-fast); border-radius: var(--radius); }
+      .btn-brand:hover:not(:disabled) { background: var(--edo-sea-deep); }
+      .btn-brand:active:not(:disabled) { transform: translateY(1px); }
+
+      /* NEW · sun gold per CTA positiva (conferma, paga, prenota) */
+      .btn-sun { background: var(--edo-sun); color: var(--ink); box-shadow: var(--shadow-inset); transition: background var(--dur-fast), transform var(--dur-fast); border-radius: var(--radius); }
+      .btn-sun:hover:not(:disabled) { background: var(--edo-sun-warm); }
+      .btn-sun:active:not(:disabled) { transform: translateY(1px); }
+
+      /* NEW · WhatsApp ufficiale */
+      .btn-wa { background: var(--wa-green); color: white; transition: filter var(--dur-fast), transform var(--dur-fast); border-radius: var(--radius); }
+      .btn-wa:hover:not(:disabled) { filter: brightness(0.95); }
+      .btn-wa:active:not(:disabled) { transform: translateY(1px); }
+
       button:disabled, button[aria-disabled="true"] { opacity: 0.4; cursor: not-allowed; }
 
-      /* Cards */
+      /* ═══════════════════════════════════════════════════════════════
+         CARDS
+         ═══════════════════════════════════════════════════════════════ */
       .card       { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; }
-      .card-paper { background: var(--surface); border: 1px solid var(--border); border-radius: 3px; box-shadow: 0 1px 0 rgba(26,24,21,0.04); }
+      .card-paper { background: var(--surface); border: 1px solid var(--border); border-radius: 3px; box-shadow: var(--shadow-xs); }
 
-      /* Forms */
-      .input { background: var(--surface); border: 1px solid var(--border); padding: 9px 11px; border-radius: 4px; width: 100%; font-size: 14px; transition: border-color 0.15s, box-shadow 0.15s; }
+      /* NEW · card "elevata" per marketing/dashboard hero */
+      .card-elev  { background: var(--surface); border-radius: var(--radius-lg); box-shadow: var(--shadow-md); border: none; }
+
+      /* ═══════════════════════════════════════════════════════════════
+         FORM
+         ═══════════════════════════════════════════════════════════════ */
+      .input { background: var(--surface); border: 1px solid var(--border); padding: 9px 11px; border-radius: 4px; width: 100%; font-size: 14px; transition: border-color var(--dur-fast), box-shadow var(--dur-fast); }
       .input:focus { outline: none; border-color: var(--ink); box-shadow: 0 0 0 3px rgba(26,24,21,0.07); }
-      .input.mono { font-family: 'JetBrains Mono', monospace; font-size: 13px; }
+      .input.mono { font-family: var(--font-mono); font-size: 13px; }
       .label { font-size: 11px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); margin-bottom: 5px; display: block; }
       .label .req { color: var(--accent); margin-left: 2px; }
 
-      /* Wizard steps */
+      /* ═══════════════════════════════════════════════════════════════
+         WIZARD
+         ═══════════════════════════════════════════════════════════════ */
       .step-num { width: 26px; height: 26px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; flex-shrink: 0; }
       .step-num.active { background: var(--ink); color: #f9f5ec; }
       .step-num.done   { background: var(--success); color: white; }
       .step-num.todo   { background: var(--surface-2); color: var(--muted); border: 1px solid var(--border); }
 
-      /* Vehicle cards */
-      .vehicle-card { transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s; cursor: pointer; }
-      .vehicle-card:hover { border-color: var(--ink-2); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(26,24,21,0.08); }
+      /* ═══════════════════════════════════════════════════════════════
+         FLEET
+         ═══════════════════════════════════════════════════════════════ */
+      .vehicle-card { transition: border-color var(--dur-fast), transform var(--dur-fast), box-shadow var(--dur-fast); cursor: pointer; }
+      .vehicle-card:hover { border-color: var(--ink-2); transform: translateY(-1px); box-shadow: var(--shadow-md); }
       .vehicle-card.selected { border-color: var(--ink); background: var(--surface); box-shadow: 0 0 0 1px var(--ink) inset; }
 
-      /* Stat cards — colored top border instead of noisy stripe */
       .stat-accent { border-top: 3px solid var(--accent); }
 
-      /* Misc */
+      /* ═══════════════════════════════════════════════════════════════
+         DECORATIVI
+         ═══════════════════════════════════════════════════════════════ */
       .divider-dotted { border-top: 1px dashed rgba(212,204,186,0.6); }
+
+      /* NEW · bordo perforato (ticket stub) per separatori "ricevuta" */
+      .ticket-stub {
+        display: block; height: 16px;
+        background-image: radial-gradient(circle at 4px center, var(--border-strong) 0 1.5px, transparent 1.5px);
+        background-repeat: repeat-x;
+        background-size: 8px 16px;
+        opacity: 0.8;
+      }
+
+      /* JSON block */
       .json-block { background: #1a1815; color: #e8e2d4; border-radius: 4px; padding: 14px; font-size: 12px; line-height: 1.6; overflow-x: auto; }
       .json-block .k { color: #d4a04d; } .json-block .s { color: #9ec38f; }
       .json-block .n { color: #d47c7c; } .json-block .c { color: #6b6660; font-style: italic; }
 
-      /* Animations */
+      /* ═══════════════════════════════════════════════════════════════
+         ANIMAZIONI — invariate
+         ═══════════════════════════════════════════════════════════════ */
       @keyframes slideUp  { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
       @keyframes fadeIn   { from { opacity: 0; } to { opacity: 1; } }
       @keyframes pulseDot { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
       @keyframes pulseRed { 0%, 100% { box-shadow: 0 0 0 0 rgba(200,52,52,0.5); } 50% { box-shadow: 0 0 0 6px rgba(200,52,52,0); } }
       @keyframes scanLine { 0% { top: 0; } 100% { top: 100%; } }
 
-      .slide-up  { animation: slideUp 0.25s ease-out; }
-      .fade-in   { animation: fadeIn  0.2s ease-out; }
+      .slide-up  { animation: slideUp 0.25s var(--ease-out); }
+      .fade-in   { animation: fadeIn  0.2s var(--ease-out); }
       .pulse     { animation: pulseDot 1.4s ease-in-out infinite; }
       .pulse-red { animation: pulseRed 1.6s ease-in-out infinite; }
       .scan-line { position: absolute; left: 0; right: 0; height: 2px; background: linear-gradient(90deg, transparent, var(--accent), transparent); animation: scanLine 2s ease-in-out infinite; }
 
-      /* Scroll */
       .overflow-y-auto { scroll-behavior: smooth; }
 
       /* Print */
       @media print {
         .no-print { display: none !important; }
         body { background: white !important; }
+        @page { size: A4; margin: 1.5cm; }
       }
 
-      /* Focus visible global */
+      /* Focus visible globale */
       .pratica-app :focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; border-radius: 3px; }
 
-      /* ── OTTIMIZZAZIONI FLUIDITÀ ── */
-
-      /* Transizioni universali su TUTTI i bottoni (anche con stili inline) */
+      /* ═══════════════════════════════════════════════════════════════
+         OTTIMIZZAZIONI FLUIDITÀ — invariate
+         ═══════════════════════════════════════════════════════════════ */
       .pratica-app button {
-        transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease,
-                    transform 0.1s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+        transition: background var(--dur-fast) ease, color var(--dur-fast) ease, border-color var(--dur-fast) ease,
+                    transform 0.1s ease, box-shadow var(--dur-fast) ease, opacity var(--dur-fast) ease;
       }
-      /* Hover fallback per bottoni senza classe esplicita */
-      .pratica-app button:not(:disabled):not(.btn-primary):not(.btn-accent):not(.btn-ghost):not(.nav-item):hover {
+      .pratica-app button:not(:disabled):not(.btn-primary):not(.btn-accent):not(.btn-brand):not(.btn-sun):not(.btn-wa):not(.btn-ghost):not(.nav-item):hover {
         filter: brightness(0.93);
       }
       .pratica-app button:not(:disabled):active { transform: translateY(1px) !important; }
 
-      /* Link fluidi */
-      .pratica-app a { transition: color 0.15s ease, opacity 0.15s ease; }
+      .pratica-app a { transition: color var(--dur-fast) ease, opacity var(--dur-fast) ease; }
+      .pratica-app select { transition: border-color var(--dur-fast) ease, box-shadow var(--dur-fast) ease; }
 
-      /* Select e input fluidi */
-      .pratica-app select { transition: border-color 0.15s ease, box-shadow 0.15s ease; }
+      /* Selezione testo — accenta brand sun */
+      .pratica-app ::selection { background: var(--edo-sun); color: var(--ink); }
 
-      /* Selezione testo coerente col brand */
-      .pratica-app ::selection { background: var(--accent-soft); color: var(--ink); }
+      .modal-overlay { animation: fadeIn 0.18s var(--ease-out); }
+      .modal-box     { animation: slideUp 0.22s var(--ease-out); }
+      .page-fade     { animation: fadeIn 0.2s var(--ease-out); }
 
-      /* Animazione overlay modale (inline style) */
-      .modal-overlay { animation: fadeIn 0.18s ease-out; }
-      /* Animazione box modale (inline style) */
-      .modal-box { animation: slideUp 0.22s ease-out; }
-
-      /* Fade pagina al cambio route */
-      .page-fade { animation: fadeIn 0.2s ease-out; }
-
-      /* Walk-in category button — hover via CSS invece di JS */
-      .walk-in-btn { transition: transform 0.15s ease, box-shadow 0.15s ease !important; }
+      .walk-in-btn { transition: transform var(--dur-fast) ease, box-shadow var(--dur-fast) ease !important; }
       .walk-in-btn:not(:disabled):hover {
         transform: translateY(-2px) !important;
-        box-shadow: 0 6px 18px rgba(0,0,0,.12) !important;
+        box-shadow: var(--shadow-md) !important;
       }
       .walk-in-btn:not(:disabled):active { transform: translateY(0) !important; }
 
-      /* Card hover leggero */
-      .card-hover { transition: box-shadow 0.15s ease, transform 0.15s ease; }
-      .card-hover:hover { box-shadow: 0 4px 16px rgba(26,24,21,0.08); transform: translateY(-1px); }
+      .card-hover { transition: box-shadow var(--dur-fast) ease, transform var(--dur-fast) ease; }
+      .card-hover:hover { box-shadow: var(--shadow-md); transform: translateY(-1px); }
 
-      /* Scroll smooth globale */
       html { scroll-behavior: smooth; }
       .pratica-app { -webkit-tap-highlight-color: transparent; }
+
+      /* ═══════════════════════════════════════════════════════════════
+         LOCKUP "edo·" — evoluzione del wordmark sidebar
+         (richiede markup esistente, nessun cambio JSX necessario)
+         ═══════════════════════════════════════════════════════════════ */
+      .edo-lockup {
+        display: inline-flex; align-items: baseline; gap: 6px;
+        font-family: var(--font-serif); line-height: 1;
+      }
+      .edo-lockup .edo-mark { font-weight: 600; color: var(--ink); letter-spacing: -0.02em; }
+      .edo-lockup .edo-dot  { font-style: italic; color: var(--accent); }
+      .edo-lockup .edo-sub  { font-weight: 500; color: var(--ink-2); }
     `}</style>
   );
 }
