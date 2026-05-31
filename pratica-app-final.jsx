@@ -21636,6 +21636,7 @@ function NewCustomerModal({ customer, onClose, onSave }) {
     fatturazione: null,
   });
   const upd = useCallback((k, v) => setForm(f => ({ ...f, [k]: v })), []);
+  const [scanOpen, setScanOpen] = useState(false);
   const billingActive = form.fatturazione !== null;
   const valid = form.cognome && form.nome && form.docNum;
 
@@ -21656,6 +21657,36 @@ function NewCustomerModal({ customer, onClose, onSave }) {
       }
     >
       <div className="space-y-5">
+        {/* Scansione documento (OCR/MRZ on-device) — precompila l'anagrafica,
+            stesso scanner del wizard prenotazione. */}
+        <div>
+          {!scanOpen ? (
+            <button type="button" onClick={() => setScanOpen(true)}
+              className="px-3 py-2 rounded text-sm inline-flex items-center gap-2"
+              style={{ border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--ink)', cursor: 'pointer', fontWeight: 600 }}>
+              📷 Scansiona documento <span style={{ color: 'var(--muted)', fontWeight: 400 }}>· precompila i campi</span>
+            </button>
+          ) : (
+            <div className="card-paper p-4 fade-in">
+              <div className="flex items-center justify-between mb-3">
+                <div className="text-[11px] uppercase tracking-widest font-semibold" style={{ color: 'var(--ink-2)' }}>Scansione documento · MRZ on-device</div>
+                <button type="button" onClick={() => setScanOpen(false)} className="btn-ghost text-xs px-2 py-1 rounded">Chiudi</button>
+              </div>
+              <DocumentScanner
+                mode="document"
+                onOcrResult={(parsed) => {
+                  if (parsed.cognome)      upd('cognome',      parsed.cognome);
+                  if (parsed.nome)         upd('nome',         parsed.nome);
+                  if (parsed.nascita)      upd('nascita',      parsed.nascita);
+                  if (parsed.cittadinanza) upd('cittadinanza', parsed.cittadinanza);
+                  if (parsed.docNum)       upd('docNum',       parsed.docNum);
+                  if (parsed.docTipo)      upd('docTipo',      parsed.docTipo);
+                  setScanOpen(false);
+                }}
+              />
+            </div>
+          )}
+        </div>
         <FormSection title="Anagrafica">
           <div className="grid grid-cols-2 gap-3">
             <FormField id="nc-cognome" label="Cognome" req value={form.cognome} onChange={v => upd('cognome', v)} />
