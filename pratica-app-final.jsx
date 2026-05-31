@@ -15013,15 +15013,16 @@ export default function App() {
   // Sync globale: forza il push di tutti gli slot. Utile per il pulsante "Sincronizza ora".
   const syncAll = useCallback(async () => {
     const results = await Promise.all([
-      fleetSync.sync(), customersSync.sync(), partnersSync.sync(),
+      prenoSync.sync(), fleetSync.sync(), customersSync.sync(), partnersSync.sync(),
       operatorsSync.sync(), cargosSync.sync(), agencySync.sync(),
+      cassaSync.sync(), scadenzeSync.sync(),
     ]);
     return {
       ok: results.every(r => r.ok),
       count: results.filter(r => r.ok).length,
       total: results.length,
     };
-  }, [fleetSync, customersSync, partnersSync, operatorsSync, cargosSync, agencySync]);
+  }, [prenoSync, fleetSync, customersSync, partnersSync, operatorsSync, cargosSync, agencySync, cassaSync, scadenzeSync]);
 
   // Toast system per feedback non-bloccanti (deve stare prima degli useCallback che usano pushToast)
   const { toasts, push: pushToast, dismiss: dismissToast } = useToasts();
@@ -15247,6 +15248,21 @@ export default function App() {
   const [admin, setAdmin]                 = useState(false);
   const [manualOffline, setManualOffline] = useState(false);  // toggle manuale per testing
   const [operatorIdx, setOperatorIdx]     = useState(0);
+  // Persistenza operatore attivo (per ID): al refresh NON deve cambiare in
+  // silenzio. Ripristina l'ultimo operatore scelto e lo salva ad ogni cambio.
+  const operatorRestoredRef = useRef(false);
+  useEffect(() => {
+    if (operatorRestoredRef.current) return;
+    if (!operators || operators.length === 0) return;
+    try {
+      const savedId = localStorage.getItem('edo:v1:activeOperatorId');
+      if (savedId) { const i = operators.findIndex(o => o.id === savedId); if (i >= 0) setOperatorIdx(i); }
+    } catch {}
+    operatorRestoredRef.current = true;
+  }, [operators]);
+  useEffect(() => {
+    try { const op = operators?.[operatorIdx]; if (op?.id) localStorage.setItem('edo:v1:activeOperatorId', op.id); } catch {}
+  }, [operatorIdx, operators]);
   const [modal, setModal]                 = useState(null);
   const [showGlobalSearch, setShowGlobalSearch] = useState(false);
   const [darkMode, setDarkMode]           = useState(() => { try { return localStorage.getItem('edo:darkMode') === '1'; } catch { return false; } });
@@ -19064,6 +19080,7 @@ function SettingsPage({ operator, operators, cargosConfig, admin, backendStatus,
 
           <div className="grid grid-cols-2 gap-2 text-xs mt-4">
             {[
+              { id: 'prenotazioni', label: 'Prenotazioni',       st: syncStatus?.prenotazioni },
               { id: 'fleet',     label: 'Flotta veicoli',         st: syncStatus?.fleet },
               { id: 'customers', label: 'Rubrica clienti',        st: syncStatus?.customers },
               { id: 'partners',  label: 'Strutture partner',      st: syncStatus?.partners },
@@ -19250,9 +19267,13 @@ function SettingsPage({ operator, operators, cargosConfig, admin, backendStatus,
             <h3 id="storage-heading" className="serif text-lg font-medium">Archivio locale</h3>
           </div>
           <div className="text-xs mb-3" style={{ color: 'var(--ink-2)' }}>
-            Tutti i dati (flotta, clienti, strutture, operatori, configurazione CARGOS) sono salvati nel browser di questo dispositivo <strong>e</strong> sincronizzati con il backend Render quando online. Quando il backend è raggiungibile, le modifiche fatte su un tablet appaiono su tutti gli altri entro pochi secondi. Quando il backend è offline, i dati restano comunque al sicuro localmente.
+            Tutti i dati (prenotazioni, flotta, clienti, strutture, operatori, configurazione CARGOS) sono salvati nel browser di questo dispositivo <strong>e</strong> sincronizzati con il backend Render quando online. Quando il backend è raggiungibile, le modifiche fatte su un tablet appaiono su tutti gli altri entro pochi secondi. Quando il backend è offline, i dati restano comunque al sicuro localmente.
           </div>
           <div className="grid grid-cols-2 gap-2 text-xs">
+            <div className="p-2 rounded border" style={{ borderColor: 'var(--border)' }}>
+              <div className="font-medium">Prenotazioni</div>
+              <div className="mono mt-1" style={{ color: 'var(--muted)' }}>chiave: edo:v1:prenotazioni</div>
+            </div>
             <div className="p-2 rounded border" style={{ borderColor: 'var(--border)' }}>
               <div className="font-medium">Veicoli memorizzati</div>
               <div className="mono mt-1" style={{ color: 'var(--muted)' }}>chiave: edo:v1:fleet</div>
