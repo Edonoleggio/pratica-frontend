@@ -13724,7 +13724,27 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
 
   const ROW_H = 44;
   const LABEL_W = 170;
-  const COL_W = 36;
+  // Larghezza colonna giorno: le 28 colonne RIEMPIONO la larghezza disponibile.
+  // Su schermi larghi le colonne si allargano (niente spazio vuoto a destra né
+  // scroll); su schermi stretti restano al minimo (36px, leggibile) e l'area
+  // giorni scorre. COL_W concreto serve anche alle barre prenotazione multi-giorno.
+  const COL_W_MIN = 36;
+  const gridRef = useRef(null);
+  const [COL_W, setColW] = useState(48);
+  useEffect(() => {
+    const el = gridRef.current;
+    if (!el) return;
+    const compute = () => {
+      // clientWidth = area giorni reale (la colonna mezzi è fuori, fissa).
+      // -1px per cella (bordo sinistro) → l'intera vista entra senza micro-scroll.
+      const avail = el.clientWidth;
+      if (avail > 0) setColW(Math.max(COL_W_MIN, Math.floor(avail / COLS) - 1));
+    };
+    compute();
+    const ro = new ResizeObserver(compute);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [COLS]);
 
   // Mesi — etichetta quando cambia
   const monthChanges = useMemo(() => {
@@ -13825,7 +13845,7 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
         </div>
 
         {/* ── Area giorni SCROLLABILE ────────────────────────────── */}
-        <div style={{ flex: 1, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+        <div ref={gridRef} style={{ flex: 1, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
         <div style={{ minWidth: COLS * COL_W }}>
 
           {/* Header mesi — senza colonna label (è fissa a sinistra) */}
