@@ -17580,6 +17580,7 @@ function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, on
   const [categoriaFilter, setCategoriaFilter] = useState(null);
   const [statusFilter, setStatusFilter] = useState('all');
   const [query, setQuery] = useState('');
+  const [outOpen, setOutOpen] = useState(true);   // pannello "Mezzi fuori ora"
 
   // Lookup rentmeId → categoria dal nome live EDOX/RentMe (es. "auto fiat newpanda superior")
   // Questa è la fonte di verità per le categorie; sovrascrive il campo v.categoria salvato
@@ -17815,6 +17816,77 @@ function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, on
       {!admin && (
         <ReadonlyBanner message={<>Modalità sola lettura · attiva <strong>Admin</strong> in alto a destra per aggiungere o modificare veicoli.</>} />
       )}
+
+      {/* ── Mezzi fuori ora (consegnati ai clienti), raggruppati per tipo ── */}
+      {(() => {
+        const oggi = todayISO();
+        // "Fuori" = consegnato e non ancora rientrato → stato 'in_corso'
+        // (include i ritardi: al < oggi ma non riconsegnato). Risolve la targa
+        // legacy via matchVehicle.
+        const out = (prenotazioni || [])
+          .filter(p => p.stato === 'in_corso' && p.vehicleId)
+          .map(p => {
+            const v = (fleet || []).find(fv => matchVehicle(p.vehicleId, fv.id, fv.targa)) || {};
+            return {
+              tipo: canonicalTipo(v) || v.tipo || 'altro',
+              targa: v.targa || p.vehicleTarga || p.vehicleId,
+              modello: v.modello || v.marca || p.vehicleLabel || '',
+              cliente: `${p.clienteCognome || ''} ${p.clienteNome || ''}`.trim() || 'Cliente',
+              al: p.al,
+            };
+          });
+        if (out.length === 0) return null;
+        const groups = {};
+        out.forEach(o => { (groups[o.tipo] ||= []).push(o); });
+        const tipi = Object.keys(groups).sort();
+        const rientro = (al) => {
+          if (!al) return { txt: '—', color: 'var(--muted)' };
+          if (al < oggi) return { txt: 'in ritardo', color: 'var(--accent)' };
+          if (al === oggi) return { txt: 'rientra oggi', color: 'var(--warning)' };
+          return { txt: `rientra ${formatDate(al)}`, color: 'var(--muted)' };
+        };
+        return (
+          <div className="card-paper" style={{ padding: '14px 16px', marginBottom: 16 }}>
+            <button type="button" onClick={() => setOutOpen(o => !o)}
+              style={{ display: 'flex', alignItems: 'baseline', gap: 8, width: '100%', background: 'none', border: 'none', cursor: 'pointer', padding: 0, textAlign: 'left' }}>
+              <span style={{ fontFamily: 'var(--font-serif)', fontWeight: 600, fontSize: 15, color: 'var(--ink)' }}>Mezzi fuori ora</span>
+              <span className="label" style={{ color: 'var(--edo-sea)' }}>{out.length} consegnati</span>
+              <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--muted)' }}>{outOpen ? '▾' : '▸'}</span>
+            </button>
+            {outOpen && (
+              <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {tipi.map(tp => {
+                  const label = (VEHICLE_TYPES[tp]?.label) || (tp.charAt(0).toUpperCase() + tp.slice(1));
+                  return (
+                    <div key={tp}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--ink-2)' }}>{label}</span>
+                        <span style={{ fontSize: 11, fontWeight: 700, padding: '1px 8px', borderRadius: 999, background: 'var(--edo-sea)', color: 'white' }}>{groups[tp].length}</span>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        {groups[tp].sort((a, b) => (a.al || '').localeCompare(b.al || '')).map((o, i) => {
+                          const r = rientro(o.al);
+                          return (
+                            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '5px 0', borderTop: i === 0 ? 'none' : '1px solid var(--border)' }}>
+                              <span className="mono" style={{ fontSize: 10, fontWeight: 700, padding: '1px 5px', background: 'var(--ink)', color: 'var(--paper)', borderRadius: 3, flexShrink: 0 }}>{o.targa}</span>
+                              <span style={{ fontSize: 12, color: 'var(--muted)', minWidth: 0, flexShrink: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.modello}</span>
+                              <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)', marginLeft: 'auto', whiteSpace: 'nowrap' }}>{o.cliente}</span>
+                              <span style={{ fontSize: 11, fontWeight: 600, color: r.color, minWidth: 92, textAlign: 'right' }}>{r.txt}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+                <div style={{ fontSize: 10, color: 'var(--muted)', borderTop: '1px solid var(--border)', paddingTop: 8 }}>
+                  ℹ︎ La struttura/alloggio del cliente non è ancora un dato registrato nelle prenotazioni — si può aggiungere (vedi nota allo sviluppatore).
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {filtered.length === 0 ? (
         <div className="card-paper p-8 text-center text-sm" style={{ color: 'var(--muted)' }}>
