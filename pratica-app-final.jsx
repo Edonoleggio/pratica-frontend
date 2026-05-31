@@ -4504,7 +4504,8 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rent
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
         <div>
-          <h1 style={{ margin: 0, fontSize: 22, fontFamily: 'var(--font-serif)', fontWeight: 600 }}>Prenotazioni</h1>
+          <div className="label" style={{ color: 'var(--edo-sea)', marginBottom: 2 }}>Tutte le prenotazioni</div>
+          <h1 style={{ margin: 0, fontSize: 22, fontFamily: 'var(--font-serif)', fontWeight: 600, letterSpacing: '-0.01em' }}>Prenotazioni</h1>
           <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--muted)' }}>
             Gestisci le prenotazioni future — poi convertile in pratica al ritiro del cliente.
           </p>
@@ -4523,7 +4524,7 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rent
           { label: 'In attesa conferma',    value: inAttesa, color: '#b87333' },
           { label: 'Movimenti oggi',        value: oggi,    color: '#1f5d83' },
         ].map(k => (
-          <div key={k.label} style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, padding: '14px 16px' }}>
+          <div key={k.label} className="card-paper" style={{ padding: '14px 16px', borderTop: `3px solid ${k.color}` }}>
             <div style={{ fontSize: 28, fontWeight: 700, fontFamily: 'var(--font-serif)', color: k.color }}>{k.value}</div>
             <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{k.label}</div>
           </div>
@@ -9647,7 +9648,8 @@ function BancoRapidoPage({ rentmeVehicles, prenotazioni, fleet, setPage, setPren
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24 }}>
         <div>
-          <h1 style={{ margin: 0, fontSize: 22, fontFamily: 'var(--font-serif)', fontWeight: 600, color: 'var(--ink)' }}>
+          <div className="label" style={{ color: 'var(--edo-sea)', marginBottom: 2 }}>Walk-in · oggi</div>
+          <h1 style={{ margin: 0, fontSize: 22, fontFamily: 'var(--font-serif)', fontWeight: 600, color: 'var(--ink)', letterSpacing: '-0.01em' }}>
             Banco rapido
           </h1>
           <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--muted)' }}>
