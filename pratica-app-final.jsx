@@ -12487,6 +12487,97 @@ function FirmaModal({ preno, onSave, onClose }) {
 // OGGI PAGE — partenze, rientri, in corso, mezzi liberi, scadenze
 // ═══════════════════════════════════════════════════════════════════
 
+// ── Widget "Arrivi a Lampedusa oggi" ───────────────────────────────
+// Legge gli arrivi dal backend (aggregatore multi-fonte FR24/AeroDataBox/
+// OpenSky). Online-only: degrada in modo pulito se offline o non configurato.
+function VoliLampedusaWidget() {
+  const [state, setState] = useState({ loading: true, data: null, error: null });
+
+  useEffect(() => {
+    let alive = true;
+    const load = async () => {
+      try {
+        const r = await fetch(`${getApiBase()}/voli/lampedusa`, { signal: AbortSignal.timeout(15000) });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const data = await r.json();
+        if (alive) setState({ loading: false, data, error: null });
+      } catch (e) {
+        if (alive) setState({ loading: false, data: null, error: e.message || 'errore' });
+      }
+    };
+    load();
+    const id = setInterval(load, 10 * 60 * 1000);  // refresh ogni 10 min
+    return () => { alive = false; clearInterval(id); };
+  }, []);
+
+  const { loading, data, error } = state;
+  const flights = data?.flights || [];
+
+  const fmtOra = (iso) => {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    return isNaN(d) ? '—' : d.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+  };
+  const statoPill = (s) => {
+    const map = {
+      landed:    { bg: 'var(--status-conf-bg)',   fg: 'var(--status-conf-fg)',  label: 'Atterrato' },
+      enroute:   { bg: 'var(--status-corso-bg)',  fg: 'var(--status-corso-fg)', label: 'In volo' },
+      delayed:   { bg: 'var(--warning-soft)',     fg: 'var(--warning)',         label: 'In ritardo' },
+      cancelled: { bg: 'var(--accent-soft)',      fg: 'var(--accent-deep)',     label: 'Cancellato' },
+      scheduled: { bg: 'var(--surface-2)',        fg: 'var(--ink-2)',           label: 'Previsto' },
+    };
+    const t = map[s] || map.scheduled;
+    return <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: t.bg, color: t.fg, whiteSpace: 'nowrap' }}>{t.label}</span>;
+  };
+
+  const Card = ({ children }) => (
+    <div className="card-paper" style={{ padding: '14px 16px', marginBottom: 24 }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 10 }}>
+        <span style={{ fontFamily: 'var(--font-serif)', fontWeight: 600, fontSize: 15, color: 'var(--ink)' }}>Arrivi a Lampedusa</span>
+        <span className="label" style={{ color: 'var(--edo-sea)' }}>oggi</span>
+      </div>
+      {children}
+    </div>
+  );
+
+  if (loading) return <Card><div style={{ fontSize: 12, color: 'var(--muted)' }}>Carico gli arrivi…</div></Card>;
+  // Offline o backend irraggiungibile → nota discreta, niente allarme.
+  if (error) return <Card><div style={{ fontSize: 12, color: 'var(--muted)' }}>Voli non disponibili ora (offline o servizio non raggiungibile).</div></Card>;
+  if (data && !data.configured) return (
+    <Card>
+      <div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.5 }}>
+        Sorgente voli non ancora collegata. Per vedere gli arrivi reali, imposta una chiave
+        (FlightRadar24 o AeroDataBox) nelle variabili d'ambiente del backend su Render.
+      </div>
+    </Card>
+  );
+  if (flights.length === 0) return <Card><div style={{ fontSize: 12, color: 'var(--muted)' }}>Nessun arrivo previsto oggi a Lampedusa.</div></Card>;
+
+  return (
+    <Card>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        {flights.map((f, i) => (
+          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '7px 0',
+            borderTop: i === 0 ? 'none' : '1px solid var(--border)' }}>
+            <div className="mono" style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)', minWidth: 48 }}>
+              {fmtOra(f.estimatedArrival || f.scheduledArrival || f.actualArrival)}
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {f.originName || f.originIata || f.originIcao || 'Origine ignota'}
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--muted)' }}>
+                {[f.flightNumber, f.airline].filter(Boolean).join(' · ') || '—'}
+              </div>
+            </div>
+            {statoPill(f.status)}
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
 function OggiPage({ prenotazioni, setPrenotazioni, fleet, scadenze, customers, setPage, rentmeVehicles, setPrenotazioniPrefill, pushToast,
   operator, fermiFlotta, rentmePush, rentmeConnected, manutenzioni }) {
   const [now, setNow] = useState(() => new Date());
@@ -12904,6 +12995,9 @@ function OggiPage({ prenotazioni, setPrenotazioni, fleet, scadenze, customers, s
           </div>
         ))}
       </div>
+
+      {/* ── VOLI LAMPEDUSA OGGI ─────────────────────────────────────── */}
+      <VoliLampedusaWidget />
 
       {/* ── WALK-IN ─────────────────────────────────────────────────── */}
       {(() => {
