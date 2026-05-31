@@ -2859,7 +2859,7 @@ function findBestVehicleCombination(tipo, dal, al, vehicles, prenotazioni, exclu
 // ── PrenoForm — add/edit ─────────────────────────────────────────────
 // prefillValues: valori pre-compilati dal BancoRapido / walk-in / calendario
 // (vehicleId, vehicleLabel, vehicleType, dal, al, fonte) — usato solo quando initial è null
-function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, onSave, onClose, prefillValues, fermiFlotta, rentmeConnected }) {
+function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, onSave, onClose, prefillValues, fermiFlotta, rentmeConnected, partners }) {
   const pv = prefillValues || {};  // shorthand
   const isNew = !initial;
   const empty = {
@@ -2871,6 +2871,7 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
     stato: 'attesa', fonte: pv.fonte || 'diretto',
     prezzo: '', acconto: '', metodoPagamento: 'contanti',
     noteCliente: '', noteInterne: '',
+    consegnaStruttura: pv.consegnaStruttura || '', consegnaIndirizzo: pv.consegnaIndirizzo || '',
   };
   // Toggle: invia prenotazione anche a RentMe al salvataggio
   // Attivo di default se RentMe è connesso e stiamo creando (non modificando)
@@ -2894,6 +2895,7 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
     // retrocompatibilità: porta 'note' vecchio in noteCliente
     noteCliente: initial.noteCliente || initial.note || '',
     noteInterne: initial.noteInterne || '',
+    consegnaStruttura: initial.consegnaStruttura || '', consegnaIndirizzo: initial.consegnaIndirizzo || '',
   } : empty);
 
   const set = (k, v) => setF(x => ({ ...x, [k]: v }));
@@ -3714,6 +3716,17 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
             </select>
           </div>
 
+          {/* Luogo di consegna (dove alloggia il cliente / dove va il mezzo) */}
+          <div>
+            <label style={lbl}>
+              Luogo di consegna
+              <span style={{ fontWeight: 400, color: 'var(--muted)', marginLeft: 6, fontSize: 10 }}>dove va il mezzo · si conferma alla consegna</span>
+            </label>
+            <StructureSelect partners={partners || []}
+              structureId={f.consegnaStruttura} onStructureChange={v => set('consegnaStruttura', v)}
+              freeText={f.consegnaIndirizzo} onFreeTextChange={v => set('consegnaIndirizzo', v)} />
+          </div>
+
           {/* Note cliente (visibili sul contratto) */}
           <div>
             <label style={lbl}>
@@ -4185,7 +4198,7 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rent
       message: `${[p.clienteCognome, p.clienteNome].filter(Boolean).join(' ')} — ${p.vehicleLabel || 'mezzo'}` });
   }
 
-  function handleConsegna({ vehicleId, vehicleLabel, vehicleTarga, vehicleSchedule, kmPartenza, carburante, noteConsegna }) {
+  function handleConsegna({ vehicleId, vehicleLabel, vehicleTarga, vehicleSchedule, kmPartenza, carburante, noteConsegna, consegnaStruttura, consegnaIndirizzo }) {
     const p = consegnaPreno;
     setPrenotazioni(ps => ps.map(x => x.id === p.id ? {
       ...x,
@@ -4197,6 +4210,9 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rent
       kmPartenza:      kmPartenza      != null ? kmPartenza : (x.kmPartenza ?? null),
       carburante:      carburante      || null,
       noteConsegna:    noteConsegna    || '',
+      // Luogo di consegna (dove va il mezzo) — conferma/aggiorna quello della prenotazione
+      consegnaStruttura: consegnaStruttura || x.consegnaStruttura || '',
+      consegnaIndirizzo: consegnaIndirizzo || x.consegnaIndirizzo || '',
       consegnaAt:      new Date().toISOString(),
       updatedAt:       new Date().toISOString(),
     } : x));
@@ -4877,6 +4893,7 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rent
           fleet={fleet}
           rentmeVehicles={rentmeVehicles}
           fermiFlotta={fermiFlotta}
+          partners={partners}
           onConfirm={handleConsegna}
           onClose={() => setConsegnaPreno(null)}
         />
@@ -5150,7 +5167,7 @@ function SostituzioneModal({ preno, prenotazioni, fleet, rentmeVehicles, onConfi
 // L'operatore sceglie il mezzo esatto (con griglia smart), registra
 // km partenza e livello carburante, poi imposta stato → in_corso.
 // ═══════════════════════════════════════════════════════════════════
-function ConsegnaModal({ preno, prenotazioni, fleet, rentmeVehicles, onConfirm, onClose, fermiFlotta }) {
+function ConsegnaModal({ preno, prenotazioni, fleet, rentmeVehicles, onConfirm, onClose, fermiFlotta, partners }) {
   const today = todayISO();
 
   // Costruisce lista mezzi disponibili (stessa logica di PrenoForm con fix id=fleet.v.id)
@@ -5260,6 +5277,10 @@ function ConsegnaModal({ preno, prenotazioni, fleet, rentmeVehicles, onConfirm, 
   const [kmPartenza,     setKmPartenza]      = useState(preno.kmPartenza ?? '');
   const [carburante,     setCarburante]      = useState(preno.carburante || '');
   const [noteConsegna,   setNoteConsegna]    = useState(preno.noteConsegna || '');
+  // Luogo di consegna (dove va il mezzo): struttura partner o indirizzo libero.
+  // Default dal valore già impostato in prenotazione, se presente.
+  const [consegnaStruttura, setConsegnaStruttura] = useState(preno.consegnaStruttura || '');
+  const [consegnaIndirizzo, setConsegnaIndirizzo] = useState(preno.consegnaIndirizzo || '');
 
   const selVehicle  = candidati.find(v => v.id === selectedId);
   const isAvailable = selVehicle ? selVehicle.freeScore >= 0 : false;
@@ -5291,6 +5312,7 @@ function ConsegnaModal({ preno, prenotazioni, fleet, rentmeVehicles, onConfirm, 
         kmPartenza: kmPartenza !== '' ? Number(kmPartenza) : null,
         carburante,
         noteConsegna,
+        consegnaStruttura, consegnaIndirizzo,
       });
     } else {
       const label = selVehicle ? makeVehicleLabel(selVehicle) : selectedId;
@@ -5303,6 +5325,7 @@ function ConsegnaModal({ preno, prenotazioni, fleet, rentmeVehicles, onConfirm, 
         kmPartenza: kmPartenza !== '' ? Number(kmPartenza) : null,
         carburante,
         noteConsegna,
+        consegnaStruttura, consegnaIndirizzo,
       });
     }
   }
@@ -5475,6 +5498,13 @@ function ConsegnaModal({ preno, prenotazioni, fleet, rentmeVehicles, onConfirm, 
                 <input type="text" readOnly value={formatDate(today)}
                   style={{ ...inp, background: 'var(--surface-2)', color: 'var(--muted)' }} />
               </div>
+            </div>
+
+            {/* Luogo di consegna (struttura/alloggio dove va il mezzo) */}
+            <div style={{ marginTop: 14 }}>
+              <StructureSelect label="Luogo di consegna (dove va il mezzo)" partners={partners || []}
+                structureId={consegnaStruttura} onStructureChange={setConsegnaStruttura}
+                freeText={consegnaIndirizzo} onFreeTextChange={setConsegnaIndirizzo} />
             </div>
 
             {/* Carburante */}
@@ -15837,7 +15867,7 @@ export default function App() {
               {page === 'preventivi'    && <PreventiviPage setPage={setPage} setPrenotazioniPrefill={setPrenotazioniPrefill} listino={listino} fleet={fleet} rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} pushToast={pushToast} fermiFlotta={fermiFlotta} />}
               {page === 'prenotazioni' && <PrenotazioniPage prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} setCassa={setCassa} fleet={fleet} rentmeVehicles={rentmeVehicles} customers={customers} partners={partners} operator={operator} onOpenWizard={openWizard} pushToast={pushToast} prefill={prenotazioniPrefill} onClearPrefill={() => setPrenotazioniPrefill(null)} fermiFlotta={fermiFlotta} rentmePush={rentmeSync.pushBooking} rentmeConnected={rentmeSync.status === 'ok'} agency={agency} />}
               {page === 'contracts'  && <ContractsList contracts={localContracts} operators={operators} onRetry={retryContract} onMarkReturned={markContractReturned} online={online} />}
-              {page === 'fleet'      && <FleetPage fleet={fleet} prenotazioni={prenotazioni} admin={admin} onAddVehicle={() => setModal('newVehicle')} onEditVehicle={(v) => setModal({ type: 'editVehicle', vehicle: v })} onDeleteVehicle={requestDeleteVehicle} onImportCSV={() => setShowCsvImport(true)} onResetFleet={() => setModal({ type: 'confirm', title: 'Azzera flotta?', message: <><strong>Tutti i {fleet.length} veicoli</strong> verranno eliminati dalla flotta. Le prenotazioni esistenti restano invariate. Dopo puoi reimportare con un CSV aggiornato. <strong>Azione irreversibile.</strong></>, confirmLabel: '🗑 Azzera flotta', variant: 'danger', onConfirm: () => { setFleet([]); pushToast({ tone: 'info', title: 'Flotta azzerata', message: 'Tutti i veicoli rimossi. Importa un nuovo CSV per ricaricare.' }); } })} onSetFleet={setFleet} scadenze={scadenze} setScadenze={setScadenze} fermiFlotta={fermiFlotta} setFermiFlotta={setFermiFlotta} rentmeVehicles={rentmeVehicles} manutenzioni={manutenzioni} setManutenzioni={setManutenzioni} />}
+              {page === 'fleet'      && <FleetPage fleet={fleet} prenotazioni={prenotazioni} admin={admin} onAddVehicle={() => setModal('newVehicle')} onEditVehicle={(v) => setModal({ type: 'editVehicle', vehicle: v })} onDeleteVehicle={requestDeleteVehicle} onImportCSV={() => setShowCsvImport(true)} onResetFleet={() => setModal({ type: 'confirm', title: 'Azzera flotta?', message: <><strong>Tutti i {fleet.length} veicoli</strong> verranno eliminati dalla flotta. Le prenotazioni esistenti restano invariate. Dopo puoi reimportare con un CSV aggiornato. <strong>Azione irreversibile.</strong></>, confirmLabel: '🗑 Azzera flotta', variant: 'danger', onConfirm: () => { setFleet([]); pushToast({ tone: 'info', title: 'Flotta azzerata', message: 'Tutti i veicoli rimossi. Importa un nuovo CSV per ricaricare.' }); } })} onSetFleet={setFleet} scadenze={scadenze} setScadenze={setScadenze} fermiFlotta={fermiFlotta} setFermiFlotta={setFermiFlotta} rentmeVehicles={rentmeVehicles} manutenzioni={manutenzioni} setManutenzioni={setManutenzioni} partners={partners} />}
               {page === 'customers'  && <CustomersPage customers={customers} setCustomers={setCustomers} prenotazioni={prenotazioni} admin={admin} onShowQR={(c) => setModal({ type: 'qr', customer: c })} onNewWithCustomer={openWizard} onAddCustomer={() => setModal('newCustomer')} onEditCustomer={(c) => setModal({ type: 'editCustomer', customer: c })} onDeleteCustomer={deleteCustomer} onShowStorico={(c) => setStorioClienteId(c.id)} />}
               {page === 'partners'   && <PartnersPage partners={partners} admin={admin} onAddPartner={() => setModal('newPartner')} onEditPartner={(p) => setModal({ type: 'editPartner', partner: p })} onDeletePartner={requestDeletePartner} />}
               {page === 'listino'    && <div style={{padding:'28px 32px',maxWidth:900,margin:'0 auto'}}>
@@ -17575,7 +17605,7 @@ function ManutenzioniModal({ vehicle, manutenzioni, setManutenzioni, onClose }) 
 // ═══════════════════════════════════════════════════════════════════
 // FLEET
 // ═══════════════════════════════════════════════════════════════════
-function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, onDeleteVehicle, onImportCSV, onResetFleet, onSetFleet, scadenze, setScadenze, fermiFlotta, setFermiFlotta, rentmeVehicles, manutenzioni, setManutenzioni }) {
+function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, onDeleteVehicle, onImportCSV, onResetFleet, onSetFleet, scadenze, setScadenze, fermiFlotta, setFermiFlotta, rentmeVehicles, manutenzioni, setManutenzioni, partners }) {
   const [typeFilter, setTypeFilter] = useState('all');
   const [categoriaFilter, setCategoriaFilter] = useState(null);
   const [statusFilter, setStatusFilter] = useState('all');
@@ -17827,11 +17857,14 @@ function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, on
           .filter(p => p.stato === 'in_corso' && p.vehicleId)
           .map(p => {
             const v = (fleet || []).find(fv => matchVehicle(p.vehicleId, fv.id, fv.targa)) || {};
+            const partner = (partners || []).find(s => s.id === p.consegnaStruttura);
+            const luogo = partner?.nome || p.consegnaIndirizzo || '';
             return {
               tipo: canonicalTipo(v) || v.tipo || 'altro',
               targa: v.targa || p.vehicleTarga || p.vehicleId,
               modello: v.modello || v.marca || p.vehicleLabel || '',
               cliente: `${p.clienteCognome || ''} ${p.clienteNome || ''}`.trim() || 'Cliente',
+              luogo,
               al: p.al,
             };
           });
@@ -17869,7 +17902,9 @@ function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, on
                           return (
                             <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '5px 0', borderTop: i === 0 ? 'none' : '1px solid var(--border)' }}>
                               <span className="mono" style={{ fontSize: 10, fontWeight: 700, padding: '1px 5px', background: 'var(--ink)', color: 'var(--paper)', borderRadius: 3, flexShrink: 0 }}>{o.targa}</span>
-                              <span style={{ fontSize: 12, color: 'var(--muted)', minWidth: 0, flexShrink: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.modello}</span>
+                              <span style={{ fontSize: 12, color: 'var(--muted)', minWidth: 0, flexShrink: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {o.modello}{o.luogo ? ` · 📍 ${o.luogo}` : ''}
+                              </span>
                               <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)', marginLeft: 'auto', whiteSpace: 'nowrap' }}>{o.cliente}</span>
                               <span style={{ fontSize: 11, fontWeight: 600, color: r.color, minWidth: 92, textAlign: 'right' }}>{r.txt}</span>
                             </div>
@@ -17880,7 +17915,7 @@ function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, on
                   );
                 })}
                 <div style={{ fontSize: 10, color: 'var(--muted)', borderTop: '1px solid var(--border)', paddingTop: 8 }}>
-                  ℹ︎ La struttura/alloggio del cliente non è ancora un dato registrato nelle prenotazioni — si può aggiungere (vedi nota allo sviluppatore).
+                  📍 = luogo di consegna. Impostalo in prenotazione o alla consegna del mezzo perché compaia qui.
                 </div>
               </div>
             )}
@@ -20801,8 +20836,9 @@ function prenoToContractData(preno, fleet, customers) {
     consegnaData: formatDate(preno.al),
     ritiroStruttura: '',
     ritiroIndirizzo: '',
-    consegnaStruttura: '',
-    consegnaIndirizzo: '',
+    // Prefill dal "Luogo di consegna" salvato sulla prenotazione (se impostato)
+    consegnaStruttura: preno.consegnaStruttura || '',
+    consegnaIndirizzo: preno.consegnaIndirizzo || '',
     pagamento: pagoMap[preno.metodoPagamento] || 'T',
     firma: preno.firma || null, // propaga firma digitale se già acquisita sulla prenotazione
     cargosOverride: 'auto',
