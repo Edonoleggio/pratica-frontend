@@ -12740,6 +12740,107 @@ function VoliLampedusaWidget() {
   );
 }
 
+// ── Widget "Collegamenti via mare" (traghetti/aliscafi) ────────────
+// Tracking AIS live delle navi per Lampedusa dal backend (/api/navi/lampedusa).
+// Online-only, degrada pulito come il widget voli.
+function NaviLampedusaWidget() {
+  const [state, setState] = useState({ loading: true, data: null, error: null, at: null });
+  const [now, setNow] = useState(() => Date.now());
+  const mounted = useRef(true);
+
+  const load = useCallback(async () => {
+    try {
+      const r = await fetch(`${getApiBase()}/navi/lampedusa`, { signal: AbortSignal.timeout(15000) });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const data = await r.json();
+      if (mounted.current) setState({ loading: false, data, error: null, at: Date.now() });
+    } catch (e) {
+      if (mounted.current) setState(s => ({ ...s, loading: false, error: e.message || 'errore', at: Date.now() }));
+    }
+  }, []);
+
+  useEffect(() => {
+    mounted.current = true;
+    load();
+    const idLoad = setInterval(load, 3 * 60 * 1000);
+    const idTick = setInterval(() => setNow(Date.now()), 60 * 1000);
+    return () => { mounted.current = false; clearInterval(idLoad); clearInterval(idTick); };
+  }, [load]);
+
+  const { loading, data, error, at } = state;
+  const vessels = data?.vessels || [];
+  const kindIcon = (k) => k === 'aliscafo' ? '🛥' : k === 'traghetto' ? '⛴' : '🚢';
+  const etaTxt = (v) => {
+    if (v.atPort) return null;
+    if (v.etaMin != null && v.etaMin > 0) {
+      const m = v.etaMin; return m < 60 ? `tra ${m} min` : `tra ${Math.floor(m/60)}h ${String(m%60).padStart(2,'0')}m`;
+    }
+    return null;
+  };
+  const statoPill = (v) => {
+    const map = {
+      'a Lampedusa':       { bg: 'var(--status-conf-bg)',  fg: 'var(--status-conf-fg)' },
+      'in avvicinamento':  { bg: 'var(--status-corso-bg)', fg: 'var(--status-corso-fg)' },
+      'in navigazione':    { bg: 'var(--sea-soft)',        fg: 'var(--sea)' },
+      'ormeggiata':        { bg: 'var(--surface-2)',       fg: 'var(--ink-2)' },
+      'alla fonda':        { bg: 'var(--surface-2)',       fg: 'var(--ink-2)' },
+      'ferma':             { bg: 'var(--surface-2)',       fg: 'var(--muted)' },
+    };
+    const t = map[v.stato] || { bg: 'var(--surface-2)', fg: 'var(--ink-2)' };
+    return <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 9px', borderRadius: 999, background: t.bg, color: t.fg, whiteSpace: 'nowrap', textTransform: 'capitalize' }}>{v.stato}</span>;
+  };
+
+  const Card = ({ children }) => (
+    <div className="card-paper" style={{ padding: '14px 16px', marginBottom: 24 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+        <span className="pulse" style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--sea)', display: 'inline-block', flexShrink: 0 }} />
+        <span style={{ fontFamily: 'var(--font-serif)', fontWeight: 600, fontSize: 15, color: 'var(--ink)' }}>Collegamenti via mare</span>
+        <span className="label" style={{ color: 'var(--edo-sea)' }}>live</span>
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+          {at && <span style={{ fontSize: 10, color: 'var(--muted)' }}>agg. {new Date(at).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}</span>}
+          <button type="button" onClick={() => { setState(s => ({ ...s, loading: !s.data })); load(); }} title="Aggiorna"
+            style={{ border: '1px solid var(--border)', background: 'transparent', borderRadius: 6, padding: '3px 7px', cursor: 'pointer', color: 'var(--muted)', fontSize: 11 }}>↻</button>
+        </div>
+      </div>
+      {children}
+    </div>
+  );
+
+  if (loading) return <Card><div style={{ fontSize: 12, color: 'var(--muted)' }}>Carico le navi…</div></Card>;
+  if (error && !data) return <Card><div style={{ fontSize: 12, color: 'var(--muted)' }}>Navi non disponibili ora (offline o servizio non raggiungibile).</div></Card>;
+  if (data && !data.configured) return (
+    <Card><div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.5 }}>
+      Tracking navi non ancora collegato. Imposta la chiave <strong>VESSELAPI_KEY</strong> (e gli MMSI delle navi) nelle env del backend su Render.
+    </div></Card>
+  );
+  if (vessels.length === 0) return <Card><div style={{ fontSize: 12, color: 'var(--muted)' }}>Nessuna nave monitorata.</div></Card>;
+
+  return (
+    <Card>
+      <div style={{ display: 'flex', flexDirection: 'column' }}>
+        {vessels.map((v, i) => (
+          <div key={v.mmsi || i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '9px 0',
+            borderTop: i === 0 ? 'none' : '1px solid var(--border)' }}>
+            <span style={{ fontSize: 20, flexShrink: 0, width: 24, textAlign: 'center' }}>{kindIcon(v.kind)}</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textTransform: 'capitalize' }}>
+                {(v.name || `MMSI ${v.mmsi}`).toLowerCase()}
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--muted)' }}>
+                {v.ok
+                  ? [v.kind, v.distanceKm != null ? `${v.distanceKm} km da Lampedusa` : null, v.sog != null ? `${Math.round(v.sog)} nodi` : null, etaTxt(v)].filter(Boolean).join(' · ')
+                  : 'posizione non disponibile'}
+              </div>
+            </div>
+            {v.ok && statoPill(v)}
+          </div>
+        ))}
+      </div>
+      <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 8 }}>Posizioni AIS · l'ETA è stimata dalla rotta/velocità.</div>
+    </Card>
+  );
+}
+
 function OggiPage({ prenotazioni, setPrenotazioni, fleet, scadenze, customers, setPage, rentmeVehicles, setPrenotazioniPrefill, pushToast,
   operator, fermiFlotta, rentmePush, rentmeConnected, manutenzioni }) {
   const [now, setNow] = useState(() => new Date());
@@ -13160,6 +13261,9 @@ function OggiPage({ prenotazioni, setPrenotazioni, fleet, scadenze, customers, s
 
       {/* ── VOLI LAMPEDUSA OGGI ─────────────────────────────────────── */}
       <VoliLampedusaWidget />
+
+      {/* ── NAVI (traghetti/aliscafi) LAMPEDUSA ─────────────────────── */}
+      <NaviLampedusaWidget />
 
       {/* ── WALK-IN ─────────────────────────────────────────────────── */}
       {(() => {
