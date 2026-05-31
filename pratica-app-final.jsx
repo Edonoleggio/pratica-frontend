@@ -13898,7 +13898,7 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
               background: vi % 2 === 1 ? 'var(--surface-2)' : 'var(--bg)' }}>
 
               {/* Celle giorni */}
-              {days.map(d => {
+              {days.map((d, dayIdx) => {
                 const preno = cellMap[`${v.id}|${d}`];
                 // Fermo programmato — visibile solo se la cella non è già occupata da prenotazione
                 const fermo = !preno ? fermiMap[`${v.id}|${d}`] : null;
@@ -13917,6 +13917,19 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
                 const isDimmed = preno && highlightCliente && prenoClienteKey !== highlightCliente;
                 const dt      = new Date(d + 'T12:00:00');
                 const isWeekend = [0, 6].includes(dt.getDay());
+                // Larghezza max etichetta: la barra + le celle LIBERE successive,
+                // fino alla prossima prenotazione → il nome non invade mai la
+                // barra adiacente (niente sovrapposizioni), ma usa lo spazio libero.
+                let labelMaxW = COL_W;
+                if (isFirstVisible) {
+                  let span = 0;
+                  for (let i = dayIdx; i < days.length; i++) {
+                    const cp = cellMap[`${v.id}|${days[i]}`];
+                    if (i > dayIdx && cp && cp.id !== preno.id) break;
+                    span++;
+                  }
+                  labelMaxW = Math.max(COL_W - 4, span * COL_W - (isStart ? 5 : 3) - 2);
+                }
 
                 return (
                   <div key={d}
@@ -13994,7 +14007,11 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
                             fontSize: 9, fontWeight: 700, color,
                             paddingLeft: isStart ? 5 : 3,
                             whiteSpace: 'nowrap',
-                            overflow: 'visible',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            maxWidth: labelMaxW,
+                            flexShrink: 0,
+                            display: 'block',
                             pointerEvents: 'none',
                             position: 'relative',
                             zIndex: 3,
