@@ -14875,91 +14875,38 @@ export default function App() {
     pushToast && pushToast({ tone: 'success', title: 'Backup esportato', message: `${prenotazioni.length} pren · ${fleet.length} veicoli · ${customers.length} clienti` });
   }, [prenotazioni, fleet, customers, cassa, scadenze, operators, partners, agency, listino, stagioni, pushToast]);
 
-  // Backup su Google Drive — usa GIS tokenClient (implicit flow)
-  // Il file viene caricato/aggiornato nella cartella radice di Drive dell'utente.
+  // Backup su Google Drive — l'upload lo fa il BACKEND (refresh token lato server):
+  // il sito invia solo i dati, niente più popup Google. Il collegamento si fa una
+  // volta sola con il pulsante "Collega Google Drive" (apre /google/connect).
   const driveBackup = useCallback(async () => {
-    if (!driveClientId) {
-      pushToast?.({ tone: 'warning', title: 'Client ID mancante', message: 'Configura il Client ID Google Drive in Impostazioni → Backup Google Drive' });
-      return;
-    }
-    // Carica GIS dinamicamente se non presente
-    const loadGIS = () => new Promise((resolve, reject) => {
-      if (window.google?.accounts?.oauth2) { resolve(); return; }
-      const s = document.createElement('script');
-      s.src = 'https://accounts.google.com/gsi/client';
-      s.onload = resolve;
-      s.onerror = reject;
-      document.head.appendChild(s);
-    });
-    try {
-      await loadGIS();
-    } catch {
-      pushToast?.({ tone: 'error', title: 'Errore rete', message: 'Impossibile caricare Google Identity Services' });
-      return;
-    }
-    // Richiede token con scope Drive
-    const getToken = () => new Promise((resolve, reject) => {
-      const client = window.google.accounts.oauth2.initTokenClient({
-        client_id: driveClientId,
-        scope: 'https://www.googleapis.com/auth/drive.file',
-        callback: (tokenResponse) => {
-          if (tokenResponse.error) { reject(new Error(tokenResponse.error)); return; }
-          resolve(tokenResponse.access_token);
-        },
-        // Scatta se l'utente chiude il popup senza autorizzare
-        error_callback: (err) => {
-          reject(new Error(err?.type === 'popup_closed' ? 'Popup chiuso senza autorizzare' : (err?.type || 'Errore autorizzazione')));
-        },
-      });
-      client.requestAccessToken();
-    });
-    let token;
-    try {
-      token = await getToken();
-    } catch (e) {
-      pushToast?.({ tone: 'error', title: 'Autorizzazione negata', message: String(e.message || e) });
-      return;
-    }
-    // Salva il token in cache (valido ~55 min) per i backup automatici successivi
-    driveTokenCacheRef.current = { token, expiresAt: Date.now() + 55 * 60 * 1000 };
-    // Costruisce il payload backup
     const backupObj = {
       version: APP_VERSION.number,
       exportedAt: new Date().toISOString(),
       prenotazioni, fleet, customers, cassa, scadenze,
       operators, partners, agency, listino, stagioni, manutenzioni,
     };
-    const jsonStr  = JSON.stringify(backupObj, null, 2);
-    const fileName = `edonoleggio-backup-${todayISO()}.json`;
-    const boundary = '-------boundary123456789';
-    const body = [
-      `--${boundary}`,
-      'Content-Type: application/json; charset=UTF-8',
-      '',
-      JSON.stringify({ name: fileName, mimeType: 'application/json', parents: [] }),
-      `--${boundary}`,
-      'Content-Type: application/json',
-      '',
-      jsonStr,
-      `--${boundary}--`,
-    ].join('\r\n');
     try {
-      const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+      const res = await fetch(`${getApiBase()}/google/backup`, {
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': `multipart/related; boundary="${boundary}"`,
-        },
-        body,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(backupObj),
       });
+      if (res.status === 409) {
+        pushToast?.({ tone: 'warning', title: 'Google Drive non collegato', message: 'Clicca "Collega Google Drive" (serve una sola volta).' });
+        return;
+      }
+      if (res.status === 503) {
+        pushToast?.({ tone: 'warning', title: 'Drive non configurato sul server', message: 'Mancano le credenziali Google sul backend.' });
+        return;
+      }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const file = await res.json();
+      const data = await res.json();
       setDriveLastBackup(new Date().toISOString());
-      pushToast?.({ tone: 'success', title: '✅ Backup su Drive completato', message: `File: ${fileName} · ID: ${file.id?.slice(0, 8)}…` });
+      pushToast?.({ tone: 'success', title: '✅ Backup su Drive completato', message: `File: ${data.filename || 'backup'}` });
     } catch (e) {
-      pushToast?.({ tone: 'error', title: 'Errore upload Drive', message: String(e.message || e) });
+      pushToast?.({ tone: 'error', title: 'Errore backup Drive', message: String(e.message || e) });
     }
-  }, [driveClientId, prenotazioni, fleet, customers, cassa, scadenze, operators, partners, agency, listino, stagioni, manutenzioni, setDriveLastBackup, pushToast]);
+  }, [prenotazioni, fleet, customers, cassa, scadenze, operators, partners, agency, listino, stagioni, manutenzioni, setDriveLastBackup, pushToast]);
 
   // ── Backup su Render backend ───────────────────────────────────────────────
   // Se backupToken è configurato, viene inviato come Bearer header.
@@ -15053,62 +15000,19 @@ export default function App() {
         } catch { /* silenzioso */ }
       }
 
-      // ── 2. Backup Drive (solo se abilitato) ─────────────────────────────
-      if (enabled && clientId) {
-        let token = null;
-        // a) Prova token dalla cache (valido ~55 min)
-        const cached = driveTokenCacheRef.current;
-        if (cached && cached.expiresAt > Date.now()) {
-          token = cached.token;
-        } else {
-          // b) Tenta token silenzioso via GIS (prompt:none)
-          try {
-            await new Promise((resolve, reject) => {
-              if (window.google?.accounts?.oauth2) { resolve(); return; }
-              const s = document.createElement('script');
-              s.src = 'https://accounts.google.com/gsi/client';
-              s.onload = resolve; s.onerror = reject;
-              document.head.appendChild(s);
-            });
-            token = await new Promise((resolve) => {
-              try {
-                const client = window.google.accounts.oauth2.initTokenClient({
-                  client_id: clientId,
-                  scope: 'https://www.googleapis.com/auth/drive.file',
-                  callback: (r) => {
-                    if (!r.error) driveTokenCacheRef.current = { token: r.access_token, expiresAt: Date.now() + 55 * 60 * 1000 };
-                    resolve(r.error ? null : r.access_token);
-                  },
-                  error_callback: () => resolve(null),
-                });
-                client.requestAccessToken({ prompt: 'none' });
-              } catch { resolve(null); }
-            });
-          } catch { /* GIS non caricabile */ }
-        }
-
-        if (token) {
-          const jsonStr  = JSON.stringify(backupObj, null, 2);
-          const fileName = `edonoleggio-backup-${todayISO()}.json`;
-          const boundary = '-------boundary123456789';
-          const body = [
-            `--${boundary}`, 'Content-Type: application/json; charset=UTF-8', '',
-            JSON.stringify({ name: fileName, mimeType: 'application/json', parents: [] }),
-            `--${boundary}`, 'Content-Type: application/json', '',
-            jsonStr, `--${boundary}--`,
-          ].join('\r\n');
-          try {
-            const r = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
-              method: 'POST',
-              headers: { Authorization: `Bearer ${token}`, 'Content-Type': `multipart/related; boundary="${boundary}"` },
-              body,
-            });
-            if (r.ok) {
-              setDriveLastBackup(new Date().toISOString());
-              results.push('☁️ Drive');
-            }
-          } catch { /* silenzioso */ }
-        }
+      // ── 2. Backup Drive — lato server (refresh token), niente popup ──────
+      if (enabled) {
+        try {
+          const r = await fetch(`${getApiBase()}/google/backup`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(backupObj),
+          });
+          if (r.ok) {
+            setDriveLastBackup(new Date().toISOString());
+            results.push('☁️ Drive');
+          }
+        } catch { /* silenzioso */ }
       }
 
       if (results.length > 0) {
@@ -18953,27 +18857,21 @@ function SettingsPage({ operator, operators, cargosConfig, admin, backendStatus,
           <span className="font-semibold text-sm" id="drive-heading">Backup Google Drive</span>
         </div>
         <p className="text-xs mb-4" style={{ color: 'var(--ink-2)' }}>
-          Carica un backup JSON su Google Drive. Richiede un <strong>Client ID</strong> OAuth2 dalla Google Cloud Console (tipo "Web application" con origine autorizzata = URL di questa app).
+          Backup automatici su Google Drive <strong>senza popup ricorrenti</strong>: colleghi il tuo Google <strong>una volta sola</strong> e il server fa i backup da solo.
           Ultimo backup: <strong>{driveLastBackup ? new Date(driveLastBackup).toLocaleString('it-IT') : '—'}</strong>
         </p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <input
-              type="text"
-              className="input mono"
-              placeholder="Google Client ID (es. 123456789-xxx.apps.googleusercontent.com)"
-              value={driveClientId || ''}
-              onChange={e => setDriveClientId(e.target.value.trim())}
-              style={{ flex: 1, fontSize: 12 }}
-            />
-          </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button type="button"
+              onClick={() => window.open(`${getApiBase()}/google/connect`, '_blank')}
+              className="flex items-center gap-2 px-4 py-2 rounded text-sm font-medium"
+              style={{ border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--ink-1)', cursor: 'pointer' }}>
+              🔗 Collega Google Drive
+            </button>
+            <button type="button"
               onClick={onDriveBackup}
-              disabled={!driveClientId}
-              className="flex items-center gap-2 px-4 py-2 rounded text-sm border font-medium disabled:opacity-40"
-              style={{ border: 'none', background: driveClientId ? '#4285f4' : 'var(--surface-2)',
-                color: driveClientId ? 'white' : 'var(--muted)', cursor: driveClientId ? 'pointer' : 'default' }}>
+              className="flex items-center gap-2 px-4 py-2 rounded text-sm border font-medium"
+              style={{ border: 'none', background: '#4285f4', color: 'white', cursor: 'pointer' }}>
               ☁️ Backup su Drive ora
             </button>
             <div style={{ fontSize: 11, color: 'var(--muted)', alignSelf: 'center' }}>
@@ -18982,13 +18880,13 @@ function SettingsPage({ operator, operators, cargosConfig, admin, backendStatus,
           </div>
           {/* Toggle backup automatico */}
           <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: driveClientId ? 'pointer' : 'default', opacity: driveClientId ? 1 : 0.45 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
               <div
                 role="switch"
                 aria-checked={driveAutoEnabled}
-                tabIndex={driveClientId ? 0 : -1}
-                onClick={() => driveClientId && setDriveAutoEnabled(v => !v)}
-                onKeyDown={e => (e.key === ' ' || e.key === 'Enter') && driveClientId && setDriveAutoEnabled(v => !v)}
+                tabIndex={0}
+                onClick={() => setDriveAutoEnabled(v => !v)}
+                onKeyDown={e => (e.key === ' ' || e.key === 'Enter') && setDriveAutoEnabled(v => !v)}
                 style={{
                   width: 40, height: 22, borderRadius: 11, flexShrink: 0,
                   background: driveAutoEnabled ? '#4285f4' : 'var(--surface-3)',
@@ -19007,8 +18905,8 @@ function SettingsPage({ operator, operators, cargosConfig, admin, backendStatus,
             </label>
             <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4, paddingLeft: 50 }}>
               {driveAutoEnabled
-                ? '✅ Attivo — la pagina deve restare aperta. Il backup avviene silenziosamente se la sessione Google è ancora valida (~1 ora dal ultimo accesso manuale).'
-                : 'Esegui prima un backup manuale per autorizzare la sessione Google, poi attiva il backup automatico.'}
+                ? '✅ Attivo — la pagina deve restare aperta. Il backup su Drive lo fa il server, senza popup (richiede aver collegato Google una volta col pulsante sopra).'
+                : 'Collega Google una volta con il pulsante sopra, poi attiva il backup automatico: il server farà il resto senza popup.'}
             </p>
           </div>
         </div>
