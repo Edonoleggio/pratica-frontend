@@ -13614,33 +13614,22 @@ function GlobalSearchModal({ prenotazioni, customers, contracts, fleet, onClose,
 // CALENDARIO FLOTTA — griglia Gantt mezzo × giorno (4 settimane)
 // ═══════════════════════════════════════════════════════════════════
 function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, setPrenotazioniPrefill, fermiFlotta }) {
-  const [monthOffset, setMonthOffset] = useState(0);
+  const [weekOffset, setWeekOffset] = useState(0);
   const [tipoFilter, setTipoFilter] = useState('');         // filtro tipo mezzo
   const [selectedCell, setSelectedCell] = useState(null);  // {preno, vehicleId, day}
   const [selectedVehicle, setSelectedVehicle] = useState(null); // veicolo cliccato sulla label
   const [highlightCliente, setHighlightCliente] = useState(null); // chiave cliente evidenziata
   const today = todayISO();
+  const COLS = 28; // 4 settimane
 
-  // Vista mensile: tutti i giorni del mese selezionato (monthOffset: 0=corrente, ±1=prec/succ).
+  // Vista a 4 settimane ancorata al lunedì della settimana corrente + weekOffset
   const days = useMemo(() => {
-    const base = new Date(today + 'T12:00:00');
-    const year = base.getFullYear();
-    const month = base.getMonth() + monthOffset;
-    const daysInMonth = new Date(year, month + 1, 0).getDate(); // 28–31 = ultimo giorno del mese
-    return Array.from({ length: daysInMonth }, (_, i) => {
-      // Mezzogiorno per evitare l'offset UTC notturno
-      const d = new Date(year, month, 1 + i, 12, 0, 0);
+    return Array.from({ length: COLS }, (_, i) => {
+      const d = new Date(today + 'T12:00:00');
+      d.setDate(d.getDate() + weekOffset * 7 + i - d.getDay() + 1);
       return d.toISOString().slice(0, 10);
     });
-  }, [monthOffset, today]);
-  const COLS = days.length; // numero di giorni del mese visualizzato
-
-  // Etichetta "Mese Anno" del periodo mostrato (es. "Giugno 2026")
-  const meseLabel = useMemo(() => {
-    const base = new Date(today + 'T12:00:00');
-    const d = new Date(base.getFullYear(), base.getMonth() + monthOffset, 1);
-    return d.toLocaleDateString('it-IT', { month: 'long', year: 'numeric' });
-  }, [monthOffset, today]);
+  }, [weekOffset, today]);
 
   const STATO_COLOR = {
     confermata: '#2e6e3e',
@@ -13650,8 +13639,12 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
 
   // Preferisce rentmeVehicles (fonte EDOX viva) se disponibili; fallback su fleet locale
   const fleetList = useMemo(() => {
+    const dedupe = arr => {
+      const seen = new Set();
+      return arr.filter(v => { if (seen.has(v.id)) return false; seen.add(v.id); return true; });
+    };
     if (rentmeVehicles && rentmeVehicles.length > 0) {
-      return rentmeVehicles
+      return dedupe(rentmeVehicles
         .filter(v => v.targa)                          // salta veicoli senza targa
         .map(v => ({
           id:      (v.targa || '').trim().toUpperCase(), // targa = vehicleId univoco
@@ -13661,11 +13654,11 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
           targa:   (v.targa || '').trim().toUpperCase(),
           status:  'available',
         }))
-        .sort((a, b) => (a.tipo || '').localeCompare(b.tipo || '') || (a.targa || '').localeCompare(b.targa || ''));
+        .sort((a, b) => (a.tipo || '').localeCompare(b.tipo || '') || (a.targa || '').localeCompare(b.targa || '')));
     }
-    return (fleet || [])
+    return dedupe((fleet || [])
       .filter(v => v.status !== 'fuori_uso')
-      .sort((a, b) => (a.tipo || '').localeCompare(b.tipo || '') || (a.targa || '').localeCompare(b.targa || ''));
+      .sort((a, b) => (a.tipo || '').localeCompare(b.tipo || '') || (a.targa || '').localeCompare(b.targa || '')));
   }, [fleet, rentmeVehicles]);
 
   const prenoList = useMemo(() =>
@@ -13729,34 +13722,9 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
     return m;
   }, [fermiFlotta, fleetFiltered, days]);
 
-  // Larghezza colonna giorno DINAMICA: le 4 settimane riempiono lo spazio
-  // disponibile (minimo 36px). Su schermi larghi le colonne si allargano così
-  // entrano tutti i giorni senza scroll né vuoto; su schermi stretti restano a
-  // 36px e l'area giorni scorre. COL_W è usato anche dalle celle/barre, che
-  // restano quindi sempre allineate.
   const ROW_H = 44;
   const LABEL_W = 170;
-  const COL_W_MIN = 18; // minimo basso: l'intero mese si adatta alla pagina senza scroll
-                        // (le colonne si restringono fin qui; sotto, scroll solo su schermi molto piccoli)
-  const gridRef = useRef(null);
-  const [COL_W, setColW] = useState(48);
-  useEffect(() => {
-    const el = gridRef.current;
-    if (!el) return;
-    const compute = () => {
-      // el = area giorni reale (senza la colonna mezzi). -COLS tiene conto del
-      // bordo sinistro (1px) di ogni cella, -2 di margine: l'intero mese entra
-      // senza micro-scroll residuo.
-      // clientWidth dell'area giorni esclude già l'eventuale scrollbar verticale.
-      // -1px per cella (bordo sinistro) → l'intero mese entra senza scroll.
-      const avail = el.clientWidth;
-      if (avail > 0) setColW(Math.max(COL_W_MIN, Math.floor(avail / COLS) - 1));
-    };
-    compute();
-    const ro = new ResizeObserver(compute);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [COLS]);
+  const COL_W = 36;
 
   // Mesi — etichetta quando cambia
   const monthChanges = useMemo(() => {
@@ -13801,17 +13769,16 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
             </button>
           ))}
           <div style={{ width: 1, height: 20, background: 'var(--border)', margin: '0 2px' }} />
-          {monthOffset !== 0 && (
-            <button type="button" onClick={e => { e.stopPropagation(); setMonthOffset(0); }} style={{
+          {weekOffset !== 0 && (
+            <button type="button" onClick={e => { e.stopPropagation(); setWeekOffset(0); }} style={{
               padding: '5px 12px', borderRadius: 6, fontSize: 12, cursor: 'pointer',
               border: 'none', background: 'var(--ink)', color: 'var(--bg)', fontWeight: 600,
             }}>Oggi</button>
           )}
-          <button type="button" onClick={e => { e.stopPropagation(); setMonthOffset(m => m - 1); }} style={{
+          <button type="button" onClick={e => { e.stopPropagation(); setWeekOffset(w => w - 1); }} style={{
             padding: '5px 14px', borderRadius: 6, fontSize: 13, cursor: 'pointer',
             border: '1px solid var(--border)', background: 'transparent', color: 'var(--ink-2)' }}>←</button>
-          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink-1)', minWidth: 130, textAlign: 'center', textTransform: 'capitalize' }}>{meseLabel}</span>
-          <button type="button" onClick={e => { e.stopPropagation(); setMonthOffset(m => m + 1); }} style={{
+          <button type="button" onClick={e => { e.stopPropagation(); setWeekOffset(w => w + 1); }} style={{
             padding: '5px 14px', borderRadius: 6, fontSize: 13, cursor: 'pointer',
             border: '1px solid var(--border)', background: 'transparent', color: 'var(--ink-2)' }}>→</button>
         </div>
@@ -13858,7 +13825,7 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
         </div>
 
         {/* ── Area giorni SCROLLABILE ────────────────────────────── */}
-        <div ref={gridRef} style={{ flex: 1, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+        <div style={{ flex: 1, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
         <div style={{ minWidth: COLS * COL_W }}>
 
           {/* Header mesi — senza colonna label (è fissa a sinistra) */}
