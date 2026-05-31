@@ -13845,8 +13845,11 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
         </div>
 
         {/* ── Area giorni SCROLLABILE ────────────────────────────── */}
-        <div ref={gridRef} style={{ flex: 1, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-        <div style={{ minWidth: COLS * COL_W }}>
+        <div ref={gridRef} style={{ flex: 1, minWidth: 0, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+        {/* overflow:hidden ritaglia al bordo destro le etichette cliente che
+            "fluttuano" (overflow:visible) sopra le celle: i nomi lunghi vicino
+            all'ultimo giorno non sbordano più creando scroll e spazio vuoto. */}
+        <div style={{ width: COLS * COL_W, overflow: 'hidden' }}>
 
           {/* Header mesi — senza colonna label (è fissa a sinistra) */}
           <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', background: 'var(--surface-2)' }}>
