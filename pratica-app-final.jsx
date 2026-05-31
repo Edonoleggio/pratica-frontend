@@ -2768,8 +2768,10 @@ function PrenoCard({ p, onEdit, onConvert, onDelete, onFoto, onContratto, onFirm
 function findBestVehicleCombination(tipo, dal, al, vehicles, prenotazioni, excludeBookingId = null) {
   if (!dal || !al || !tipo) return null;
 
-  // Pool: mezzi del tipo richiesto
-  const pool = (vehicles || []).filter(v => (!tipo || v.tipo === tipo) && v.id);
+  // Pool: mezzi del tipo richiesto — confronto su canonicalTipo (moto≡scooter,
+  // bicicletta→ebike/bici) così una prenotazione "moto" trova i veicoli "scooter".
+  const tipoCanon = canonicalTipo({ tipo });
+  const pool = (vehicles || []).filter(v => (!tipoCanon || canonicalTipo(v) === tipoCanon) && v.id);
 
   // Prenotazioni attive (escluso quella in modifica)
   const activePreno = (prenotazioni || []).filter(p =>
@@ -5176,8 +5178,10 @@ function ConsegnaModal({ preno, prenotazioni, fleet, rentmeVehicles, onConfirm, 
   // Calcola quanti giorni liberi ha ogni mezzo a partire dal dal del noleggio
   const vehicleFitScore = useMemo(() => {
     const scores = {};
-    const tipo = preno.vehicleType || preno.tipo || '';
-    const candidates = allVehicles.filter(v => !tipo || v.tipo === tipo);
+    // Confronto tipo su canonicalTipo (moto≡scooter, ecc.): una prenotazione
+    // "moto" deve trovare i veicoli "scooter" e viceversa.
+    const tipoCanon = canonicalTipo({ tipo: preno.vehicleType || preno.tipo || '' });
+    const candidates = allVehicles.filter(v => !tipoCanon || canonicalTipo(v) === tipoCanon);
     const dalDate = preno.dal;
     const alDate  = preno.al;
     const nNoleggio = Math.round((new Date(alDate+'T12:00:00') - new Date(dalDate+'T12:00:00')) / 86400000) + 1;
@@ -5220,11 +5224,12 @@ function ConsegnaModal({ preno, prenotazioni, fleet, rentmeVehicles, onConfirm, 
 
   // Tipologie disponibili (filtra per tipo del noleggio)
   const tipo = preno.vehicleType || preno.tipo || '';
+  const tipoCanon = canonicalTipo({ tipo });
   const nNoleggio = Math.round((new Date(preno.al+'T12:00:00') - new Date(preno.dal+'T12:00:00')) / 86400000) + 1;
 
   const candidati = useMemo(() => {
     return allVehicles
-      .filter(v => !tipo || v.tipo === tipo)
+      .filter(v => !tipoCanon || canonicalTipo(v) === tipoCanon)
       .map(v => ({ ...v, freeScore: vehicleFitScore[v.id] ?? 0 }))
       .sort((a, b) => {
         // -1 = occupato → in fondo
