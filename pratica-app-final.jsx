@@ -13811,7 +13811,8 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
         <div>
-          <h1 style={{ margin: 0, fontSize: 20, fontFamily: 'var(--font-serif)', fontWeight: 600 }}>Calendario flotta</h1>
+          <div className="label" style={{ color: 'var(--edo-sea)', marginBottom: 2 }}>4 settimane</div>
+          <h1 style={{ margin: 0, fontSize: 22, fontFamily: 'var(--font-serif)', fontWeight: 600, letterSpacing: '-0.01em' }}>Calendario flotta</h1>
           <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--muted)' }}>
             {fleetFiltered.length} mezzi · {prenoList.length} prenotazioni attive
           </p>
@@ -13875,8 +13876,20 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
                   whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {vr.modello || vr.marca || vr.tipo || '—'}
                 </div>
-                <div style={{ fontSize: 10, color: 'var(--muted)', fontFamily: 'monospace', letterSpacing: '.05em' }}>
-                  {vr.targa || '—'}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2, minWidth: 0 }}>
+                  {vr.targa && (
+                    <span className="mono" style={{ fontSize: 9, fontWeight: 600, padding: '1px 5px',
+                      background: 'var(--ink)', color: 'var(--paper)', borderRadius: 3, flexShrink: 0,
+                      letterSpacing: '.04em' }}>
+                      {vr.targa}
+                    </span>
+                  )}
+                  {(vr.categoria || canonicalTipo(v)) && (
+                    <span style={{ fontSize: 9, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase',
+                      letterSpacing: '.06em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {vr.categoria || canonicalTipo(v)}
+                    </span>
+                  )}
                 </div>
               </div>
             );
@@ -13910,9 +13923,9 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
               return (
                 <div key={d} style={{
                   width: COL_W, flexShrink: 0, textAlign: 'center', padding: '5px 0',
-                  background: isToday ? 'var(--accent)' : 'transparent',
+                  background: isToday ? 'var(--edo-sea)' : 'transparent',
                   color: isToday ? 'white' : isWeekend ? 'var(--muted)' : 'var(--ink-2)',
-                  borderLeft: isToday ? '2px solid var(--accent)' : '1px solid var(--border)',
+                  borderLeft: isToday ? '2px solid var(--edo-sea)' : '1px solid var(--border)',
                 }}>
                   <div style={{ fontSize: 13, fontWeight: isToday ? 700 : isWeekend ? 400 : 500, lineHeight: 1 }}>
                     {dt.getDate()}
@@ -13998,12 +14011,12 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
                     style={{
                       width: COL_W, height: ROW_H, flexShrink: 0, position: 'relative',
                       zIndex: isFirstVisible ? 1 : 0,
-                      borderLeft: isToday ? '2px solid var(--accent)' : '1px solid var(--border)',
-                      background: preno ? 'transparent' : fermo ? 'transparent' : isToday ? 'rgba(46,110,62,.06)' : isWeekend ? 'rgba(0,0,0,.02)' : 'transparent',
+                      borderLeft: isToday ? '2px solid var(--edo-sea)' : '1px solid var(--border)',
+                      background: preno ? 'transparent' : fermo ? 'transparent' : isToday ? 'rgba(45,108,139,.07)' : isWeekend ? 'rgba(0,0,0,.02)' : 'transparent',
                       cursor: fermo ? 'default' : 'pointer',
                     }}
                     onMouseEnter={e => { if (!preno && !fermo) e.currentTarget.style.background = 'rgba(200,52,52,.09)'; }}
-                    onMouseLeave={e => { if (!preno && !fermo) e.currentTarget.style.background = isToday ? 'rgba(46,110,62,.06)' : isWeekend ? 'rgba(0,0,0,.02)' : 'transparent'; }}
+                    onMouseLeave={e => { if (!preno && !fermo) e.currentTarget.style.background = isToday ? 'rgba(45,108,139,.07)' : isWeekend ? 'rgba(0,0,0,.02)' : 'transparent'; }}
                   >
                     {/* Fermo programmato — striatura grigia */}
                     {fermo && (
