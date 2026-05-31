@@ -1293,6 +1293,20 @@ function useFleetCounts(fleet) {
   }, [fleet]);
 }
 
+// _sigHash — hash veloce (cyrb53) di una stringa → firma compatta per rilevare
+// se un dato è cambiato rispetto all'ultima sincronizzazione col server.
+function _sigHash(str) {
+  let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+  for (let i = 0; i < str.length; i++) {
+    const ch = str.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 2654435761);
+    h2 = Math.imul(h2 ^ ch, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
+}
+
 // usePersistentState — stato che vive in TRE livelli, in ordine di affidabilità:
 //   1. memoria (useState)               — sempre disponibile, perso a refresh
 //   2. localStorage del browser         — sopravvive a refresh, locale al dispositivo
@@ -1342,6 +1356,13 @@ function usePersistentState(key, initialValue, options = {}) {
   const initialLoadDone = useRef(false);
   const saveTimerRef = useRef(null);
   const lastSavedRef = useRef(null);  // ultimo valore salvato → evita POST inutili
+  // Firma (hash) del valore "in sync col server", persistita: serve a capire se
+  // il LOCALE è cambiato dall'ultima sincronizzazione → in tal caso il boot NON
+  // deve sovrascriverlo col remoto (era la causa delle modifiche perse al refresh).
+  const sigStoreKey = `${key}::sig`;
+  const sigOf = (v) => { try { return _sigHash(JSON.stringify(v)); } catch { return ''; } };
+  const readSig = () => { try { return window.localStorage?.getItem(sigStoreKey) || null; } catch { return null; } };
+  const writeSig = (s) => { try { window.localStorage?.setItem(sigStoreKey, s); } catch {} };
 
   // Salvataggio locale immediato a ogni cambio
   useEffect(() => {
@@ -1367,12 +1388,25 @@ function usePersistentState(key, initialValue, options = {}) {
       .then(r => r.ok ? r.json() : null)
       .then(data => {
         if (cancelled) return;
-        // Se il backend ha un valore non-null, sovrascrive il locale.
-        // Convenzione: { value: ... } payload del backend.
         if (data && data.value !== null && data.value !== undefined) {
           const loaded = migrate ? migrate(data.value) : data.value;
-          setValue(loaded);
-          lastSavedRef.current = JSON.stringify(loaded);
+          // Risoluzione conflitti SENZA perdere dati locali:
+          //   cleanSig = firma dell'ultimo valore in sync col server (persistita).
+          //   localChanged = il locale è stato modificato dall'ultima sync?
+          // Se il locale NON è cambiato → adotto il remoto (sync multi-dispositivo).
+          // Se il locale È cambiato → NON sovrascrivo: tengo il locale e lo ri-spingo
+          //   (il save debounced parte perché lastSavedRef resta null). "Client wins".
+          const cleanSig   = readSig();
+          const localSig    = sigOf(value);
+          const localChanged = cleanSig === null
+            ? (localSig !== sigOf(initialValue))   // nessuna firma: cambiato se diverso dall'iniziale
+            : (localSig !== cleanSig);
+          if (!localChanged) {
+            setValue(loaded);
+            lastSavedRef.current = JSON.stringify(loaded);
+            writeSig(sigOf(loaded));
+          }
+          // else: modifiche locali non sincronizzate → preservate, verranno ripushate
         }
         setRemoteStatus('synced');
         setLastRemoteSync(new Date());
@@ -1408,6 +1442,7 @@ function usePersistentState(key, initialValue, options = {}) {
         .then(r => {
           if (r.ok) {
             lastSavedRef.current = serialized;
+            writeSig(_sigHash(serialized));   // ora locale e server coincidono
             setRemoteStatus('synced');
             setLastRemoteSync(new Date());
           } else {
@@ -1436,7 +1471,9 @@ function usePersistentState(key, initialValue, options = {}) {
         body: JSON.stringify({ value: remoteValue }),
       });
       if (!res.ok) throw new Error(`status ${res.status}`);
-      lastSavedRef.current = JSON.stringify(value);
+      const ser = JSON.stringify(value);
+      lastSavedRef.current = ser;
+      writeSig(_sigHash(ser));
       setRemoteStatus('synced');
       setLastRemoteSync(new Date());
       return { ok: true };
