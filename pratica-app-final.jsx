@@ -867,12 +867,13 @@ function resolveVehicleDisplay(v) {
   ].filter(Boolean);
   let entry = null;
   for (const k of candidates) {
-    entry = RENTME_TARGA_MAP[k];
+    // Chiave esatta, poi indice per-numero (es. k="78" → "superior 78")
+    entry = RENTME_TARGA_MAP[k] || RENTME_TARGA_BY_NUM[k];
     if (entry) break;
     // Prova anche solo la parte numerica ("panda 81" → "81")
     const num = k.split(' ').pop();
-    if (num && num !== k) {
-      entry = RENTME_TARGA_MAP[num];
+    if (num) {
+      entry = RENTME_TARGA_MAP[num] || RENTME_TARGA_BY_NUM[num];
       if (entry) break;
     }
   }
@@ -9420,6 +9421,35 @@ const RENTME_TARGA_MAP = {
   'liberty 261': { targa: 'X6RZ3R', modello: 'LIBERTY 50' }, '261': { targa: 'X6RZ3R', modello: 'LIBERTY 50' },
 };
 
+// Indice ausiliario "solo numero" → entry. Molte chiavi sono "prefisso NN"
+// (es. "superior 78", "liberty 214"), ma RentMe a volte manda solo il numero
+// ("78"). Qui mappiamo ogni numero alla sua entry, derivandolo dalle chiavi
+// "prefisso NN". I range non si sovrappongono (standard 1-31, superior 33-80+
+// 308-310, liberty 170-261, quad 155-166), quindi nessuna collisione: il primo
+// vince. Usato come fallback quando la chiave esatta non matcha → risolve la
+// targa reale degli scooter/moto anche quando arriva il solo numero.
+const RENTME_TARGA_BY_NUM = (() => {
+  const idx = {};
+  for (const [k, v] of Object.entries(RENTME_TARGA_MAP)) {
+    const num = k.split(' ').pop();
+    if (/^\d+$/.test(num) && num !== k && !idx[num]) idx[num] = v;
+  }
+  return idx;
+})();
+
+// Risolve un codice RentMe (es. "78", "superior 78", "panda 81") nella targa
+// reale, SOLO per la visualizzazione. NON cambia il codice salvato sulle
+// prenotazioni (cambiarlo scollegherebbe le consegne RentMe già fatte).
+// Ritorna la targa o null se non mappata (es. e-bike, che targa non hanno).
+function rentmeCodeToTarga(code) {
+  const k = String(code || '').toLowerCase().trim();
+  if (!k) return null;
+  const num = k.split(' ').pop();
+  const entry = RENTME_TARGA_MAP[k] || RENTME_TARGA_BY_NUM[k]
+    || RENTME_TARGA_MAP[num] || RENTME_TARGA_BY_NUM[num];
+  return entry?.targa || null;
+}
+
 //
 // Le prenotazioni RentMe vengono mergiate con quelle locali:
 //   - ID prefissato 'rm_' per riconoscerle
@@ -12833,7 +12863,12 @@ function NaviLampedusaWidget() {
   }, [load]);
 
   const { loading, data, error, at } = state;
-  const vessels = data?.vessels || [];
+  // Nascondi le navi la cui ultima posizione AIS è oltre 24h fa: sono ferme in
+  // porto / non in navigazione e "sporcano" il riquadro. Le contiamo a parte.
+  const allVessels = data?.vessels || [];
+  const STALE_HIDE_MIN = 24 * 60;
+  const vessels = allVessels.filter(v => !(v.ageMin != null && v.ageMin > STALE_HIDE_MIN));
+  const hiddenCount = allVessels.length - vessels.length;
   const kindIcon = (k) => k === 'aliscafo' ? '🛥' : k === 'traghetto' ? '⛴' : '🚢';
   const fmtAge = (m) => m == null ? '' : (m < 60 ? `${m} min` : `${Math.floor(m/60)}h`);
   const fmtDur = (m) => m < 60 ? `${m} min` : `${Math.floor(m/60)}h ${String(m%60).padStart(2,'0')}m`;
@@ -12885,7 +12920,9 @@ function NaviLampedusaWidget() {
       Tracking navi non ancora collegato. Imposta la chiave <strong>VESSELAPI_KEY</strong> (e gli MMSI delle navi) nelle env del backend su Render.
     </div></Card>
   );
-  if (vessels.length === 0) return <Card><div style={{ fontSize: 12, color: 'var(--muted)' }}>Nessuna nave monitorata.</div></Card>;
+  if (vessels.length === 0) return <Card><div style={{ fontSize: 12, color: 'var(--muted)' }}>
+    Nessuna nave in navigazione ora{hiddenCount > 0 ? ` (${hiddenCount} ferma/e in porto)` : ''}.
+  </div></Card>;
 
   return (
     <Card>
@@ -12912,7 +12949,10 @@ function NaviLampedusaWidget() {
           </div>
         ))}
       </div>
-      <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 8 }}>Posizioni AIS · l'ETA è stimata dalla rotta/velocità.</div>
+      <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 8 }}>
+        Posizioni AIS · l'ETA è stimata dalla rotta/velocità.
+        {hiddenCount > 0 ? ` · ${hiddenCount} nave/i ferma/e da oltre 24h non mostrata/e.` : ''}
+      </div>
     </Card>
   );
 }
@@ -18217,9 +18257,17 @@ function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, on
             const v = (fleet || []).find(fv => matchVehicle(p.vehicleId, fv.id, fv.targa)) || {};
             const partner = (partners || []).find(s => s.id === p.consegnaStruttura);
             const luogo = partner?.nome || p.consegnaIndirizzo || '';
+            const tipo = canonicalTipo(v) || v.tipo || canonicalTipo({ tipo: p.vehicleType }) || 'altro';
+            // Codice grezzo (può essere targa reale o codice RentMe tipo "78"/"235")
+            const rawCode = v.targa || p.vehicleTarga || p.vehicleId || '';
+            // Targa reale risolta dal codice (scooter/moto/auto). Le e-bike/bici non
+            // hanno targa → mostriamo "n. CODICE" per chiarezza.
+            const realTarga = rentmeCodeToTarga(rawCode) || rentmeCodeToTarga(p.vehicleId);
+            const isBike = tipo === 'ebike' || tipo === 'bici';
+            const targa = realTarga || (isBike ? `n. ${rawCode}` : rawCode);
             return {
-              tipo: canonicalTipo(v) || v.tipo || 'altro',
-              targa: v.targa || p.vehicleTarga || p.vehicleId,
+              tipo,
+              targa,
               modello: v.modello || v.marca || p.vehicleLabel || '',
               cliente: `${p.clienteCognome || ''} ${p.clienteNome || ''}`.trim() || 'Cliente',
               luogo,
