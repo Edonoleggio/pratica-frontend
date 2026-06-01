@@ -7689,7 +7689,8 @@ function ReportPage({ prenotazioni, contracts, cassa, customers, fleet, operator
       {/* Header */}
       <div style={{ display:'flex', alignItems:'flex-end', justifyContent:'space-between', marginBottom:20 }}>
         <div>
-          <h1 style={{ margin:0, fontSize:22, fontFamily:'var(--font-serif)', fontWeight:600 }}>Report</h1>
+          <div className="label" style={{ color: 'var(--edo-sea)', marginBottom: 2 }}>Analisi &amp; statistiche</div>
+          <h1 style={{ margin:0, fontSize:22, fontFamily:'var(--font-serif)', fontWeight:600, letterSpacing: '-0.01em' }}>Report</h1>
           <p style={{ margin:'4px 0 0', fontSize:13, color:'var(--muted)' }}>
             Analisi occupazione, incassi e clienti · anno {year}
           </p>
@@ -17600,8 +17601,9 @@ function ContractsList({ contracts, operators, onRetry, onMarkReturned, online }
 
   return (
     <div>
-      <h2 className="serif text-3xl font-medium mb-1">Pratiche</h2>
-      <p className="text-sm mb-6" style={{ color: 'var(--muted)' }}>
+      <div className="label" style={{ color: 'var(--edo-sea)', marginBottom: 2 }}>Comunicazioni Questura</div>
+      <h1 style={{ margin: 0, fontSize: 22, fontFamily: 'var(--font-serif)', fontWeight: 600, letterSpacing: '-0.01em' }}>Pratiche</h1>
+      <p className="text-sm mb-6" style={{ margin: '4px 0 24px', color: 'var(--muted)' }}>
         {contracts.length === 0
           ? 'Archivio vuoto — i contratti creati dal wizard "Nuova pratica" appariranno qui.'
           : `${contracts.length} contratti · esportabili in CSV per fallback CARGOS via PEC alla Questura di Agrigento`}
