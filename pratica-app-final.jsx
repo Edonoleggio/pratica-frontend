@@ -1506,7 +1506,49 @@ function usePersistentState(key, initialValue, options = {}) {
     }
   }, [key, value, baseUrl, skipRemote]);
 
-  return [value, setValue, { remoteStatus, lastRemoteSync, sync }];
+  // Pull dal backend: SCARICA il valore condiviso e lo ADOTTA solo se il locale
+  // non è cambiato dall'ultima sync (stesso identico criterio del caricamento
+  // iniziale → non perde modifiche locali non ancora salvate). A differenza di
+  // sync() (che PUSHA il locale), pull() porta le modifiche degli ALTRI dispositivi.
+  // Serve a: (1) sincronizzazione periodica reale multi-dispositivo, (2) backup
+  // "completo" (fotografare dati freschi). Ritorna { ok, value } col valore finale.
+  const pull = useCallback(async () => {
+    if (skipRemote || !baseUrl) return { ok: false, reason: 'remote_disabled', value };
+    try {
+      const storeToken = getStoreToken();
+      const res = await fetch(`${baseUrl}/store/${encodeURIComponent(key)}`, {
+        headers: storeToken ? { Authorization: `Bearer ${storeToken}` } : {},
+      });
+      if (!res.ok) throw new Error(`status ${res.status}`);
+      const data = await res.json();
+      let finalValue = value;
+      if (data && data.value !== null && data.value !== undefined) {
+        const loaded = migrate ? migrate(data.value) : data.value;
+        const cleanSig = readSig();
+        const localSig = sigOf(value);
+        const localChanged = cleanSig === null
+          ? (localSig !== sigOf(initialValue))
+          : (localSig !== cleanSig);
+        if (!localChanged) {
+          // Adotta il remoto preservando le voci solo-locali (vedi mergeRemote).
+          const adopted = mergeRemote ? mergeRemote(loaded, value) : loaded;
+          setValue(adopted);
+          lastSavedRef.current = JSON.stringify(adopted);
+          writeSig(sigOf(adopted));
+          finalValue = adopted;
+        }
+        // se localChanged: tengo il locale (lo ripusha il salvataggio debounced)
+      }
+      setRemoteStatus('synced');
+      setLastRemoteSync(new Date());
+      return { ok: true, value: finalValue };
+    } catch (err) {
+      setRemoteStatus('offline');
+      return { ok: false, reason: err.message, value };
+    }
+  }, [key, value, baseUrl, skipRemote]);
+
+  return [value, setValue, { remoteStatus, lastRemoteSync, sync, pull }];
 }
 
 // useToasts — gestore semplice di notifiche non-bloccanti.
@@ -15161,7 +15203,7 @@ export default function App() {
   // Le chiavi 'edo:v1:' devono combaciare con quelle che usa il backend (path /api/store/edo:v1:fleet).
   // Sync flow: load da backend in background → save debounced 1.5s → fallback localStorage se offline.
   const sharedOpts = { baseUrl: apiBaseUrl };
-  const [listino, setListino] = usePersistentState('edo:v1:listino', LISTINO,            { ...sharedOpts, migrate: migrateListino });
+  const [listino, setListino, listinoSync] = usePersistentState('edo:v1:listino', LISTINO,            { ...sharedOpts, migrate: migrateListino });
   const [fleet,        setFleet,        fleetSync]     = usePersistentState('edo:v1:fleet',     [],                      { ...sharedOpts, migrate: migrateFleet });
   const [customers,    setCustomers,    customersSync] = usePersistentState('edo:v1:customers', INITIAL_CUSTOMERS,       sharedOpts);
   const [partners,     setPartners,     partnersSync]  = usePersistentState('edo:v1:partners',  INITIAL_PARTNERS,        { ...sharedOpts, migrate: migratePartners });
@@ -15221,7 +15263,7 @@ export default function App() {
     },
   });
   const [rentmeVehicles, setRentmeVehicles] = usePersistentState('edo:v1:rentme_vehicles', [], { skipRemote: true });
-  const [stagioni, setStagioni] = usePersistentState('edo:v1:stagioni', DEFAULT_STAGIONI_CONFIG, sharedOpts);
+  const [stagioni, setStagioni, stagioniSync] = usePersistentState('edo:v1:stagioni', DEFAULT_STAGIONI_CONFIG, sharedOpts);
   // rentmeConfig: controlla il "bridge" verso RentMe.
   // enabled: false → Pratica gira in autonomia, zero chiamate a RentMe.
   // Questa è la singola spunta che separa "oggi" da "domani".
@@ -15249,9 +15291,9 @@ export default function App() {
   const [scadenze, setScadenze, scadenzeSync] = usePersistentState('edo:v1:scadenze', {}, sharedOpts);
   // Fermi flotta: periodi di blocco programmati (officina, revisione, ecc.)
   // Struttura: [{ id, vehicleId, dal, al, motivo }]
-  const [fermiFlotta, setFermiFlotta] = usePersistentState('edo:v1:fermiFlotta', [], sharedOpts);
+  const [fermiFlotta, setFermiFlotta, fermiFlottaSync] = usePersistentState('edo:v1:fermiFlotta', [], sharedOpts);
   // Manutenzioni programmate: [{ id, vehicleId, tipo, descrizione, dataScadenza, note, completata, dataCompletata }]
-  const [manutenzioni, setManutenzioni] = usePersistentState('edo:v1:manutenzioni', [], sharedOpts);
+  const [manutenzioni, setManutenzioni, manutenzioniSync] = usePersistentState('edo:v1:manutenzioni', [], sharedOpts);
   // Google Drive Client ID — skipRemote, specifico del dispositivo
   const [driveClientId, setDriveClientId] = usePersistentState('edo:v1:driveClientId', '', { skipRemote: true });
   const [driveLastBackup, setDriveLastBackup] = usePersistentState('edo:v1:driveLastBackup', null, { skipRemote: true });
@@ -15270,18 +15312,21 @@ export default function App() {
   useRitardiNotifications(prenotazioni);
 
   // ── Auto-pull multi-device ────────────────────────────────────────────────
-  // Con più tablet attivi, ogni dispositivo deve aggiornarsi dal backend
-  // per vedere le prenotazioni create dagli altri operatori.
-  // Pull ogni 90 secondi per prenotazioni + flotta (i dati più critici).
-  // La sync manuale ("Sincronizza ora") rimane disponibile per aggiornamento immediato.
+  // Con più tablet attivi, ogni dispositivo deve aggiornarsi dal backend per
+  // vedere le modifiche fatte dagli ALTRI operatori (prenotazioni, flotta, cassa).
+  // ⚠️ FIX 1/6/2026: prima qui si chiamava .sync() che PUSHA il locale → ogni 90s
+  // ogni dispositivo riscriveva il server con la propria versione, potendo
+  // sovrascrivere le modifiche altrui ("client wins" continuo). Ora chiama .pull()
+  // che SCARICA e adotta il remoto SOLO se il locale non ha modifiche pendenti
+  // (le modifiche locali restano e le ripusha il salvataggio debounced). Così i
+  // dispositivi convergono invece di sovrascriversi.
   const [lastAutoPull, setLastAutoPull] = useState(null);
   useEffect(() => {
     if (!apiBaseUrl) return;
     const PULL_INTERVAL = 90_000; // 90 secondi
     const pull = async () => {
       try {
-        // Re-fetch prenotazioni e flotta silenziosamente
-        await Promise.all([prenoSync.sync(), fleetSync.sync()]);
+        await Promise.all([prenoSync.pull(), fleetSync.pull(), cassaSync.pull()]);
         setLastAutoPull(new Date());
       } catch { /* silente — l'utente vede già lo stato offline */ }
     };
@@ -15349,14 +15394,38 @@ export default function App() {
   // Toast system per feedback non-bloccanti (deve stare prima degli useCallback che usano pushToast)
   const { toasts, push: pushToast, dismiss: dismissToast } = useToasts();
 
-  // Export backup JSON — scarica tutti i dati in un file timestampato
-  const exportBackup = useCallback(() => {
-    const backup = {
-      version: APP_VERSION.number,
-      exportedAt: new Date().toISOString(),
-      prenotazioni, fleet, customers, cassa, scadenze,
-      operators, partners, agency, listino, stagioni,
-    };
+  // ── Backup COMPLETO: scarica i dati freschi PRIMA di fotografarli ──────────
+  // Problema risolto (1/6/2026): un backup fotografava lo stato del SOLO
+  // dispositivo, che poteva essere indietro rispetto agli altri → backup
+  // incompleto. Ora, prima di ogni backup (Drive, server, file), si fa un pull()
+  // di tutti i dati condivisi: ogni pull adotta il remoto solo se non ci sono
+  // modifiche locali pendenti e ritorna il valore finale. Offline → si usa il
+  // valore locale corrente (backup comunque utile). Vale per TUTTE le piattaforme.
+  const pullAllForBackup = useCallback(async () => {
+    const pick = (res, fb) => (res && res.ok ? res.value : fb);
+    try {
+      const [pr, fl, cu, ca, sc, op, pa, ag, li, st, ma, ff] = await Promise.all([
+        prenoSync.pull(), fleetSync.pull(), customersSync.pull(), cassaSync.pull(),
+        scadenzeSync.pull(), operatorsSync.pull(), partnersSync.pull(), agencySync.pull(),
+        listinoSync.pull(), stagioniSync.pull(), manutenzioniSync.pull(), fermiFlottaSync.pull(),
+      ]);
+      return {
+        prenotazioni: pick(pr, prenotazioni), fleet: pick(fl, fleet),
+        customers: pick(cu, customers), cassa: pick(ca, cassa),
+        scadenze: pick(sc, scadenze), operators: pick(op, operators),
+        partners: pick(pa, partners), agency: pick(ag, agency),
+        listino: pick(li, listino), stagioni: pick(st, stagioni),
+        manutenzioni: pick(ma, manutenzioni), fermiFlotta: pick(ff, fermiFlotta),
+      };
+    } catch {
+      return { prenotazioni, fleet, customers, cassa, scadenze, operators, partners, agency, listino, stagioni, manutenzioni, fermiFlotta };
+    }
+  }, [prenoSync, fleetSync, customersSync, cassaSync, scadenzeSync, operatorsSync, partnersSync, agencySync, listinoSync, stagioniSync, manutenzioniSync, fermiFlottaSync, prenotazioni, fleet, customers, cassa, scadenze, operators, partners, agency, listino, stagioni, manutenzioni, fermiFlotta]);
+
+  // Export backup JSON — scarica tutti i dati (freschi) in un file timestampato
+  const exportBackup = useCallback(async () => {
+    const data = await pullAllForBackup();
+    const backup = { version: APP_VERSION.number, exportedAt: new Date().toISOString(), ...data };
     const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -15366,19 +15435,15 @@ export default function App() {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    pushToast && pushToast({ tone: 'success', title: 'Backup esportato', message: `${prenotazioni.length} pren · ${fleet.length} veicoli · ${customers.length} clienti` });
-  }, [prenotazioni, fleet, customers, cassa, scadenze, operators, partners, agency, listino, stagioni, pushToast]);
+    pushToast && pushToast({ tone: 'success', title: 'Backup esportato', message: `${data.prenotazioni.length} pren · ${data.fleet.length} veicoli · ${data.customers.length} clienti` });
+  }, [pullAllForBackup, pushToast]);
 
   // Backup su Google Drive — l'upload lo fa il BACKEND (refresh token lato server):
   // il sito invia solo i dati, niente più popup Google. Il collegamento si fa una
   // volta sola con il pulsante "Collega Google Drive" (apre /google/connect).
   const driveBackup = useCallback(async () => {
-    const backupObj = {
-      version: APP_VERSION.number,
-      exportedAt: new Date().toISOString(),
-      prenotazioni, fleet, customers, cassa, scadenze,
-      operators, partners, agency, listino, stagioni, manutenzioni,
-    };
+    const data = await pullAllForBackup();
+    const backupObj = { version: APP_VERSION.number, exportedAt: new Date().toISOString(), ...data };
     try {
       const res = await fetch(`${getApiBase()}/google/backup`, {
         method: 'POST',
@@ -15394,25 +15459,21 @@ export default function App() {
         return;
       }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
+      const respData = await res.json();
       setDriveLastBackup(new Date().toISOString());
-      pushToast?.({ tone: 'success', title: '✅ Backup su Drive completato', message: `File: ${data.filename || 'backup'}` });
+      pushToast?.({ tone: 'success', title: '✅ Backup su Drive completato', message: `File: ${respData.filename || 'backup'}` });
     } catch (e) {
       pushToast?.({ tone: 'error', title: 'Errore backup Drive', message: String(e.message || e) });
     }
-  }, [prenotazioni, fleet, customers, cassa, scadenze, operators, partners, agency, listino, stagioni, manutenzioni, setDriveLastBackup, pushToast]);
+  }, [pullAllForBackup, setDriveLastBackup, pushToast]);
 
   // ── Backup su Render backend ───────────────────────────────────────────────
   // Se backupToken è configurato, viene inviato come Bearer header.
   // Sul server Render: impostare variabile env BACKUP_SECRET con lo stesso valore.
   const backupToRender = useCallback(async (silent = false) => {
     if (!apiBaseUrl) return false;
-    const backupObj = {
-      version: APP_VERSION.number,
-      exportedAt: new Date().toISOString(),
-      prenotazioni, fleet, customers, cassa, scadenze,
-      operators, partners, agency, listino, stagioni, manutenzioni,
-    };
+    const data = await pullAllForBackup();
+    const backupObj = { version: APP_VERSION.number, exportedAt: new Date().toISOString(), ...data };
     try {
       const ctrl = new AbortController();
       const t = setTimeout(() => ctrl.abort(), 15000);
@@ -15434,7 +15495,7 @@ export default function App() {
       if (!silent) pushToast?.({ tone: 'error', title: 'Errore backup server', message: String(e.message || e) });
       return false;
     }
-  }, [apiBaseUrl, prenotazioni, fleet, customers, cassa, scadenze, operators, partners, agency, listino, stagioni, manutenzioni, setRenderLastBackup, pushToast]);
+  }, [apiBaseUrl, pullAllForBackup, backupToken, setRenderLastBackup, pushToast]);
 
   // ── Auto-backup Drive + Render ────────────────────────────────────────────
   // Refs per evitare stale closures nell'intervallo (aggiornati ad ogni render)
@@ -15451,8 +15512,12 @@ export default function App() {
 
   const backupDataRef = useRef(null);
   useEffect(() => {
-    backupDataRef.current = { prenotazioni, fleet, customers, cassa, scadenze, operators, partners, agency, listino, stagioni, manutenzioni };
-  }, [prenotazioni, fleet, customers, cassa, scadenze, operators, partners, agency, listino, stagioni, manutenzioni]);
+    backupDataRef.current = { prenotazioni, fleet, customers, cassa, scadenze, operators, partners, agency, listino, stagioni, manutenzioni, fermiFlotta };
+  }, [prenotazioni, fleet, customers, cassa, scadenze, operators, partners, agency, listino, stagioni, manutenzioni, fermiFlotta]);
+  // Ref alla pull-completa, così anche il backup automatico (interval) fotografa
+  // dati freschi senza dipendere dalle closure stantie dell'intervallo.
+  const pullBackupRef = useRef(null);
+  useEffect(() => { pullBackupRef.current = pullAllForBackup; }, [pullAllForBackup]);
 
   // Controlla ogni 15 minuti se sono passate 3 ore dall'ultimo backup.
   // Esegue SEMPRE backup su Render (zero auth) + tenta Drive silenzioso se abilitato.
@@ -15465,7 +15530,8 @@ export default function App() {
       // Controlla se sono passate 3 ore (usa driveLastBackup come riferimento comune)
       if (lastBackup && Date.now() - new Date(lastBackup).getTime() < THREE_HOURS) return;
 
-      const data = backupDataRef.current;
+      // Dati freschi (pull da tutti i dispositivi); fallback ai dati locali correnti.
+      const data = (pullBackupRef.current ? await pullBackupRef.current() : null) || backupDataRef.current;
       if (!data) return;
       const backupObj = { version: APP_VERSION.number, exportedAt: new Date().toISOString(), ...data };
       const now = new Date().toLocaleTimeString('it-IT');
