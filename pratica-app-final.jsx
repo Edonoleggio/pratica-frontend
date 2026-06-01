@@ -12770,14 +12770,21 @@ function NaviLampedusaWidget() {
   const { loading, data, error, at } = state;
   const vessels = data?.vessels || [];
   const kindIcon = (k) => k === 'aliscafo' ? '🛥' : k === 'traghetto' ? '⛴' : '🚢';
+  const fmtAge = (m) => m == null ? '' : (m < 60 ? `${m} min` : `${Math.floor(m/60)}h`);
+  const fmtDur = (m) => m < 60 ? `${m} min` : `${Math.floor(m/60)}h ${String(m%60).padStart(2,'0')}m`;
+  // ETA: preferisci l'ETA dichiarata via AIS (se nel futuro), altrimenti la stima
   const etaTxt = (v) => {
-    if (v.atPort) return null;
-    if (v.etaMin != null && v.etaMin > 0) {
-      const m = v.etaMin; return m < 60 ? `tra ${m} min` : `tra ${Math.floor(m/60)}h ${String(m%60).padStart(2,'0')}m`;
+    const ais = v.etaAis ? new Date(v.etaAis) : null;
+    if (ais && !isNaN(ais) && ais > now) {
+      const m = Math.round((ais - now) / 60000);
+      const hhmm = ais.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+      return m < 600 ? `arrivo ~${hhmm} · tra ${fmtDur(m)}` : `arrivo ~${hhmm}`;
     }
+    if (!v.stale && v.etaMin != null && v.etaMin > 0) return `tra ${fmtDur(v.etaMin)}`;
     return null;
   };
   const statoPill = (v) => {
+    if (v.stale) return <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 9px', borderRadius: 999, background: 'var(--surface-2)', color: 'var(--muted)', whiteSpace: 'nowrap' }}>vista {fmtAge(v.ageMin)} fa</span>;
     const map = {
       'a Lampedusa':       { bg: 'var(--status-conf-bg)',  fg: 'var(--status-conf-fg)' },
       'in avvicinamento':  { bg: 'var(--status-corso-bg)', fg: 'var(--status-corso-fg)' },
@@ -12827,9 +12834,13 @@ function NaviLampedusaWidget() {
                 {(v.name || `MMSI ${v.mmsi}`).toLowerCase()}
               </div>
               <div style={{ fontSize: 11, color: 'var(--muted)' }}>
-                {v.ok
-                  ? [v.kind, v.distanceKm != null ? `${v.distanceKm} km da Lampedusa` : null, v.sog != null ? `${Math.round(v.sog)} nodi` : null, etaTxt(v)].filter(Boolean).join(' · ')
-                  : 'posizione non disponibile'}
+                {!v.ok ? 'posizione non disponibile' : [
+                  v.kind,
+                  v.destination ? `→ ${v.destination}` : null,
+                  etaTxt(v),
+                  v.stale ? `ultima posizione ${fmtAge(v.ageMin)} fa` : (v.distanceKm != null ? `${v.distanceKm} km` : null),
+                  !v.stale && v.sog != null ? `${Math.round(v.sog)} nodi` : null,
+                ].filter(Boolean).join(' · ')}
               </div>
             </div>
             {v.ok && statoPill(v)}
