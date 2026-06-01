@@ -4935,6 +4935,7 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rent
           prefillValues={form?.id === '__new__' ? form : null}
           fermiFlotta={fermiFlotta}
           rentmeConnected={rentmeConnected}
+          partners={partners}
           onSave={form === 'new' || form?.id === '__new__' ? createPreno : updatePreno}
           onClose={() => setForm(null)}
         />
@@ -12958,7 +12959,7 @@ function NaviLampedusaWidget() {
 }
 
 function OggiPage({ prenotazioni, setPrenotazioni, fleet, scadenze, customers, setPage, rentmeVehicles, setPrenotazioniPrefill, pushToast,
-  operator, fermiFlotta, rentmePush, rentmeConnected, manutenzioni }) {
+  operator, fermiFlotta, rentmePush, rentmeConnected, manutenzioni, partners }) {
   const [now, setNow] = useState(() => new Date());
 
   // Orologio live — aggiorna ogni minuto
@@ -13504,6 +13505,7 @@ function OggiPage({ prenotazioni, setPrenotazioni, fleet, scadenze, customers, s
           rentmeVehicles={rentmeVehicles}
           prenotazioni={prenoList}
           customers={customers}
+          partners={partners}
           fermiFlotta={fermiFlotta}
           rentmeConnected={rentmeConnected}
           onSave={(data) => {
@@ -16257,7 +16259,7 @@ export default function App() {
             <ErrorBoundary key={page}>
             <div key={page} className="page-fade">
               {page === 'calendario' && <CalendarioFlottaPage prenotazioni={prenotazioni} fleet={fleet} rentmeVehicles={rentmeVehicles} setPage={setPage} setPrenotazioniPrefill={setPrenotazioniPrefill} fermiFlotta={fermiFlotta} />}
-              {page === 'oggi'       && <OggiPage prenotazioni={prenotazioni} fleet={fleet} scadenze={scadenze} customers={customers} setPage={setPage} rentmeVehicles={rentmeVehicles} setPrenotazioniPrefill={setPrenotazioniPrefill} pushToast={pushToast} setPrenotazioni={setPrenotazioni} operator={operator} fermiFlotta={fermiFlotta} rentmePush={rentmeSync.pushBooking} rentmeConnected={rentmeSync.status === 'ok'} manutenzioni={manutenzioni} />}
+              {page === 'oggi'       && <OggiPage prenotazioni={prenotazioni} fleet={fleet} scadenze={scadenze} customers={customers} setPage={setPage} rentmeVehicles={rentmeVehicles} setPrenotazioniPrefill={setPrenotazioniPrefill} pushToast={pushToast} setPrenotazioni={setPrenotazioni} operator={operator} fermiFlotta={fermiFlotta} rentmePush={rentmeSync.pushBooking} rentmeConnected={rentmeSync.status === 'ok'} manutenzioni={manutenzioni} partners={partners} />}
               {page === 'dashboard'  && <Dashboard onNew={() => openWizard()} setPage={setPage} operator={operator} fleet={fleet} contracts={localContracts} partners={partners} onMarkReturned={markContractReturned} scadenze={scadenze} prenotazioni={prenotazioni} agency={agency} />}
               {page === 'cassa'      && <RegistroCassaPage cassa={cassa} setCassa={setCassa} prenotazioni={prenotazioni} customers={customers} operator={operator} pushToast={pushToast} />}
               {page === 'banco'      && <BancoRapidoPage rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} fleet={fleet} setPage={setPage} setPrenotazioniPrefill={setPrenotazioniPrefill} listino={listino} pushToast={pushToast} rentmeSyncStatus={rentmeSync.status} onRentmeSync={rentmeSync.sync} rentmeLastSync={rentmeSync.lastSync} fermiFlotta={fermiFlotta} />}
