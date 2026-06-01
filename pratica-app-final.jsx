@@ -991,6 +991,17 @@ function getApiBase() {
   } catch { return DEFAULT_API_BASE; }
 }
 
+// Legge il token per il KV store di sync dal localStorage (stessa chiave di backupToken:
+// BACKUP_SECRET e STORE_SECRET usano lo stesso valore su Render). Non richiede un hook —
+// viene letto al momento della chiamata fetch, quindi sempre aggiornato.
+function getStoreToken() {
+  try {
+    const raw = (typeof localStorage !== 'undefined') ? localStorage.getItem('edo:v1:backupToken') : null;
+    const v = raw ? JSON.parse(raw) : null;
+    return (typeof v === 'string' && v.trim()) ? v.trim() : '';
+  } catch { return ''; }
+}
+
 // Errore tipizzato — distingue rete / validazione / server.
 // Il chiamante può inspect err.kind per decidere il toast e il rollback.
 class ApiError extends Error {
@@ -1384,7 +1395,11 @@ function usePersistentState(key, initialValue, options = {}) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 8000);
 
-    fetch(`${baseUrl}/store/${encodeURIComponent(key)}`, { signal: controller.signal })
+    const storeToken = getStoreToken();
+    fetch(`${baseUrl}/store/${encodeURIComponent(key)}`, {
+      signal: controller.signal,
+      headers: storeToken ? { Authorization: `Bearer ${storeToken}` } : {},
+    })
       .then(r => r.ok ? r.json() : null)
       .then(data => {
         if (cancelled) return;
@@ -1433,9 +1448,10 @@ function usePersistentState(key, initialValue, options = {}) {
       const timeout = setTimeout(() => controller.abort(), 10000);
       setRemoteStatus('saving');
       const remoteValue = sanitize ? sanitize(value) : value;
+      const storeToken = getStoreToken();
       fetch(`${baseUrl}/store/${encodeURIComponent(key)}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...(storeToken ? { Authorization: `Bearer ${storeToken}` } : {}) },
         body: JSON.stringify({ value: remoteValue }),
         signal: controller.signal,
       })
@@ -1465,9 +1481,10 @@ function usePersistentState(key, initialValue, options = {}) {
       // Re-push valore corrente (ha priorità su quello remoto se l'utente
       // ha modificato qualcosa offline — è una scelta deliberata di "client wins")
       const remoteValue = sanitize ? sanitize(value) : value;
+      const storeToken = getStoreToken();
       const res = await fetch(`${baseUrl}/store/${encodeURIComponent(key)}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...(storeToken ? { Authorization: `Bearer ${storeToken}` } : {}) },
         body: JSON.stringify({ value: remoteValue }),
       });
       if (!res.ok) throw new Error(`status ${res.status}`);
@@ -12611,7 +12628,7 @@ function VoliLampedusaWidget() {
     return isNaN(d) ? '—' : d.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
   };
   // tempo di arrivo "effettivo": stimato > atterrato > programmato
-  const arrIso = (f) => f.estimatedArrival || f.actualArrival || f.scheduledArrival;
+  const arrIso = (f) => f.actualArrival || f.estimatedArrival || f.scheduledArrival;
   // ritardo in minuti (stimato - programmato)
   const delayMin = (f) => {
     if (!f.estimatedArrival || !f.scheduledArrival) return 0;
@@ -19523,11 +19540,11 @@ function SettingsPage({ operator, operators, cargosConfig, admin, backendStatus,
           Ogni 3 ore il backup viene salvato automaticamente sul backend Render — nessuna autorizzazione Google richiesta. Fino a 20 snapshot vengono conservati (ultimi ~2,5 giorni).
           Ultimo backup: <strong>{renderLastBackup ? new Date(renderLastBackup).toLocaleString('it-IT') : '—'}</strong>
         </p>
-        {/* Token sicurezza backup */}
+        {/* Token sicurezza backup + sync */}
         <div className="mb-4" style={{ background: 'var(--surface-2)', borderRadius: 6, padding: '10px 12px', border: '1px solid var(--border)' }}>
-          <div className="text-xs font-semibold mb-1" style={{ color: 'var(--ink-1)' }}>🔐 Token sicurezza backup</div>
+          <div className="text-xs font-semibold mb-1" style={{ color: 'var(--ink-1)' }}>Token sicurezza backup &amp; sync</div>
           <div className="text-xs mb-2" style={{ color: 'var(--ink-2)' }}>
-            Imposta lo stesso valore nella variabile d'ambiente <code>BACKUP_SECRET</code> su Render per proteggere il backup da accessi non autorizzati. Lascia vuoto per disabilitare.
+            Imposta lo stesso valore nelle variabili d'ambiente <code>BACKUP_SECRET</code> (e opzionalmente <code>STORE_SECRET</code>) su Render. Protegge sia il backup che la sincronizzazione dati tra dispositivi da accessi non autorizzati. Lascia vuoto per disabilitare.
           </div>
           <input
             type="password"
