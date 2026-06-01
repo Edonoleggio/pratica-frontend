@@ -20872,11 +20872,14 @@ function StructureSelect({ label, req, partners, structureId, onStructureChange,
     return { fixed, byType };
   }, [partners]);
 
-  const selectId = `struct-${label.replace(/\s+/g, '-').toLowerCase()}`;
+  // label è opzionale: alcuni call site mettono l'etichetta esternamente e NON
+  // passano `label` (es. PrenoForm "Luogo di consegna"). Senza guardia,
+  // label.replace(...) andava in crash ("undefined is not an object"). [hotfix 1/6]
+  const selectId = `struct-${(label || 'luogo').replace(/\s+/g, '-').toLowerCase()}`;
 
   return (
     <div>
-      <label className="label" id={`${selectId}-label`}>{label}{req && <span className="req" aria-hidden="true">*</span>}</label>
+      {label && <label className="label" id={`${selectId}-label`}>{label}{req && <span className="req" aria-hidden="true">*</span>}</label>}
       <div className="flex gap-1 mb-2" role="group" aria-label="Modalità selezione luogo">
         {[
           { id: 'partner', label: 'Partner Edonoleggio', Icon: Hotel },
