@@ -10,7 +10,8 @@ import { CalendarDays, Receipt, BarChart2,
   ScanSearch, Star, FileSignature, Lock, Unlock, Pencil, Trash2,
   Hotel, Anchor, Plane, Wallet, Printer, Save, Mail, Home, Compass,
   Upload, Image as ImageIcon, RefreshCw, Key, Eye as EyeIcon, EyeOff,
-  CircleDot, Power, Shield, Briefcase, Zap, Package
+  CircleDot, Power, Shield, Briefcase, Zap, Package,
+  Moon, Sun, Monitor
 } from 'lucide-react';
 import Tesseract from 'tesseract.js';
 
@@ -16250,6 +16251,7 @@ export default function App() {
         {!kioskMode && <Sidebar page={page} setPage={setPage} onNew={() => openWizard()} online={online && cargosConfig.enabled} agency={agency} rentmeSyncStatus={rentmeSync.status} rentmeAlertCount={rentmeSync.status === 'ok' ? calcAvailability(todayISO(), todayISO(), rentmeVehicles, prenotazioni, fleet, fermiFlotta).filter(c => c.alert).length : 0} rentmeRetryCount={(() => { try { return JSON.parse(localStorage.getItem('rentme_pending_queue') || '[]').length; } catch { return 0; } })()} offlineSyncCount={Object.values(allSyncStatus).filter(s => s?.remoteStatus === 'offline' || s?.remoteStatus === 'error').length} />}
         <main className="flex-1 min-h-screen" id="main-content">
           <Topbar
+            page={page}
             online={online} setOnline={setOnline} pendingQueue={pendingQueue}
             operator={operator} admin={admin} setAdmin={setAdmin}
             onScanPlate={() => setModal('plate')}
@@ -16923,7 +16925,15 @@ function Sidebar({ page, setPage, onNew, online, agency, rentmeSyncStatus, rentm
 // ═══════════════════════════════════════════════════════════════════
 // TOPBAR
 // ═══════════════════════════════════════════════════════════════════
-function Topbar({ online, setOnline, pendingQueue, operator, admin, setAdmin, onScanPlate, onShiftChange, agency, onOpenSearch, sessionUser, onLogout, darkMode, setDarkMode, kioskMode, setKioskMode, lastAutoPull, onSyncNow }) {
+// Etichette pagina mostrate a sinistra nella topbar (orientamento "dove sono").
+// Sostituiscono il nome agenzia, già presente nella sidebar (era ridondante).
+const TOPBAR_PAGE_LABELS = {
+  dashboard: 'Dashboard', oggi: 'Oggi', calendario: 'Calendario', banco: 'Banco rapido',
+  cassa: 'Cassa', preventivi: 'Preventivi', report: 'Report', contracts: 'Pratiche',
+  prenotazioni: 'Prenotazioni', fleet: 'Flotta', customers: 'Clienti', partners: 'Strutture',
+  listino: 'Prezzi', settings: 'Impostazioni',
+};
+function Topbar({ page, online, setOnline, pendingQueue, operator, admin, setAdmin, onScanPlate, onShiftChange, agency, onOpenSearch, sessionUser, onLogout, darkMode, setDarkMode, kioskMode, setKioskMode, lastAutoPull, onSyncNow }) {
   // Admin password modal
   const [showAdminPwd, setShowAdminPwd] = useState(false);
   const [adminPwdInput, setAdminPwdInput] = useState('');
@@ -16988,9 +16998,10 @@ function Topbar({ online, setOnline, pendingQueue, operator, admin, setAdmin, on
   return (
     <>
     <header className="border-b px-8 py-3 flex items-center gap-3" style={{ borderColor: 'var(--border)', background: 'var(--bg)' }}>
-      <div className="flex items-center gap-2 text-sm" style={{ color: 'var(--ink-2)' }}>
-        <Building2 className="w-4 h-4" aria-hidden="true" />
-        <span className="font-medium">{agency.nome}</span>
+      <div className="flex items-center" style={{ color: 'var(--ink)' }}>
+        <span className="font-semibold" style={{ fontFamily: 'var(--font-serif)', fontSize: 16, letterSpacing: '-0.01em' }}>
+          {TOPBAR_PAGE_LABELS[page] || agency.nome}
+        </span>
       </div>
 
       <div className="flex-1" />
@@ -17018,9 +17029,10 @@ function Topbar({ online, setOnline, pendingQueue, operator, admin, setAdmin, on
           onClick={onSyncNow}
           title="Sincronizza ora con il server per vedere le modifiche degli altri operatori"
           style={{ fontSize: 10, color: 'var(--muted)', background: 'none', border: '1px solid var(--border)',
-            borderRadius: 5, padding: '3px 8px', cursor: 'pointer', whiteSpace: 'nowrap' }}
+            borderRadius: 5, padding: '3px 8px', cursor: 'pointer', whiteSpace: 'nowrap',
+            display: 'inline-flex', alignItems: 'center', gap: 5 }}
         >
-          🔄 {Math.round((Date.now() - lastAutoPull.getTime()) / 60000)} min fa
+          <RefreshCw style={{ width: 11, height: 11 }} aria-hidden="true" /> {Math.round((Date.now() - lastAutoPull.getTime()) / 60000)} min fa
         </button>
       )}
 
@@ -17088,28 +17100,31 @@ function Topbar({ online, setOnline, pendingQueue, operator, admin, setAdmin, on
         <ChevronDown className="w-3.5 h-3.5" style={{ color: 'var(--muted)' }} aria-hidden="true" />
       </button>
 
+      {/* Divisorio: separa le azioni operative dal gruppo strumenti (tema/banco/uscita) */}
+      <div aria-hidden="true" style={{ width: 1, height: 20, background: 'var(--border)', margin: '0 2px' }} />
+
       {/* Dark mode toggle */}
       <button
         type="button"
         onClick={() => setDarkMode && setDarkMode(d => !d)}
-        className="btn-ghost px-2 py-1.5 rounded text-xs border"
+        className="btn-ghost px-2 py-1.5 rounded text-xs border flex items-center"
         style={{ borderColor: 'var(--border)', color: 'var(--muted)' }}
         title={darkMode ? 'Passa a tema chiaro' : 'Passa a tema scuro'}
         aria-label="Cambia tema"
       >
-        {darkMode ? '☀️' : '🌙'}
+        {darkMode ? <Sun className="w-3.5 h-3.5" aria-hidden="true" /> : <Moon className="w-3.5 h-3.5" aria-hidden="true" />}
       </button>
 
       {/* Kiosk mode */}
       <button
         type="button"
         onClick={() => setKioskMode && setKioskMode(k => !k)}
-        className="btn-ghost px-2 py-1.5 rounded text-xs border"
+        className="btn-ghost px-2 py-1.5 rounded text-xs border flex items-center"
         style={{ borderColor: kioskMode ? 'var(--accent)' : 'var(--border)', color: kioskMode ? 'var(--accent)' : 'var(--muted)', background: kioskMode ? 'var(--accent-soft)' : 'transparent' }}
         title={kioskMode ? 'Esci da modalità banco' : 'Modalità banco (tablet)'}
         aria-label="Modalità banco"
       >
-        📟
+        <Monitor className="w-3.5 h-3.5" aria-hidden="true" />
       </button>
 
       {/* Logout */}
