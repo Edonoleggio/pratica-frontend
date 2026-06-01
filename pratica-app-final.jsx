@@ -6812,7 +6812,8 @@ function PreventiviPage({ setPage, setPrenotazioniPrefill, listino: listinoProps
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
         <div>
-          <h1 style={{ margin: 0, fontSize: 22, fontFamily: 'var(--font-serif)', fontWeight: 600 }}>Preventivi</h1>
+          <div className="label" style={{ color: 'var(--edo-sea)', marginBottom: 2 }}>Tariffe &amp; listino</div>
+          <h1 style={{ margin: 0, fontSize: 22, fontFamily: 'var(--font-serif)', fontWeight: 600, letterSpacing: '-0.01em' }}>Preventivi</h1>
           <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--muted)' }}>
             Seleziona le date e vedi subito il prezzo per ogni categoria.
           </p>
@@ -10999,7 +11000,8 @@ function RegistroCassaPage({ cassa, setCassa, prenotazioni, customers, operator,
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24 }}>
         <div>
-          <h1 style={{ margin: 0, fontSize: 22, fontFamily: 'var(--font-serif)', fontWeight: 600 }}>Registro cassa</h1>
+          <div className="label" style={{ color: 'var(--edo-sea)', marginBottom: 2 }}>Contabilità</div>
+          <h1 style={{ margin: 0, fontSize: 22, fontFamily: 'var(--font-serif)', fontWeight: 600, letterSpacing: '-0.01em' }}>Registro cassa</h1>
           <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--muted)' }}>
             Tracciamento incassi · acconti · saldi · rimborsi
           </p>
@@ -11045,7 +11047,7 @@ function RegistroCassaPage({ cassa, setCassa, prenotazioni, customers, operator,
           { label: 'Netto', value: `€${netto.toLocaleString('it-IT', {minimumFractionDigits:2})}`, sub: 'incasso - rimborsi', color: '#1f5d83' },
           { label: 'Movimenti', value: filtered.length, sub: `${periodoLabel[periodo].toLowerCase()}`, color: 'var(--ink)' },
         ].map(k => (
-          <div key={k.label} style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, padding: '14px 16px' }}>
+          <div key={k.label} className="card-paper" style={{ padding: '14px 16px', borderTop: `3px solid ${k.color}` }}>
             <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--muted)', marginBottom: 4 }}>{k.label}</div>
             <div style={{ fontSize: 22, fontWeight: 700, fontFamily: 'var(--font-serif)', color: k.color }}>{k.value}</div>
             <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{k.sub}</div>
@@ -18125,7 +18127,8 @@ function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, on
     <div>
       <div className="flex items-end justify-between mb-1">
         <div>
-          <h2 className="serif text-3xl font-medium">Flotta</h2>
+          <div className="label" style={{ color: 'var(--edo-sea)', marginBottom: 2 }}>Parco mezzi</div>
+          <h1 style={{ margin: 0, fontSize: 22, fontFamily: 'var(--font-serif)', fontWeight: 600, letterSpacing: '-0.01em' }}>Flotta</h1>
           <p className="text-sm mt-1" style={{ color: 'var(--muted)' }}>
             {fleet.length} veicoli · {counts.auto} auto · {counts.scooter} scooter · {counts.quad} quad · {counts.ebike} e-bike{counts.bici > 0 ? ` · ${counts.bici} bici` : ''}
             {statusCounts.fermo > 0 && <span style={{ color: 'var(--warning)' }}> · {statusCounts.fermo} fermi</span>}
@@ -18769,8 +18772,9 @@ function CustomersPage({ customers, setCustomers, prenotazioni, admin, onShowQR,
     <div>
       <div className="flex items-end justify-between mb-4">
         <div>
-          <h2 className="serif text-3xl font-medium mb-1">Clienti</h2>
-          <p className="text-sm" style={{ color: 'var(--muted)' }}>
+          <div className="label" style={{ color: 'var(--edo-sea)', marginBottom: 2 }}>Anagrafica clienti</div>
+          <h1 style={{ margin: 0, fontSize: 22, fontFamily: 'var(--font-serif)', fontWeight: 600, letterSpacing: '-0.01em' }}>Clienti</h1>
+          <p className="text-sm" style={{ margin: '4px 0 0', color: 'var(--muted)' }}>
             {customers.length} clienti · {customers.filter(c => c.blacklist).length > 0 && <span style={{ color: 'var(--accent)' }}>⛔ {customers.filter(c => c.blacklist).length} blacklist · </span>}GDPR compliant
           </p>
         </div>
