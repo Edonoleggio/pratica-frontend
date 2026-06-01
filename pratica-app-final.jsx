@@ -1344,7 +1344,7 @@ function usePersistentState(key, initialValue, options = {}) {
   // sia da localStorage che dal backend. Gira PRIMA di setValue, quindi
   // non può essere sovrascritta dalla fetch remota (era il bug delle
   // migration-useEffect: il backend caricava dopo e annullava il fix).
-  const { baseUrl, skipRemote, sanitize, migrate } = options;
+  const { baseUrl, skipRemote, sanitize, migrate, mergeRemote } = options;
 
   // Lettura sincrona da localStorage all'init
   const [value, setValue] = useState(() => {
@@ -1417,9 +1417,15 @@ function usePersistentState(key, initialValue, options = {}) {
             ? (localSig !== sigOf(initialValue))   // nessuna firma: cambiato se diverso dall'iniziale
             : (localSig !== cleanSig);
           if (!localChanged) {
-            setValue(loaded);
-            lastSavedRef.current = JSON.stringify(loaded);
-            writeSig(sigOf(loaded));
+            // Adotta il remoto, ma PRESERVA le voci che vivono SOLO in locale.
+            // Es. prenotazioni RentMe: la sanitize le esclude dal backend, quindi
+            // il valore remoto NON le contiene. Senza questo merge il refresh le
+            // cancellerebbe — e con loro la CONSEGNA appena confermata (il sync
+            // RentMe non fa in tempo a ripristinarla). Vedi mergeRemote su prenotazioni.
+            const adopted = mergeRemote ? mergeRemote(loaded, value) : loaded;
+            setValue(adopted);
+            lastSavedRef.current = JSON.stringify(adopted);
+            writeSig(sigOf(adopted));
           }
           // else: modifiche locali non sincronizzate → preservate, verranno ripushate
         }
@@ -15190,6 +15196,20 @@ export default function App() {
           .slice(0, 300);
       }
       return filtered;
+    },
+    // Al refresh, quando si adotta il valore del backend, conserva le prenotazioni
+    // RentMe presenti SOLO in locale: la sanitize qui sopra le esclude dal backend
+    // (fonte 'rentme'/'rentme_storico'), quindi il valore remoto NON le contiene.
+    // Senza questo merge, ricaricare la pagina le cancellava — e con loro la
+    // CONSEGNA appena confermata, prima che il sync RentMe facesse in tempo a
+    // ripristinarla ("confermo ma non resta"). Le voci presenti su entrambi
+    // (id in remoto) restano quelle del remoto (aggiornamenti multi-dispositivo).
+    mergeRemote: (remote, local) => {
+      if (!Array.isArray(remote) || !Array.isArray(local)) return remote;
+      const remoteIds = new Set(remote.map(p => p && p.id));
+      const localOnly = local.filter(p =>
+        p && p.id && (p.fonte === 'rentme' || p.fonte === 'rentme_storico') && !remoteIds.has(p.id));
+      return localOnly.length ? [...remote, ...localOnly] : remote;
     },
   });
   const [rentmeVehicles, setRentmeVehicles] = usePersistentState('edo:v1:rentme_vehicles', [], { skipRemote: true });
