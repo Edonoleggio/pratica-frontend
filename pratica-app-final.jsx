@@ -7268,9 +7268,10 @@ function useReportData({ prenotazioni, contracts, cassa, customers, fleet, opera
     // Per ogni mese calcola quanti giorni totali disponibili vs occupati per tipo
     const tipiVehicle = ['auto','scooter','quad','ebike'];
     const fleetByTipo = {};
-    // 'moto' è alias di 'scooter' (veicoli importati da RentMe)
+    // SEMPRE canonicalTipo: normalizza gli alias RentMe (moto→scooter,
+    // bicicletta→ebike, quad150/300→quad). Senza, scooter ed e-bike risultavano 0.
     tipiVehicle.forEach(t => {
-      fleetByTipo[t] = allFleet.filter(v => v.tipo === t || (t === 'scooter' && v.tipo === 'moto')).length;
+      fleetByTipo[t] = allFleet.filter(v => canonicalTipo(v) === t).length;
     });
 
     const occupazione = mesi.map(m => {
@@ -7283,13 +7284,14 @@ function useReportData({ prenotazioni, contracts, cassa, customers, fleet, opera
         let giorni = 0;
         allP.filter(p => {
           if (p.stato === 'annullata' || p.stato === 'cancellata') return false;
-          const vt = (p.vehicleType||'').toLowerCase();
-          const vl = (p.vehicleLabel||'').toLowerCase();
-          return vt === tipo || vt === ({auto:'a',scooter:'m',quad:'m',ebike:'e'}[tipo]||'') || vl.startsWith(tipo);
+          // SEMPRE canonicalTipo (moto→scooter, bicicletta→ebike, quad150→quad)
+          return canonicalTipo({ tipo: p.vehicleType, modello: p.vehicleLabel }) === tipo;
         }).forEach(p => {
           if (!p.dal || !p.al) return;
-          const start = new Date(Math.max(new Date(p.dal), new Date(`${m.ym}-01`)));
-          const end   = new Date(Math.min(new Date(p.al),  new Date(`${m.ym}-${String(daysInMonth).padStart(2,'0')}`)));
+          const dalD = new Date(p.dal), alD = new Date(p.al);
+          if (isNaN(dalD) || isNaN(alD)) return;   // date non valide → salta (evita NaN)
+          const start = new Date(Math.max(dalD, new Date(`${m.ym}-01`)));
+          const end   = new Date(Math.min(alD,  new Date(`${m.ym}-${String(daysInMonth).padStart(2,'0')}`)));
           if (end >= start) giorni += Math.round((end - start) / 86400000) + 1;
         });
         result[tipo] = Math.min(100, Math.round((giorni / total) * 100));
@@ -7624,10 +7626,13 @@ function ReportPage({ prenotazioni, contracts, cassa, customers, fleet, operator
       const fleetCount = (fleet||[]).length || 1;
       const giorni = new Date(Number(year), mi+1, 0).getDate();
       const giorniOccupati = prenoMese.reduce((s,p) => {
-        const dal = new Date(Math.max(new Date(p.dal), new Date(`${meseStr}-01`)));
-        const al  = new Date(Math.min(new Date(p.al),  new Date(`${meseStr}-${String(giorni).padStart(2,'0')}`)));
+        if (!p.dal || !p.al) return s;
+        const dalD = new Date(p.dal), alD = new Date(p.al);
+        if (isNaN(dalD) || isNaN(alD)) return s;   // date non valide → salta (evita NaN%)
+        const dal = new Date(Math.max(dalD, new Date(`${meseStr}-01`)));
+        const al  = new Date(Math.min(alD,  new Date(`${meseStr}-${String(giorni).padStart(2,'0')}`)));
         const diff = Math.max(0, Math.round((al - dal) / 86400000) + 1);
-        return s + diff;
+        return s + (Number.isFinite(diff) ? diff : 0);
       }, 0);
       const occ = Math.min(100, Math.round(giorniOccupati / (fleetCount * giorni) * 100));
       return { label, mese: meseStr, prenotazioni: prenoMese.length, revenue: revenueMese, cassa: cassaMese, occupazione: occ };
@@ -7645,10 +7650,13 @@ function ReportPage({ prenotazioni, contracts, cassa, customers, fleet, operator
       const fleetCount = (fleet||[]).length || 1;
       const giorni = new Date(Number(prevYear), mi+1, 0).getDate();
       const giorniOccupati = prenoMese.reduce((s,p) => {
-        const dal = new Date(Math.max(new Date(p.dal), new Date(`${meseStr}-01`)));
-        const al  = new Date(Math.min(new Date(p.al),  new Date(`${meseStr}-${String(giorni).padStart(2,'0')}`)));
+        if (!p.dal || !p.al) return s;
+        const dalD = new Date(p.dal), alD = new Date(p.al);
+        if (isNaN(dalD) || isNaN(alD)) return s;   // date non valide → salta (evita NaN%)
+        const dal = new Date(Math.max(dalD, new Date(`${meseStr}-01`)));
+        const al  = new Date(Math.min(alD,  new Date(`${meseStr}-${String(giorni).padStart(2,'0')}`)));
         const diff = Math.max(0, Math.round((al - dal) / 86400000) + 1);
-        return s + diff;
+        return s + (Number.isFinite(diff) ? diff : 0);
       }, 0);
       const occ = Math.min(100, Math.round(giorniOccupati / (fleetCount * giorni) * 100));
       return { label, mese: meseStr, prenotazioni: prenoMese.length, revenue: revenueMese, cassa: cassaMese, occupazione: occ };
