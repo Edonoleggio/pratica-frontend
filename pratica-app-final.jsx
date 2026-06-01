@@ -15181,10 +15181,18 @@ export default function App() {
       cutoff.setMonth(cutoff.getMonth() - 6);
       const cutoffStr = cutoff.toISOString().slice(0, 10);
       const STATI_ATTIVI = new Set(['bozza', 'confermata', 'in_corso', 'prorogata']);
+      // Una prenotazione RentMe va inviata al backend SOLO se l'operatore ci ha
+      // lavorato (consegna/riconsegna o stato avanzato): quel lavoro vive solo in
+      // locale e DEVE sincronizzarsi sugli altri dispositivi (il banco e il Mac).
+      // Le RentMe "normali" (solo prenotazione) restano escluse: le riporta il
+      // sync RentMe ogni N min → payload leggero. Le foto/firme si tolgono comunque.
+      const isWorkedRentme = (p) =>
+        !!(p.consegnaAt || p.riconsegnaAt || p.stato === 'in_corso' || p.stato === 'completata');
       const filtered = arr
-        // Le prenotazioni RentMe sono effimere: ri-sincronizzate ogni N min.
-        // Non vanno inviate al backend → riduce il payload di ~90% (280 veicoli × booking).
-        .filter(p => p.fonte !== 'rentme' && p.fonte !== 'rentme_storico')
+        .filter(p => {
+          const isRentme = p.fonte === 'rentme' || p.fonte === 'rentme_storico';
+          return isRentme ? isWorkedRentme(p) : true;
+        })
         .filter(p => STATI_ATTIVI.has(p.stato) || (p.al || p.dal || '') >= cutoffStr)
         .map(({ foto, firmaDigitale, ...rest }) => rest);
       // Safety valve: se il payload supera 400KB, mantieni solo le 300 più recenti.
@@ -15198,12 +15206,12 @@ export default function App() {
       return filtered;
     },
     // Al refresh, quando si adotta il valore del backend, conserva le prenotazioni
-    // RentMe presenti SOLO in locale: la sanitize qui sopra le esclude dal backend
-    // (fonte 'rentme'/'rentme_storico'), quindi il valore remoto NON le contiene.
-    // Senza questo merge, ricaricare la pagina le cancellava — e con loro la
-    // CONSEGNA appena confermata, prima che il sync RentMe facesse in tempo a
-    // ripristinarla ("confermo ma non resta"). Le voci presenti su entrambi
-    // (id in remoto) restano quelle del remoto (aggiornamenti multi-dispositivo).
+    // RentMe presenti SOLO in locale (le "non lavorate": la sanitize qui sopra le
+    // esclude dal backend, le riporta il sync RentMe). Le RentMe lavorate (consegna
+    // ecc.) ora SONO sul backend → arrivano via 'remote' e si sincronizzano tra
+    // dispositivi; quelle restano la versione remota (id in remoteIds). Senza questo
+    // merge, ricaricare la pagina cancellava le RentMe non lavorate ("confermo ma
+    // non resta") prima che il sync RentMe le ripristinasse.
     mergeRemote: (remote, local) => {
       if (!Array.isArray(remote) || !Array.isArray(local)) return remote;
       const remoteIds = new Set(remote.map(p => p && p.id));
