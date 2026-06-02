@@ -13282,42 +13282,76 @@ function NaviLampedusaWidget({ feed } = {}) {
       Tracking navi non ancora collegato. Imposta la chiave <strong>VESSELAPI_KEY</strong> (e gli MMSI delle navi) nelle env del backend su Render.
     </div></Card>
   );
-  if (vessels.length === 0 && data?.rateLimited) return <Card><div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.5 }}>
-    Servizio AIS al limite di utilizzo (quota gratuita) — le posizioni torneranno appena si libera. Riprovo automaticamente più tardi.
-  </div></Card>;
-  if (vessels.length === 0) return <Card><div style={{ fontSize: 12, color: 'var(--muted)' }}>
-    Nessuna nave in navigazione ora{hiddenCount > 0 ? ` (${hiddenCount} ferma/e in porto)` : ''}.
-  </div></Card>;
+  // ── Orari del giorno (base sempre presente, da timetable backend) ──
+  const schedule = data?.schedule || [];
+  const fmtClock = (iso) => { if (!iso) return '—'; const d = new Date(iso); return isNaN(d) ? '—' : d.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }); };
+  const orariBlock = schedule.length > 0 && (
+    <div style={{ marginTop: vessels.length > 0 ? 14 : 0, paddingTop: vessels.length > 0 ? 12 : 0, borderTop: vessels.length > 0 ? '1px solid var(--border)' : 'none' }}>
+      <div className="label" style={{ color: 'var(--muted)', marginBottom: 8, fontSize: 10 }}>Orari di oggi</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {schedule.map((s) => {
+          const t = s.direction === 'arrivo' ? s.arriveISO : s.departISO;
+          const isArr = s.direction === 'arrivo';
+          return (
+            <div key={s.id} style={{ display: 'flex', alignItems: 'baseline', gap: 8, fontSize: 12 }}>
+              <span className="mono" style={{ fontWeight: 700, color: 'var(--ink)', minWidth: 42 }}>{fmtClock(t)}</span>
+              <span style={{ flex: 1, color: 'var(--ink-2)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                <strong style={{ color: 'var(--ink)', textTransform: 'capitalize' }}>{(s.vessel || '').toLowerCase()}</strong>
+                {' '}· {isArr ? `arrivo da ${s.fromName}` : `partenza per ${s.toName}`}
+              </span>
+              <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 8, background: isArr ? 'var(--status-corso-bg)' : 'var(--surface-2)', color: isArr ? 'var(--status-corso-fg)' : 'var(--muted)' }}>
+                {isArr ? 'ARRIVO' : 'PARTENZA'}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+      {schedule.some(s => s.indicative) && (
+        <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 8, fontStyle: 'italic' }}>Orari indicativi — verificare con l'armatore.</div>
+      )}
+    </div>
+  );
+
+  const liveEmptyNote = data?.rateLimited
+    ? 'Servizio AIS al limite (quota gratuita) — le posizioni live torneranno appena si libera.'
+    : `Nessuna posizione live ora${hiddenCount > 0 ? ` (${hiddenCount} ferma/e in porto)` : ''}.`;
 
   return (
     <Card>
-      <div style={{ display: 'flex', flexDirection: 'column' }}>
-        {vessels.map((v, i) => (
-          <div key={v.mmsi || i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '9px 0',
-            borderTop: i === 0 ? 'none' : '1px solid var(--border)' }}>
-            <span style={{ fontSize: 20, flexShrink: 0, width: 24, textAlign: 'center' }}>{kindIcon(v.kind)}</span>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textTransform: 'capitalize' }}>
-                {(v.name || `MMSI ${v.mmsi}`).toLowerCase()}
+      {vessels.length > 0 ? (
+        <>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            {vessels.map((v, i) => (
+              <div key={v.mmsi || i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '9px 0',
+                borderTop: i === 0 ? 'none' : '1px solid var(--border)' }}>
+                <span style={{ fontSize: 20, flexShrink: 0, width: 24, textAlign: 'center' }}>{kindIcon(v.kind)}</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textTransform: 'capitalize' }}>
+                    {(v.name || `MMSI ${v.mmsi}`).toLowerCase()}
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--muted)' }}>
+                    {!v.ok ? 'posizione non disponibile' : [
+                      v.kind,
+                      v.destination ? `→ ${v.destination}` : null,
+                      etaTxt(v),
+                      v.stale ? `ultima posizione ${fmtAge(v.ageMin)} fa` : (v.distanceKm != null ? `${v.distanceKm} km` : null),
+                      !v.stale && v.sog != null ? `${Math.round(v.sog)} nodi` : null,
+                    ].filter(Boolean).join(' · ')}
+                  </div>
+                </div>
+                {v.ok && statoPill(v)}
               </div>
-              <div style={{ fontSize: 11, color: 'var(--muted)' }}>
-                {!v.ok ? 'posizione non disponibile' : [
-                  v.kind,
-                  v.destination ? `→ ${v.destination}` : null,
-                  etaTxt(v),
-                  v.stale ? `ultima posizione ${fmtAge(v.ageMin)} fa` : (v.distanceKm != null ? `${v.distanceKm} km` : null),
-                  !v.stale && v.sog != null ? `${Math.round(v.sog)} nodi` : null,
-                ].filter(Boolean).join(' · ')}
-              </div>
-            </div>
-            {v.ok && statoPill(v)}
+            ))}
           </div>
-        ))}
-      </div>
-      <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 8 }}>
-        Posizioni AIS · l'ETA è stimata dalla rotta/velocità.
-        {hiddenCount > 0 ? ` · ${hiddenCount} nave/i ferma/e da oltre 24h non mostrata/e.` : ''}
-      </div>
+          <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 8 }}>
+            Posizioni AIS · l'ETA è stimata dalla rotta/velocità.
+            {hiddenCount > 0 ? ` · ${hiddenCount} nave/i ferma/e da oltre 24h non mostrata/e.` : ''}
+          </div>
+        </>
+      ) : (
+        <div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.5 }}>{liveEmptyNote}</div>
+      )}
+      {orariBlock}
     </Card>
   );
 }
@@ -13642,6 +13676,10 @@ function OggiPage({ prenotazioni, setPrenotazioni, fleet, scadenze, customers, s
   const nextShip = _vessels.find(v => v.ok && v.stato === 'in avvicinamento')
     || _vessels.find(v => v.ok && !v.stale)
     || _vessels[0] || null;
+  // Fallback orari: prossimo ARRIVO previsto oggi (da timetable backend)
+  const nextSchedArrival = (naviFeed.data?.schedule || [])
+    .filter(s => s.direction === 'arrivo' && s.arriveISO && new Date(s.arriveISO) >= now)
+    .sort((a, b) => new Date(a.arriveISO) - new Date(b.arriveISO))[0] || null;
   const naviConfigured = !naviFeed.data || naviFeed.data.configured !== false;
   // Meteo
   const _mcur = meteoFeed.data?.meteo?.current;
@@ -13827,11 +13865,15 @@ function OggiPage({ prenotazioni, setPrenotazioni, fleet, scadenze, customers, s
                   className="hero-tile" aria-expanded={liveView === 'navi'}
                   style={{ ...tileBase, cursor: 'pointer', boxShadow: liveView === 'navi' ? '0 0 0 2px rgba(255,255,255,0.5) inset' : 'none' }}>
                   <div style={tl}><Ship style={{ width: 13, height: 13, opacity: 0.85 }} /> Prossima nave <ChevronDown style={{ width: 12, height: 12, marginLeft: 'auto', transform: liveView === 'navi' ? 'rotate(180deg)' : 'none', transition: 'transform .18s' }} /></div>
-                  {!naviConfigured ? <div style={{ ...meta, marginTop: 0 }}>tracking non collegato</div>
-                    : nextShip ? (
+                  {nextShip ? (
                     <>
                       <div style={{ ...big, fontSize: 18, textTransform: 'capitalize' }}>{(nextShip.name || `MMSI ${nextShip.mmsi}`).toLowerCase()}</div>
                       <div style={meta}>{nextShip.stato || 'in mare'}{nextShip.etaAis && new Date(nextShip.etaAis) > now ? ` · ~${fmtHHMM(nextShip.etaAis)}` : ''}</div>
+                    </>
+                  ) : nextSchedArrival ? (
+                    <>
+                      <div style={{ ...big }}>{fmtHHMM(nextSchedArrival.arriveISO)}</div>
+                      <div style={meta}><b style={{ color: '#fff', fontWeight: 600, textTransform: 'capitalize' }}>{(nextSchedArrival.vessel || '').toLowerCase()}</b> · da {nextSchedArrival.fromName}{nextSchedArrival.indicative ? ' · orario indic.' : ''}</div>
                     </>
                   ) : <div style={{ ...meta, marginTop: 0 }}>{naviFeed.data?.rateLimited ? 'servizio al limite' : naviFeed.loading ? 'caricamento…' : 'nessuna in mare'}</div>}
                 </button>
