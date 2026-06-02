@@ -13489,14 +13489,29 @@ function OggiPage({ prenotazioni, setPrenotazioni, fleet, scadenze, customers, s
         ))}
       </div>
 
-      {/* ── VOLI LAMPEDUSA OGGI ─────────────────────────────────────── */}
-      <VoliLampedusaWidget />
+      {/* ── ZONA "IN TEMPO REALE" · voli + navi + meteo ─────────────── */}
+      <div className="oggi-section-head">
+        <span className="eb">In tempo reale</span>
+        <span className="ttl">Lampedusa adesso</span>
+        <span className="ln" aria-hidden="true" />
+      </div>
+      <div className="oggi-live-zone">
+        {/* ── VOLI LAMPEDUSA OGGI ───────────────────────────────────── */}
+        <VoliLampedusaWidget />
 
-      {/* ── NAVI (traghetti/aliscafi) LAMPEDUSA ─────────────────────── */}
-      <NaviLampedusaWidget />
+        {/* ── NAVI (traghetti/aliscafi) LAMPEDUSA ───────────────────── */}
+        <NaviLampedusaWidget />
 
-      {/* ── METEO LAMPEDUSA (Open-Meteo, free, no API key) ──────────── */}
-      <MeteoLampedusaWidget />
+        {/* ── METEO LAMPEDUSA (Open-Meteo, free, no API key) ────────── */}
+        <MeteoLampedusaWidget />
+      </div>
+
+      {/* ── ZONA "OPERATIVITÀ" · walk-in + movimenti del giorno ──────── */}
+      <div className="oggi-section-head">
+        <span className="eb">Operatività</span>
+        <span className="ttl">Il tuo banco</span>
+        <span className="ln" aria-hidden="true" />
+      </div>
 
       {/* ── WALK-IN ─────────────────────────────────────────────────── */}
       {(() => {
@@ -16800,6 +16815,14 @@ function Styles() {
 
       /* NEW · card "elevata" per marketing/dashboard hero */
       .card-elev  { background: var(--surface); border-radius: var(--radius-lg); box-shadow: var(--shadow-md); border: none; }
+
+      /* NEW · "In tempo reale" zona Oggi — i widget voli/navi/meteo guadagnano
+         rilievo per staccarsi dalla crema (gerarchia: info ambientale vs operatività) */
+      .oggi-live-zone .card-paper { border-radius: 10px; box-shadow: var(--shadow-sm); border-color: var(--border-strong); }
+      .oggi-section-head { display: flex; align-items: baseline; gap: 10px; margin: 4px 0 14px; }
+      .oggi-section-head .ttl { font-family: var(--font-serif); font-weight: 500; font-size: 18px; color: var(--ink); letter-spacing: -0.01em; line-height: 1; }
+      .oggi-section-head .eb  { font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--sea); }
+      .oggi-section-head .ln  { flex: 1; height: 1px; background: var(--border); }
 
       /* ═══════════════════════════════════════════════════════════════
          FORM
