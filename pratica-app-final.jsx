@@ -12970,6 +12970,106 @@ function NaviLampedusaWidget() {
   );
 }
 
+// ── Widget meteo Lampedusa (Open-Meteo, free, no API key) ─────────
+function MeteoLampedusaWidget() {
+  const [state, setState] = useState({ loading: true, data: null, error: null, at: null });
+  const mounted = useRef(true);
+
+  const WMO = {
+    0:'Sereno',1:'Prevalentemente sereno',2:'Parzialmente nuvoloso',3:'Coperto',
+    45:'Nebbia',48:'Nebbia gelata',
+    51:'Pioviggine leggera',53:'Pioviggine',55:'Pioviggine intensa',
+    61:'Pioggia leggera',63:'Pioggia',65:'Pioggia intensa',
+    80:'Rovesci leggeri',81:'Rovesci',82:'Rovesci intensi',
+    95:'Temporale',96:'Temporale con grandine',99:'Temporale forte',
+  };
+  const degToDir = (d) => {
+    if (d == null) return '';
+    return ['N','NE','E','SE','S','SO','O','NO'][Math.round(d/45)%8];
+  };
+
+  const load = useCallback(async () => {
+    try {
+      const [mRes, marRes] = await Promise.allSettled([
+        fetch('https://api.open-meteo.com/v1/forecast?latitude=35.49&longitude=12.60&current=temperature_2m,windspeed_10m,winddirection_10m,weathercode&wind_speed_unit=kmh&timezone=Europe%2FRome', { signal: AbortSignal.timeout(10000) }),
+        fetch('https://marine-api.open-meteo.com/v1/marine?latitude=35.49&longitude=12.60&current=wave_height&timezone=Europe%2FRome', { signal: AbortSignal.timeout(10000) }),
+      ]);
+      const meteo  = (mRes.status==='fulfilled'  && mRes.value.ok)  ? await mRes.value.json()  : null;
+      const marine = (marRes.status==='fulfilled' && marRes.value.ok) ? await marRes.value.json() : null;
+      if (mounted.current) setState({ loading: false, data: { meteo, marine }, error: null, at: Date.now() });
+    } catch(e) {
+      if (mounted.current) setState(s => ({ ...s, loading: false, error: e.message, at: Date.now() }));
+    }
+  }, []);
+
+  useEffect(() => {
+    mounted.current = true;
+    load();
+    const id = setInterval(load, 30 * 60 * 1000);
+    return () => { mounted.current = false; clearInterval(id); };
+  }, [load]);
+
+  const { loading, data, at } = state;
+  const cur = data?.meteo?.current;
+  const waveH = data?.marine?.current?.wave_height;
+  const aggMin = at ? Math.round((Date.now() - at) / 60000) : null;
+
+  if (!loading && !cur) return null;
+
+  return (
+    <div style={{ marginBottom: 18 }}>
+      <div className="card-paper" style={{ padding: '14px 18px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--edo-sun-warm)', flexShrink: 0, display: 'inline-block' }} />
+            <span style={{ fontFamily: 'var(--font-serif)', fontWeight: 600, fontSize: 15, color: 'var(--ink)' }}>Meteo · Lampedusa</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {aggMin !== null && <span style={{ fontSize: 10, color: 'var(--muted)' }}>agg. {aggMin === 0 ? 'ora' : `${aggMin} min fa`}</span>}
+            <button type="button" onClick={load}
+              style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 5, padding: '2px 7px', fontSize: 10, color: 'var(--muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3 }}
+              title="Aggiorna meteo">
+              <RefreshCw style={{ width: 10, height: 10 }} />
+            </button>
+          </div>
+        </div>
+        {loading ? (
+          <div style={{ fontSize: 12, color: 'var(--muted)' }}>Caricamento…</div>
+        ) : cur ? (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 16 }}>
+            <div>
+              <div className="mono" style={{ fontSize: 34, fontWeight: 600, color: 'var(--edo-coral)', lineHeight: 1, letterSpacing: '-0.02em' }}>
+                {Math.round(cur.temperature_2m)}°
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 3 }}>Temperatura</div>
+            </div>
+            <div>
+              <div className="mono" style={{ fontSize: 34, fontWeight: 600, color: 'var(--sea)', lineHeight: 1, letterSpacing: '-0.02em' }}>
+                {Math.round(cur.windspeed_10m)}<span style={{ fontSize: 13, fontWeight: 400, marginLeft: 2 }}>km/h</span>
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 3 }}>Vento {degToDir(cur.winddirection_10m)}</div>
+            </div>
+            {waveH != null && (
+              <div>
+                <div className="mono" style={{ fontSize: 34, fontWeight: 600, color: 'var(--edo-acqua)', lineHeight: 1, letterSpacing: '-0.02em' }}>
+                  {waveH.toFixed(1)}<span style={{ fontSize: 13, fontWeight: 400, marginLeft: 2 }}>m</span>
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 3 }}>Onde</div>
+              </div>
+            )}
+            <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
+              <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink)', lineHeight: 1.3 }}>
+                {WMO[cur.weathercode] ?? `Codice ${cur.weathercode}`}
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 3 }}>Cielo</div>
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function OggiPage({ prenotazioni, setPrenotazioni, fleet, scadenze, customers, setPage, rentmeVehicles, setPrenotazioniPrefill, pushToast,
   operator, fermiFlotta, rentmePush, rentmeConnected, manutenzioni, partners }) {
   const [now, setNow] = useState(() => new Date());
@@ -13381,10 +13481,10 @@ function OggiPage({ prenotazioni, setPrenotazioni, fleet, scadenze, customers, s
           { label: 'In corso',     value: inCorso.length,  sub: 'oltre oggi',       color: 'var(--status-corso-fg)' },
           { label: 'Mezzi liberi', value: `${liberiCount}/${totaleFlotta}`, sub: 'in flotta ora', color: 'var(--edo-sun-warm)' },
         ].map((k, i) => (
-          <div key={i} className="card-paper" style={{ padding: '12px 14px', borderTop: `3px solid ${k.color}` }}>
-            <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '.07em', textTransform: 'uppercase', color: 'var(--muted)' }}>{k.label}</div>
-            <div className="serif" style={{ fontSize: 28, fontWeight: 600, color: 'var(--ink)', lineHeight: 1.1, marginTop: 4 }}>{k.value}</div>
-            <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{k.sub}</div>
+          <div key={i} className="card-paper" style={{ padding: '14px 16px', borderTop: `3px solid ${k.color}` }}>
+            <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--muted)', marginBottom: 6 }}>{k.label}</div>
+            <div className="mono" style={{ fontSize: 36, fontWeight: 600, color: k.color, lineHeight: 1, letterSpacing: '-0.02em' }}>{k.value}</div>
+            <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 5 }}>{k.sub}</div>
           </div>
         ))}
       </div>
@@ -13394,6 +13494,9 @@ function OggiPage({ prenotazioni, setPrenotazioni, fleet, scadenze, customers, s
 
       {/* ── NAVI (traghetti/aliscafi) LAMPEDUSA ─────────────────────── */}
       <NaviLampedusaWidget />
+
+      {/* ── METEO LAMPEDUSA (Open-Meteo, free, no API key) ──────────── */}
+      <MeteoLampedusaWidget />
 
       {/* ── WALK-IN ─────────────────────────────────────────────────── */}
       {(() => {
