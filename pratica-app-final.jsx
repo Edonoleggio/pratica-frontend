@@ -11,7 +11,7 @@ import { CalendarDays, Receipt, BarChart2,
   Hotel, Anchor, Plane, Wallet, Printer, Save, Mail, Home, Compass,
   Upload, Image as ImageIcon, RefreshCw, Key, Eye as EyeIcon, EyeOff,
   CircleDot, Power, Shield, Briefcase, Zap, Package,
-  Moon, Sun, Monitor
+  Moon, Sun, Monitor, Wrench
 } from 'lucide-react';
 import Tesseract from 'tesseract.js';
 
@@ -7606,15 +7606,15 @@ function ReportPage({ prenotazioni, contracts, cassa, customers, fleet, operator
 
   const TABS = [
     { id:'overview',    label:'Panoramica' },
-    { id:'previsione',  label:'Previsione 🔮' },
+    { id:'previsione',  label:'Previsione' },
     { id:'occupazione', label:'Occupazione %' },
-    { id:'clienti',     label:'Clienti 👤' },
+    { id:'clienti',     label:'Clienti' },
     { id:'operatori',   label:'Per operatore' },
-    { id:'stagionale',  label:'Stagionale 📅' },
-    { id:'cassa',       label:'Cassa 💵' },
-    { id:'flotta',      label:'Flotta 🚗' },
-    { id:'mix',         label:'Mix 📊' },
-    { id:'yoy',         label:'Anno su Anno 📈' },
+    { id:'stagionale',  label:'Stagionale' },
+    { id:'cassa',       label:'Cassa' },
+    { id:'flotta',      label:'Flotta' },
+    { id:'mix',         label:'Mix' },
+    { id:'yoy',         label:'Anno su Anno' },
   ];
 
   // Dati mensili per grafico stagionale
@@ -7776,12 +7776,12 @@ function ReportPage({ prenotazioni, contracts, cassa, customers, fleet, operator
           {d.insights.length > 0 && (
             <div style={{ background:'var(--surface-2)', border:'1px solid var(--border)', borderRadius:8, padding:'14px 18px' }}>
               <div style={{ fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', color:'var(--muted)', marginBottom:10 }}>
-                💡 Insight · {year}
+                Insight · {year}
               </div>
               <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
                 {d.insights.map((ins, i) => (
                   <div key={i} style={{ display:'flex', alignItems:'flex-start', gap:8, fontSize:12, color:'var(--ink)' }}>
-                    <span style={{ fontSize:14, lineHeight:1.4 }}>{ins.icon}</span>
+                    <span aria-hidden="true" style={{ width:6, height:6, borderRadius:'50%', background:'var(--edo-sea)', flexShrink:0, marginTop:5 }} />
                     <span style={{ lineHeight:1.5 }}>{ins.text}</span>
                   </div>
                 ))}
@@ -10819,7 +10819,7 @@ function ChiusuraGiornalieraModal({ cassa, initialDate, onClose }) {
         {/* Intestazione */}
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 18 }}>
           <div>
-            <h2 style={{ margin: 0, fontSize: 17, fontFamily: 'var(--font-serif)', fontWeight: 700 }}>🖨 Chiusura giornaliera</h2>
+            <h2 style={{ margin: 0, fontSize: 17, fontFamily: 'var(--font-serif)', fontWeight: 700 }}>Chiusura giornaliera</h2>
             <p style={{ margin: '3px 0 0', fontSize: 12, color: 'var(--muted)' }}>Riepilogo incassi per chiusura cassa</p>
           </div>
           <button type="button" onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, color: 'var(--muted)', lineHeight: 1, padding: 4 }}>✕</button>
@@ -11011,7 +11011,7 @@ function RegistroCassaPage({ cassa, setCassa, prenotazioni, customers, operator,
         <div style={{ display: 'flex', gap: 8 }}>
           <button type="button" onClick={() => setShowChiusura(true)}
             style={{ padding: '8px 14px', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 5, fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, color: 'var(--ink-2)' }}>
-            🖨 Chiusura
+            <Printer style={{ width: 14, height: 14 }} aria-hidden="true" /> Chiusura
           </button>
           <button type="button" onClick={exportCSV}
             style={{ padding: '8px 14px', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 5, fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, color: 'var(--ink-2)' }}>
@@ -13219,7 +13219,8 @@ function OggiPage({ prenotazioni, setPrenotazioni, fleet, scadenze, customers, s
 
   const SectionTitle = ({ icon, label, count, color = 'var(--ink)', noMargin = false }) => (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: noMargin ? 0 : 10, marginTop: noMargin ? 0 : 24 }}>
-      <span style={{ fontSize: 16 }}>{icon}</span>
+      {/* pallino colorato di sezione (sostituisce le vecchie emoji nel chrome) */}
+      <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: '50%', background: color, flexShrink: 0 }} />
       <span style={{ fontFamily: 'var(--font-serif)', fontWeight: 600, fontSize: 15, color }}>{label}</span>
       <span style={{
         background: count === 0 ? 'var(--surface-2)' : color,
@@ -18428,11 +18429,11 @@ function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, on
                   <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 10 }}>
                     <button type="button" onClick={() => setScadenzeModalVeh(v)}
                       style={{ fontSize: 11, color: 'var(--ink-2)', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 5, padding: '4px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
-                      🔧 Scadenze
+                      <Clock style={{ width: 12, height: 12 }} aria-hidden="true" /> Scadenze
                     </button>
                     <button type="button" onClick={() => setStatsModalVeh(v)}
                       style={{ fontSize: 11, color: '#1f5d83', background: '#e8f0fa', border: '1px solid #b8d0ee', borderRadius: 5, padding: '4px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
-                      📊 Statistiche
+                      <BarChart2 style={{ width: 12, height: 12 }} aria-hidden="true" /> Statistiche
                     </button>
                     <button type="button" onClick={() => setManutenzioniModalVeh(v)}
                       style={{ fontSize: 11, borderRadius: 5, padding: '4px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4,
@@ -18454,7 +18455,7 @@ function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, on
                         })(),
                         border: '1px solid currentColor',
                       }}>
-                      🔩 Manutenzioni
+                      <Wrench style={{ width: 12, height: 12 }} aria-hidden="true" /> Manutenzioni
                       {(() => {
                         const today2 = todayISO();
                         const vMans = (manutenzioni || []).filter(m => m.vehicleId === v.id && !m.completata);
@@ -18574,7 +18575,7 @@ function FermiFlottaSection({ fleet, fermiFlotta, setFermiFlotta }) {
     <section style={{ marginTop: 28, padding: '20px 22px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
         <div>
-          <div className="serif" style={{ fontSize: 17, fontWeight: 600 }}>🔧 Fermi programmati</div>
+          <div className="serif" style={{ fontSize: 17, fontWeight: 600 }}>Fermi programmati</div>
           <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>
             I fermi bloccano il mezzo nelle prenotazioni per il periodo indicato.
           </div>
