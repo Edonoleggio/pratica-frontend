@@ -16630,11 +16630,12 @@ function Styles() {
       /* ═══════════════════════════════════════════════════════════════
          NAVIGAZIONE
          ═══════════════════════════════════════════════════════════════ */
-      .nav-item { color: var(--muted); transition: all var(--dur-fast) var(--ease-out); border-radius: var(--radius); border: 1px solid transparent; }
-      .nav-item:hover { color: var(--ink); background: var(--surface-2); }
-      .nav-item.active { color: var(--ink); background: var(--surface); border-color: var(--border-strong) !important; }
-      .nav-item.active .dot { opacity: 1; }
-      .dot { opacity: 0; width: 4px; height: 4px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
+      /* CARBONIO sidebar nav — sfondo scuro, voce attiva sea blue */
+      .nav-item { color: rgba(255,255,255,0.42); transition: all var(--dur-fast) var(--ease-out); border-radius: 7px; border: 1px solid transparent; }
+      .nav-item:hover { color: rgba(255,255,255,0.82); background: rgba(255,255,255,0.07); }
+      .nav-item.active { color: #ffffff; background: var(--sea); border-color: transparent !important; font-weight: 600; }
+      .nav-item.active .dot { opacity: 0; }
+      .dot { opacity: 0; width: 4px; height: 4px; border-radius: 50%; background: rgba(255,255,255,0.4); flex-shrink: 0; }
 
       /* ═══════════════════════════════════════════════════════════════
          PILLS — esistenti + nuove .pill-{stato} mappate ai triplet
@@ -16843,19 +16844,22 @@ function Sidebar({ page, setPage, onNew, online, agency, rentmeSyncStatus, rentm
       badgeColor: rentmeRetryCount > 0 ? '#e67e22' : '#c0392b' },
   ];
 
+  const sidebarDark = '#16181d';
+  const sidebarBorder = 'rgba(255,255,255,0.07)';
+
   return (
     <aside
-      className="w-60 border-r flex-shrink-0 flex flex-col"
-      style={{ borderColor: 'var(--border)', background: 'var(--bg)' }}
+      className="w-60 flex-shrink-0 flex flex-col"
+      style={{ background: sidebarDark, borderRight: `1px solid ${sidebarBorder}` }}
       aria-label="Navigazione principale"
     >
-      <div className="px-5 pt-6 pb-5">
+      <div className="px-5 pt-6 pb-4" style={{ borderBottom: `1px solid ${sidebarBorder}` }}>
         <div className="flex items-baseline gap-2">
-          <span className="serif text-3xl font-semibold tracking-tight" style={{ color: 'var(--ink)', letterSpacing: '-0.02em' }}>edo</span>
-          <span className="serif italic text-2xl" style={{ color: 'var(--accent)', lineHeight: 1 }}>·</span>
-          <span className="serif text-2xl font-medium" style={{ color: 'var(--ink-2)' }}>pratica</span>
+          <span className="serif text-3xl font-semibold tracking-tight" style={{ color: '#f0ece4', letterSpacing: '-0.02em' }}>edo</span>
+          <span className="serif italic text-2xl" style={{ color: 'var(--sea)', lineHeight: 1 }}>·</span>
+          <span className="serif text-2xl font-medium" style={{ color: 'rgba(240,236,228,0.7)' }}>pratica</span>
         </div>
-        <p className="text-[10px] mt-2 tracking-widest uppercase leading-relaxed" style={{ color: 'var(--muted)' }}>
+        <p className="text-[10px] mt-2 tracking-widest uppercase leading-relaxed" style={{ color: 'rgba(255,255,255,0.28)' }}>
           Edonoleggio · Lampedusa<br />dal {agency.fondazione}
         </p>
       </div>
@@ -16863,13 +16867,13 @@ function Sidebar({ page, setPage, onNew, online, agency, rentmeSyncStatus, rentm
       <button
         type="button"
         onClick={onNew}
-        className="btn-accent mx-4 mb-5 px-4 py-2.5 rounded text-sm font-semibold flex items-center justify-center gap-2"
+        className="btn-brand mx-4 mt-4 mb-3 px-4 py-2.5 rounded text-sm font-semibold flex items-center justify-center gap-2"
         aria-label="Crea nuova pratica di noleggio"
       >
         <Plus className="w-4 h-4" aria-hidden="true" /> Nuova pratica
       </button>
 
-      <nav className="px-3 flex-1" aria-label="Sezioni app">
+      <nav className="px-3 flex-1 py-1" aria-label="Sezioni app">
         {items.map(it => {
           const Icon = it.icon;
           const active = page === it.id;
@@ -16893,27 +16897,27 @@ function Sidebar({ page, setPage, onNew, online, agency, rentmeSyncStatus, rentm
         })}
       </nav>
 
-      <div className="p-4 border-t" style={{ borderColor: 'var(--border)' }}>
-        <div className="text-[11px] uppercase tracking-wider mb-2" style={{ color: 'var(--muted)' }}>Stato connessione</div>
+      <div className="p-4" style={{ borderTop: `1px solid ${sidebarBorder}` }}>
+        <div className="text-[11px] uppercase tracking-wider mb-2" style={{ color: 'rgba(255,255,255,0.25)' }}>Stato connessione</div>
         <div className="flex items-center gap-2 text-xs" aria-live="polite">
           <span className="w-2 h-2 rounded-full pulse" style={{ background: online ? 'var(--success)' : 'var(--accent)' }} aria-hidden="true" />
-          <span style={{ color: 'var(--ink-2)' }}>{online ? 'Online' : 'Offline'}</span>
+          <span style={{ color: 'rgba(255,255,255,0.6)' }}>{online ? 'Online' : 'Offline'}</span>
         </div>
-        <div className="text-[11px] mt-1" style={{ color: 'var(--muted)' }}>
+        <div className="text-[11px] mt-1" style={{ color: 'rgba(255,255,255,0.28)' }}>
           {online ? 'Backend raggiungibile' : 'Lavoro locale, dati al sicuro'}
         </div>
-        <div className="flex items-center gap-2 mt-2 text-[11px]" style={{ color: 'var(--muted)' }}>
+        <div className="flex items-center gap-2 mt-2 text-[11px]" style={{ color: 'rgba(255,255,255,0.28)' }}>
           <span style={{
             width: 6, height: 6, borderRadius: '50%', flexShrink: 0, display: 'inline-block',
-            background: rentmeSyncStatus === 'ok' ? '#27ae60' : rentmeSyncStatus === 'syncing' ? '#e67e22' : rentmeSyncStatus === 'error' ? '#c0392b' : '#aaa'
+            background: rentmeSyncStatus === 'ok' ? '#27ae60' : rentmeSyncStatus === 'syncing' ? '#e67e22' : rentmeSyncStatus === 'error' ? '#c0392b' : '#555'
           }} />
           RentMe {rentmeSyncStatus === 'ok' ? '· connesso' : rentmeSyncStatus === 'syncing' ? '· sync…' : rentmeSyncStatus === 'error' ? '· errore' : '· —'}
         </div>
         <button
           type="button"
           onClick={() => setPage('settings')}
-          className="mt-3 pt-3 border-t w-full text-left text-[10px] mono btn-ghost px-1 py-1 rounded -mx-1 hover:bg-[var(--surface-2)]"
-          style={{ borderColor: 'var(--border)', color: 'var(--muted)' }}
+          className="mt-3 pt-3 w-full text-left text-[10px] mono px-1 py-1 rounded -mx-1"
+          style={{ borderTop: `1px solid ${sidebarBorder}`, color: 'rgba(255,255,255,0.22)', background: 'transparent' }}
           title="Apri impostazioni · informazioni versione"
           aria-label={`Versione ${APP_VERSION.number}, apri impostazioni`}
         >
