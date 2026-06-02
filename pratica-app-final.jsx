@@ -11,7 +11,7 @@ import { CalendarDays, Receipt, BarChart2,
   Hotel, Anchor, Plane, Wallet, Printer, Save, Mail, Home, Compass,
   Upload, Image as ImageIcon, RefreshCw, Key, Eye as EyeIcon, EyeOff,
   CircleDot, Power, Shield, Briefcase, Zap, Package,
-  Moon, Sun, Monitor, Wrench, Link
+  Moon, Sun, Monitor, Wrench, Link, Ship
 } from 'lucide-react';
 import Tesseract from 'tesseract.js';
 
@@ -12686,11 +12686,24 @@ function FirmaModal({ preno, onSave, onClose }) {
 // ── Widget "Arrivi a Lampedusa oggi" ───────────────────────────────
 // Legge gli arrivi dal backend (aggregatore multi-fonte FR24/AeroDataBox/
 // OpenSky). Online-only: degrada in modo pulito se offline o non configurato.
-function VoliLampedusaWidget() {
+// ── Helper meteo a livello modulo (usati da hero glance + widget) ───
+const WMO_DESC = {
+  0:'Sereno',1:'Prevalentemente sereno',2:'Parzialmente nuvoloso',3:'Coperto',
+  45:'Nebbia',48:'Nebbia gelata',
+  51:'Pioviggine leggera',53:'Pioviggine',55:'Pioviggine intensa',
+  61:'Pioggia leggera',63:'Pioggia',65:'Pioggia intensa',
+  80:'Rovesci leggeri',81:'Rovesci',82:'Rovesci intensi',
+  95:'Temporale',96:'Temporale con grandine',99:'Temporale forte',
+};
+const degToDir = (d) => d == null ? '' : ['N','NE','E','SE','S','SO','O','NO'][Math.round(d/45)%8];
+
+// ── Hook condiviso: feed voli Lampedusa ─────────────────────────────
+// Estratto dal widget così hero (riassunto) e lista (dettaglio) usano
+// la STESSA fetch. enabled=false → non scarica (quando i dati arrivano via prop).
+function useVoliFeed(enabled = true) {
   const [state, setState] = useState({ loading: true, data: null, error: null, at: null });
   const [now, setNow] = useState(() => Date.now());
   const mounted = useRef(true);
-
   const load = useCallback(async () => {
     try {
       const r = await fetch(`${getApiBase()}/voli/lampedusa`, { signal: AbortSignal.timeout(15000) });
@@ -12701,16 +12714,73 @@ function VoliLampedusaWidget() {
       if (mounted.current) setState(s => ({ ...s, loading: false, error: e.message || 'errore', at: Date.now() }));
     }
   }, []);
-
   useEffect(() => {
+    if (!enabled) return undefined;
     mounted.current = true;
     load();
     const idLoad = setInterval(load, 90 * 1000);    // refresh dati ogni 90s (live)
     const idTick = setInterval(() => setNow(Date.now()), 30 * 1000); // countdown ogni 30s
     return () => { mounted.current = false; clearInterval(idLoad); clearInterval(idTick); };
-  }, [load]);
+  }, [enabled, load]);
+  return { ...state, now, reload: load };
+}
 
-  const { loading, data, error, at } = state;
+// ── Hook condiviso: feed navi Lampedusa ─────────────────────────────
+function useNaviFeed(enabled = true) {
+  const [state, setState] = useState({ loading: true, data: null, error: null, at: null });
+  const [now, setNow] = useState(() => Date.now());
+  const mounted = useRef(true);
+  const load = useCallback(async () => {
+    try {
+      const r = await fetch(`${getApiBase()}/navi/lampedusa`, { signal: AbortSignal.timeout(15000) });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const data = await r.json();
+      if (mounted.current) setState({ loading: false, data, error: null, at: Date.now() });
+    } catch (e) {
+      if (mounted.current) setState(s => ({ ...s, loading: false, error: e.message || 'errore', at: Date.now() }));
+    }
+  }, []);
+  useEffect(() => {
+    if (!enabled) return undefined;
+    mounted.current = true;
+    load();
+    const idLoad = setInterval(load, 3 * 60 * 1000);
+    const idTick = setInterval(() => setNow(Date.now()), 60 * 1000);
+    return () => { mounted.current = false; clearInterval(idLoad); clearInterval(idTick); };
+  }, [enabled, load]);
+  return { ...state, now, reload: load };
+}
+
+// ── Hook condiviso: feed meteo Lampedusa (Open-Meteo, free, no key) ──
+function useMeteoFeed(enabled = true) {
+  const [state, setState] = useState({ loading: true, data: null, error: null, at: null });
+  const mounted = useRef(true);
+  const load = useCallback(async () => {
+    try {
+      const [mRes, marRes] = await Promise.allSettled([
+        fetch('https://api.open-meteo.com/v1/forecast?latitude=35.49&longitude=12.60&current=temperature_2m,windspeed_10m,winddirection_10m,weathercode&wind_speed_unit=kmh&timezone=Europe%2FRome', { signal: AbortSignal.timeout(10000) }),
+        fetch('https://marine-api.open-meteo.com/v1/marine?latitude=35.49&longitude=12.60&current=wave_height&timezone=Europe%2FRome', { signal: AbortSignal.timeout(10000) }),
+      ]);
+      const meteo  = (mRes.status==='fulfilled'  && mRes.value.ok)  ? await mRes.value.json()  : null;
+      const marine = (marRes.status==='fulfilled' && marRes.value.ok) ? await marRes.value.json() : null;
+      if (mounted.current) setState({ loading: false, data: { meteo, marine }, error: null, at: Date.now() });
+    } catch(e) {
+      if (mounted.current) setState(s => ({ ...s, loading: false, error: e.message, at: Date.now() }));
+    }
+  }, []);
+  useEffect(() => {
+    if (!enabled) return undefined;
+    mounted.current = true;
+    load();
+    const id = setInterval(load, 30 * 60 * 1000);
+    return () => { mounted.current = false; clearInterval(id); };
+  }, [enabled, load]);
+  return { ...state, reload: load };
+}
+
+function VoliLampedusaWidget({ feed } = {}) {
+  const own = useVoliFeed(!feed);
+  const { loading, data, error, at, now, reload } = feed || own;
   const flights = data?.flights || [];
 
   const fmtOra = (iso) => {
@@ -12763,7 +12833,7 @@ function VoliLampedusaWidget() {
         <span className="label" style={{ color: 'var(--edo-sea)' }}>live · oggi</span>
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
           {at && <span style={{ fontSize: 10, color: 'var(--muted)' }}>agg. {new Date(at).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}</span>}
-          <button type="button" onClick={() => { setState(s => ({ ...s, loading: !s.data })); load(); }}
+          <button type="button" onClick={reload}
             title="Aggiorna" style={{ border: '1px solid var(--border)', background: 'transparent', borderRadius: 6, padding: '3px 7px', cursor: 'pointer', color: 'var(--muted)', fontSize: 11 }}>↻</button>
         </div>
       </div>
@@ -12851,31 +12921,9 @@ function VoliLampedusaWidget() {
 // ── Widget "Collegamenti via mare" (traghetti/aliscafi) ────────────
 // Tracking AIS live delle navi per Lampedusa dal backend (/api/navi/lampedusa).
 // Online-only, degrada pulito come il widget voli.
-function NaviLampedusaWidget() {
-  const [state, setState] = useState({ loading: true, data: null, error: null, at: null });
-  const [now, setNow] = useState(() => Date.now());
-  const mounted = useRef(true);
-
-  const load = useCallback(async () => {
-    try {
-      const r = await fetch(`${getApiBase()}/navi/lampedusa`, { signal: AbortSignal.timeout(15000) });
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      const data = await r.json();
-      if (mounted.current) setState({ loading: false, data, error: null, at: Date.now() });
-    } catch (e) {
-      if (mounted.current) setState(s => ({ ...s, loading: false, error: e.message || 'errore', at: Date.now() }));
-    }
-  }, []);
-
-  useEffect(() => {
-    mounted.current = true;
-    load();
-    const idLoad = setInterval(load, 3 * 60 * 1000);
-    const idTick = setInterval(() => setNow(Date.now()), 60 * 1000);
-    return () => { mounted.current = false; clearInterval(idLoad); clearInterval(idTick); };
-  }, [load]);
-
-  const { loading, data, error, at } = state;
+function NaviLampedusaWidget({ feed } = {}) {
+  const own = useNaviFeed(!feed);
+  const { loading, data, error, at, now, reload } = feed || own;
   // Nascondi le navi la cui ultima posizione AIS è oltre 24h fa: sono ferme in
   // porto / non in navigazione e "sporcano" il riquadro. Le contiamo a parte.
   const allVessels = data?.vessels || [];
@@ -12918,7 +12966,7 @@ function NaviLampedusaWidget() {
         <span className="label" style={{ color: 'var(--edo-sea)' }}>live</span>
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
           {at && <span style={{ fontSize: 10, color: 'var(--muted)' }}>agg. {new Date(at).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}</span>}
-          <button type="button" onClick={() => { setState(s => ({ ...s, loading: !s.data })); load(); }} title="Aggiorna"
+          <button type="button" onClick={reload} title="Aggiorna"
             style={{ border: '1px solid var(--border)', background: 'transparent', borderRadius: 6, padding: '3px 7px', cursor: 'pointer', color: 'var(--muted)', fontSize: 11 }}>↻</button>
         </div>
       </div>
@@ -12971,45 +13019,11 @@ function NaviLampedusaWidget() {
 }
 
 // ── Widget meteo Lampedusa (Open-Meteo, free, no API key) ─────────
-function MeteoLampedusaWidget() {
-  const [state, setState] = useState({ loading: true, data: null, error: null, at: null });
-  const mounted = useRef(true);
-
-  const WMO = {
-    0:'Sereno',1:'Prevalentemente sereno',2:'Parzialmente nuvoloso',3:'Coperto',
-    45:'Nebbia',48:'Nebbia gelata',
-    51:'Pioviggine leggera',53:'Pioviggine',55:'Pioviggine intensa',
-    61:'Pioggia leggera',63:'Pioggia',65:'Pioggia intensa',
-    80:'Rovesci leggeri',81:'Rovesci',82:'Rovesci intensi',
-    95:'Temporale',96:'Temporale con grandine',99:'Temporale forte',
-  };
-  const degToDir = (d) => {
-    if (d == null) return '';
-    return ['N','NE','E','SE','S','SO','O','NO'][Math.round(d/45)%8];
-  };
-
-  const load = useCallback(async () => {
-    try {
-      const [mRes, marRes] = await Promise.allSettled([
-        fetch('https://api.open-meteo.com/v1/forecast?latitude=35.49&longitude=12.60&current=temperature_2m,windspeed_10m,winddirection_10m,weathercode&wind_speed_unit=kmh&timezone=Europe%2FRome', { signal: AbortSignal.timeout(10000) }),
-        fetch('https://marine-api.open-meteo.com/v1/marine?latitude=35.49&longitude=12.60&current=wave_height&timezone=Europe%2FRome', { signal: AbortSignal.timeout(10000) }),
-      ]);
-      const meteo  = (mRes.status==='fulfilled'  && mRes.value.ok)  ? await mRes.value.json()  : null;
-      const marine = (marRes.status==='fulfilled' && marRes.value.ok) ? await marRes.value.json() : null;
-      if (mounted.current) setState({ loading: false, data: { meteo, marine }, error: null, at: Date.now() });
-    } catch(e) {
-      if (mounted.current) setState(s => ({ ...s, loading: false, error: e.message, at: Date.now() }));
-    }
-  }, []);
-
-  useEffect(() => {
-    mounted.current = true;
-    load();
-    const id = setInterval(load, 30 * 60 * 1000);
-    return () => { mounted.current = false; clearInterval(id); };
-  }, [load]);
-
-  const { loading, data, at } = state;
+function MeteoLampedusaWidget({ feed } = {}) {
+  const own = useMeteoFeed(!feed);
+  const { loading, data, at, reload } = feed || own;
+  const WMO = WMO_DESC;
+  const load = reload;
   const cur = data?.meteo?.current;
   const waveH = data?.marine?.current?.wave_height;
   const aggMin = at ? Math.round((Date.now() - at) / 60000) : null;
@@ -13088,6 +13102,12 @@ function OggiPage({ prenotazioni, setPrenotazioni, fleet, scadenze, customers, s
   const [walkInDal, setWalkInDal] = useState(today);
   const [walkInAl,  setWalkInAl]  = useState(today);
   const [walkInForm, setWalkInForm] = useState(null); // null | prefillData
+
+  // Feed live condivisi (hero glance + lista al clic) e vista espansa
+  const voliFeed  = useVoliFeed();
+  const naviFeed  = useNaviFeed();
+  const meteoFeed = useMeteoFeed();
+  const [liveView, setLiveView] = useState(null); // null | 'voli' | 'navi'
 
   const STATO_COLOR = {
     confermata: '#2e6e3e', in_corso: '#1f5d83', attesa: '#b87333',
@@ -13302,6 +13322,27 @@ function OggiPage({ prenotazioni, setPrenotazioni, fleet, scadenze, customers, s
   const ore = now.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
   const dataLabel = now.toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
+  // ── Riassunti per l'hero "colpo d'occhio" ─────────────────────────
+  const fmtHHMM = (iso) => { const d = new Date(iso); return isNaN(d) ? '—' : d.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }); };
+  // Voli: prossimo arrivo (non atterrato/cancellato, futuro) + conteggio
+  const _flights = voliFeed.data?.flights || [];
+  const _arrOf = (f) => f.actualArrival || f.estimatedArrival || f.scheduledArrival;
+  const _landed = (f) => f.status === 'landed' || !!f.actualArrival;
+  const nextFlight = _flights
+    .filter(f => !_landed(f) && f.status !== 'cancelled' && _arrOf(f) && new Date(_arrOf(f)) >= now)
+    .sort((a, b) => new Date(_arrOf(a)) - new Date(_arrOf(b)))[0] || null;
+  const flightsCount = _flights.length;
+  const voliConfigured = !voliFeed.data || voliFeed.data.configured !== false;
+  // Navi: prossima in avvicinamento/navigazione (escludi posizioni vecchie >24h)
+  const _vessels = (naviFeed.data?.vessels || []).filter(v => !(v.ageMin != null && v.ageMin > 24 * 60));
+  const nextShip = _vessels.find(v => v.ok && v.stato === 'in avvicinamento')
+    || _vessels.find(v => v.ok && !v.stale)
+    || _vessels[0] || null;
+  const naviConfigured = !naviFeed.data || naviFeed.data.configured !== false;
+  // Meteo
+  const _mcur = meteoFeed.data?.meteo?.current;
+  const _wave = meteoFeed.data?.marine?.current?.wave_height;
+
   function clienteLabel(p) {
     return [p.clienteCognome, p.clienteNome].filter(Boolean).join(' ') || 'Cliente';
   }
@@ -13430,46 +13471,93 @@ function OggiPage({ prenotazioni, setPrenotazioni, fleet, scadenze, customers, s
           <path d="M 0 40 Q 200 10 400 40 T 800 40 V 80 H 0 Z" fill="white" />
         </svg>
 
-        <div style={{ position: 'relative', zIndex: 2, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
-          <div style={{ flex: '1 1 320px', minWidth: 0 }}>
-            <div className="label" style={{ color: 'rgba(255,255,255,0.72)', marginBottom: 8 }}>{dataLabel}</div>
-            <h1 className="serif" style={{ fontSize: 34, fontWeight: 500, color: 'white', letterSpacing: '-0.02em', lineHeight: 1.05, margin: 0 }}>
-              {operator?.nome
-                ? <>Ciao, <em style={{ fontStyle: 'italic' }}>{operator.nome}</em>.</>
-                : <>Buongiorno.</>}
-            </h1>
-            <div style={{ marginTop: 16, fontSize: 13, color: 'rgba(255,255,255,0.82)', display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'baseline' }}>
-              <span><strong style={{ color: 'white', fontWeight: 600, fontSize: 15 }}>{partenze.length}</strong> consegne</span>
-              <span style={{ opacity: 0.4 }}>·</span>
-              <span><strong style={{ color: 'white', fontWeight: 600, fontSize: 15 }}>{rientri.length}</strong> rientri</span>
-              <span style={{ opacity: 0.4 }}>·</span>
-              <span><strong style={{ color: 'white', fontWeight: 600, fontSize: 15 }}>{liberiCount}/{totaleFlotta}</strong> mezzi liberi</span>
-            </div>
-          </div>
+        {/* Riga alta: data · Lampedusa + orologio */}
+        <div style={{ position: 'relative', zIndex: 2, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, marginBottom: 16 }}>
+          <div className="label" style={{ color: 'rgba(255,255,255,0.72)' }}>{dataLabel} · Lampedusa</div>
+          <div className="mono" style={{ fontSize: 30, fontWeight: 600, color: 'white', lineHeight: 1, letterSpacing: '-0.02em' }}>{ore}</div>
+        </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 10 }}>
-            <div className="serif" style={{ fontSize: 30, fontWeight: 600, color: 'white', lineHeight: 1 }}>{ore}</div>
-            <button type="button" onClick={() => setPage('banco')}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 38, padding: '0 18px', borderRadius: 999,
-                border: 'none', background: 'var(--edo-sun)', color: 'var(--ink)', fontWeight: 700, fontSize: 13, cursor: 'pointer',
-                boxShadow: 'var(--shadow-inset)', whiteSpace: 'nowrap' }}>
-              Banco rapido →
-            </button>
-            <div style={{ display: 'flex', gap: 6 }}>
-              {(partenze.length > 0 || rientri.length > 0) && (
-                <button type="button" onClick={exportMovimenti}
-                  style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 9px', borderRadius: 6,
-                    border: '1px solid rgba(255,255,255,0.35)', background: 'rgba(255,255,255,0.10)', color: 'white', fontSize: 11, cursor: 'pointer' }}>
-                  <Download style={{ width: 11, height: 11 }} /> CSV
+        {/* Colpo d'occhio live: meteo · prossimo volo · prossima nave + azioni */}
+        <div style={{ position: 'relative', zIndex: 2, display: 'grid', gridTemplateColumns: 'repeat(3, 1fr) auto', gap: 12, alignItems: 'stretch' }}>
+          {(() => {
+            const tileBase = {
+              background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.18)',
+              borderRadius: 11, padding: '12px 14px', minWidth: 0, textAlign: 'left', color: 'white',
+            };
+            const tl = { fontSize: 10, fontWeight: 700, letterSpacing: '.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.62)', marginBottom: 7, display: 'flex', alignItems: 'center', gap: 6 };
+            const big = { fontFamily: 'var(--font-mono)', fontSize: 25, fontWeight: 600, lineHeight: 1, letterSpacing: '-0.02em' };
+            const meta = { fontSize: 11, color: 'rgba(255,255,255,0.75)', marginTop: 5, lineHeight: 1.35, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' };
+            return (
+              <>
+                {/* METEO */}
+                <div style={tileBase}>
+                  <div style={tl}><Sun style={{ width: 13, height: 13, opacity: 0.85 }} /> Meteo</div>
+                  {_mcur ? (
+                    <>
+                      <div style={big}>{Math.round(_mcur.temperature_2m)}<span style={{ fontSize: 14, fontWeight: 500, opacity: 0.7 }}>°</span></div>
+                      <div style={meta}>
+                        vento <b style={{ color: '#fff', fontWeight: 600 }}>{Math.round(_mcur.windspeed_10m)} km/h</b> {degToDir(_mcur.winddirection_10m)}
+                        {_wave != null ? <> · onde <b style={{ color: '#fff', fontWeight: 600 }}>{_wave.toFixed(1)} m</b></> : null}
+                        {WMO_DESC[_mcur.weathercode] ? ` · ${WMO_DESC[_mcur.weathercode].toLowerCase()}` : ''}
+                      </div>
+                    </>
+                  ) : <div style={{ ...meta, marginTop: 0 }}>{meteoFeed.loading ? 'caricamento…' : 'non disponibile'}</div>}
+                </div>
+
+                {/* PROSSIMO VOLO — cliccabile → lista */}
+                <button type="button" onClick={() => setLiveView(v => v === 'voli' ? null : 'voli')}
+                  className="hero-tile" aria-expanded={liveView === 'voli'}
+                  style={{ ...tileBase, cursor: 'pointer', boxShadow: liveView === 'voli' ? '0 0 0 2px rgba(255,255,255,0.5) inset' : 'none' }}>
+                  <div style={tl}><Plane style={{ width: 13, height: 13, opacity: 0.85 }} /> Prossimo volo <ChevronDown style={{ width: 12, height: 12, marginLeft: 'auto', transform: liveView === 'voli' ? 'rotate(180deg)' : 'none', transition: 'transform .18s' }} /></div>
+                  {!voliConfigured ? <div style={{ ...meta, marginTop: 0 }}>sorgente non collegata</div>
+                    : nextFlight ? (
+                    <>
+                      <div style={big}>{fmtHHMM(_arrOf(nextFlight))}</div>
+                      <div style={meta}><b style={{ color: '#fff', fontWeight: 600 }}>{nextFlight.originName || nextFlight.originIata || '—'}</b> · {flightsCount} oggi</div>
+                    </>
+                  ) : <div style={{ ...meta, marginTop: 0 }}>{voliFeed.loading ? 'caricamento…' : `nessun arrivo · ${flightsCount} oggi`}</div>}
                 </button>
-              )}
-              <button type="button" onClick={exportICS} title="Scarica tutte le prenotazioni come calendario .ics"
-                style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 9px', borderRadius: 6,
-                  border: '1px solid rgba(255,255,255,0.35)', background: 'rgba(255,255,255,0.10)', color: 'white', fontSize: 11, cursor: 'pointer' }}>
-                <Download style={{ width: 11, height: 11 }} /> .ics
-              </button>
-            </div>
-          </div>
+
+                {/* PROSSIMA NAVE — cliccabile → lista */}
+                <button type="button" onClick={() => setLiveView(v => v === 'navi' ? null : 'navi')}
+                  className="hero-tile" aria-expanded={liveView === 'navi'}
+                  style={{ ...tileBase, cursor: 'pointer', boxShadow: liveView === 'navi' ? '0 0 0 2px rgba(255,255,255,0.5) inset' : 'none' }}>
+                  <div style={tl}><Ship style={{ width: 13, height: 13, opacity: 0.85 }} /> Prossima nave <ChevronDown style={{ width: 12, height: 12, marginLeft: 'auto', transform: liveView === 'navi' ? 'rotate(180deg)' : 'none', transition: 'transform .18s' }} /></div>
+                  {!naviConfigured ? <div style={{ ...meta, marginTop: 0 }}>tracking non collegato</div>
+                    : nextShip ? (
+                    <>
+                      <div style={{ ...big, fontSize: 18, textTransform: 'capitalize' }}>{(nextShip.name || `MMSI ${nextShip.mmsi}`).toLowerCase()}</div>
+                      <div style={meta}>{nextShip.stato || 'in mare'}{nextShip.etaAis && new Date(nextShip.etaAis) > now ? ` · ~${fmtHHMM(nextShip.etaAis)}` : ''}</div>
+                    </>
+                  ) : <div style={{ ...meta, marginTop: 0 }}>{naviFeed.loading ? 'caricamento…' : 'nessuna in mare'}</div>}
+                </button>
+
+                {/* AZIONI */}
+                <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 8 }}>
+                  <button type="button" onClick={() => setPage('banco')}
+                    style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, height: 38, padding: '0 16px', borderRadius: 8,
+                      border: 'none', background: 'var(--edo-sun)', color: 'var(--ink)', fontWeight: 700, fontSize: 13, cursor: 'pointer',
+                      boxShadow: 'var(--shadow-inset)', whiteSpace: 'nowrap' }}>
+                    Banco rapido →
+                  </button>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    {(partenze.length > 0 || rientri.length > 0) && (
+                      <button type="button" onClick={exportMovimenti} title="Esporta movimenti del giorno (CSV)"
+                        style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 9px', borderRadius: 6,
+                          border: '1px solid rgba(255,255,255,0.35)', background: 'rgba(255,255,255,0.10)', color: 'white', fontSize: 11, cursor: 'pointer' }}>
+                        <Download style={{ width: 11, height: 11 }} /> CSV
+                      </button>
+                    )}
+                    <button type="button" onClick={exportICS} title="Scarica tutte le prenotazioni come calendario .ics"
+                      style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 9px', borderRadius: 6,
+                        border: '1px solid rgba(255,255,255,0.35)', background: 'rgba(255,255,255,0.10)', color: 'white', fontSize: 11, cursor: 'pointer' }}>
+                      <Download style={{ width: 11, height: 11 }} /> .ics
+                    </button>
+                  </div>
+                </div>
+              </>
+            );
+          })()}
         </div>
       </div>
 
@@ -13489,22 +13577,24 @@ function OggiPage({ prenotazioni, setPrenotazioni, fleet, scadenze, customers, s
         ))}
       </div>
 
-      {/* ── ZONA "IN TEMPO REALE" · voli + navi + meteo ─────────────── */}
-      <div className="oggi-section-head">
-        <span className="eb">In tempo reale</span>
-        <span className="ttl">Lampedusa adesso</span>
-        <span className="ln" aria-hidden="true" />
-      </div>
-      <div className="oggi-live-zone">
-        {/* ── VOLI LAMPEDUSA OGGI ───────────────────────────────────── */}
-        <VoliLampedusaWidget />
-
-        {/* ── NAVI (traghetti/aliscafi) LAMPEDUSA ───────────────────── */}
-        <NaviLampedusaWidget />
-
-        {/* ── METEO LAMPEDUSA (Open-Meteo, free, no API key) ────────── */}
-        <MeteoLampedusaWidget />
-      </div>
+      {/* ── DETTAGLIO LIVE (espanso al clic su un riquadro dell'hero) ── */}
+      {liveView && (
+        <div className="oggi-live-zone" style={{ marginBottom: 8 }}>
+          <div className="oggi-section-head">
+            <span className="eb">In tempo reale</span>
+            <span className="ttl">{liveView === 'voli' ? 'Voli di oggi' : 'Collegamenti via mare'}</span>
+            <span className="ln" aria-hidden="true" />
+            <button type="button" onClick={() => setLiveView(null)}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 4, border: '1px solid var(--border)', background: 'transparent',
+                borderRadius: 6, padding: '4px 9px', cursor: 'pointer', color: 'var(--muted)', fontSize: 11, fontWeight: 600 }}>
+              <X style={{ width: 12, height: 12 }} /> Chiudi
+            </button>
+          </div>
+          {liveView === 'voli'
+            ? <VoliLampedusaWidget feed={voliFeed} />
+            : <NaviLampedusaWidget feed={naviFeed} />}
+        </div>
+      )}
 
       {/* ── ZONA "OPERATIVITÀ" · walk-in + movimenti del giorno ──────── */}
       <div className="oggi-section-head">
@@ -16823,6 +16913,9 @@ function Styles() {
       .oggi-section-head .ttl { font-family: var(--font-serif); font-weight: 500; font-size: 18px; color: var(--ink); letter-spacing: -0.01em; line-height: 1; }
       .oggi-section-head .eb  { font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--sea); }
       .oggi-section-head .ln  { flex: 1; height: 1px; background: var(--border); }
+      /* Riquadri live cliccabili nell'hero */
+      .hero-tile { transition: background var(--dur-fast) ease, box-shadow var(--dur-fast) ease; }
+      .hero-tile:hover { background: rgba(255,255,255,0.20) !important; }
 
       /* ═══════════════════════════════════════════════════════════════
          FORM
