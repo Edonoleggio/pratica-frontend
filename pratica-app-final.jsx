@@ -10622,7 +10622,7 @@ function FleetCSVImport({ fleet, onImport, onClose }) {
                 : `${updated > 0 ? `${updated} aggiornati` : ''}${updated > 0 && added > 0 ? ' · ' : ''}${added > 0 ? `${added} nuovi aggiunti` : ''}${updated === 0 && added === 0 ? 'Nessuna modifica (flotta già aggiornata).' : '.'}`}
             </div>
             <button type="button" onClick={onClose}
-              style={{ padding: '10px 28px', background: 'var(--ink)', color: '#fff', border: 'none', borderRadius: 5, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
+              style={{ padding: '10px 28px', background: 'var(--ink)', color: 'var(--paper)', border: 'none', borderRadius: 5, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
               Chiudi
             </button>
           </div>
@@ -10771,7 +10771,7 @@ function CassaFormModal({ onSave, onClose, prenotazioni, customers, operator }) 
 
         <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
           <button type="button" onClick={handleSubmit}
-            style={{ flex: 1, padding: '10px', background: 'var(--ink)', color: '#fff', border: 'none', borderRadius: 5, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
+            style={{ flex: 1, padding: '10px', background: 'var(--ink)', color: 'var(--paper)', border: 'none', borderRadius: 5, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
             Registra incasso
           </button>
           <button type="button" onClick={onClose}
@@ -10907,7 +10907,7 @@ function ChiusuraGiornalieraModal({ cassa, initialDate, onClose }) {
             Chiudi
           </button>
           <button type="button" onClick={() => window.print()}
-            style={{ padding: '9px 18px', background: 'var(--ink)', color: '#fff', border: 'none', borderRadius: 5, fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+            style={{ padding: '9px 18px', background: 'var(--ink)', color: 'var(--paper)', border: 'none', borderRadius: 5, fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
             🖨 Stampa
           </button>
         </div>
@@ -11018,7 +11018,7 @@ function RegistroCassaPage({ cassa, setCassa, prenotazioni, customers, operator,
             <Download className="w-4 h-4" /> CSV
           </button>
           <button type="button" onClick={() => setShowForm(true)}
-            style={{ padding: '8px 18px', background: 'var(--ink)', color: '#fff', border: 'none', borderRadius: 5, fontSize: 13, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+            style={{ padding: '8px 18px', background: 'var(--ink)', color: 'var(--paper)', border: 'none', borderRadius: 5, fontSize: 13, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
             <Plus className="w-4 h-4" /> Incasso
           </button>
         </div>
@@ -11941,7 +11941,7 @@ function ImportStoricoModal({ existingPreno, existingCustomers, onImport, onClos
               {stats.importati} prenotazioni importate · {stats.clientiCreati} clienti nuovi creati
             </div>
             <button type="button" onClick={onClose}
-              style={{ padding: '10px 28px', background: 'var(--ink)', color: '#fff', border: 'none', borderRadius: 5, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
+              style={{ padding: '10px 28px', background: 'var(--ink)', color: 'var(--paper)', border: 'none', borderRadius: 5, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
               Chiudi
             </button>
           </div>
@@ -12532,7 +12532,7 @@ ${preno.codice ? `<div style="text-align:center;margin:-16px 0 20px;"><span styl
 
         <div style={{ display: 'flex', gap: 10 }}>
           <button type="button" onClick={printContratto}
-            style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '10px', background: 'var(--ink)', color: '#fff', border: 'none', borderRadius: 5, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
+            style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '10px', background: 'var(--ink)', color: 'var(--paper)', border: 'none', borderRadius: 5, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
             🖨️ {t.print}
           </button>
           <button type="button" onClick={onClose}
@@ -15202,7 +15202,7 @@ function KioskView({ prenotazioni, setPrenotazioni, fleet, rentmeVehicles, scade
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', flexDirection: 'column' }}>
       {/* Header kiosk */}
-      <div style={{ background: 'var(--ink)', color: '#f9f5ec', padding: '18px 28px', display: 'flex', alignItems: 'center', gap: 16 }}>
+      <div style={{ background: 'var(--ink)', color: 'var(--paper)', padding: '18px 28px', display: 'flex', alignItems: 'center', gap: 16 }}>
         <span style={{ fontFamily: 'Georgia, serif', fontSize: 22, fontWeight: 700, letterSpacing: 1 }}>Edonoleggio</span>
         <span style={{ fontSize: 13, opacity: 0.6, marginLeft: 4 }}>· Banco</span>
         <div style={{ flex: 1 }} />
@@ -16660,7 +16660,7 @@ function Styles() {
       /* ═══════════════════════════════════════════════════════════════
          BOTTONI — esistenti + nuovi .btn-brand .btn-sun .btn-wa
          ═══════════════════════════════════════════════════════════════ */
-      .btn-primary { background: var(--ink); color: #f9f5ec; transition: background var(--dur-fast), transform var(--dur-fast); border-radius: var(--radius); }
+      .btn-primary { background: var(--ink); color: var(--paper); transition: background var(--dur-fast), transform var(--dur-fast); border-radius: var(--radius); }
       .btn-primary:hover:not(:disabled) { background: var(--accent); }
       .btn-primary:active:not(:disabled) { transform: translateY(1px); }
 
@@ -17092,7 +17092,7 @@ function Topbar({ page, online, setOnline, pendingQueue, operator, admin, setAdm
         style={{ borderColor: 'var(--border)' }}
         aria-label={`Operatore: ${operator.nome}. Clicca per cambio turno`}
       >
-        <div className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-semibold" style={{ background: 'var(--ink)', color: '#f9f5ec' }} aria-hidden="true">
+        <div className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-semibold" style={{ background: 'var(--ink)', color: 'var(--paper)' }} aria-hidden="true">
           {operator.initials}
         </div>
         <div className="text-left">
@@ -18581,7 +18581,7 @@ function FermiFlottaSection({ fleet, fermiFlotta, setFermiFlotta }) {
           </div>
         </div>
         <button type="button" onClick={() => setShowForm(s => !s)}
-          style={{ padding: '7px 14px', borderRadius: 5, border: 'none', background: 'var(--ink)', color: '#f9f5ec', fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+          style={{ padding: '7px 14px', borderRadius: 5, border: 'none', background: 'var(--ink)', color: 'var(--paper)', fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
           <Plus className="w-3.5 h-3.5" /> Aggiungi fermo
         </button>
       </div>
@@ -22630,7 +22630,7 @@ function ShiftChangeModal({ currentOperator, operators, contracts, onClose, onCo
     >
       <div className="card-paper p-4 mb-5 flex items-center gap-4">
         <div className="flex items-center gap-2">
-          <div className="w-10 h-10 rounded-full flex items-center justify-center text-xs font-semibold" style={{ background: 'var(--ink)', color: '#f9f5ec' }} aria-hidden="true">{initialsOf(currentOperator)}</div>
+          <div className="w-10 h-10 rounded-full flex items-center justify-center text-xs font-semibold" style={{ background: 'var(--ink)', color: 'var(--paper)' }} aria-hidden="true">{initialsOf(currentOperator)}</div>
           <div><div className="text-xs" style={{ color: 'var(--muted)' }}>uscente</div><div className="font-medium text-sm">{currentOperator.nome}</div></div>
         </div>
         <ArrowRight className="w-5 h-5" style={{ color: 'var(--muted)' }} aria-hidden="true" />
