@@ -11,7 +11,7 @@ import { CalendarDays, Receipt, BarChart2,
   Hotel, Anchor, Plane, Wallet, Printer, Save, Mail, Home, Compass,
   Upload, Image as ImageIcon, RefreshCw, Key, Eye as EyeIcon, EyeOff,
   CircleDot, Power, Shield, Briefcase, Zap, Package,
-  Moon, Sun, Monitor, Wrench
+  Moon, Sun, Monitor, Wrench, Link
 } from 'lucide-react';
 import Tesseract from 'tesseract.js';
 
@@ -2720,8 +2720,8 @@ function PrenoCard({ p, onEdit, onConvert, onDelete, onFoto, onContratto, onFirm
           </button>
         )}
         <button type="button" onClick={() => onFoto && onFoto(p)}
-          style={{ fontSize: 11, padding: '4px 10px', borderRadius: 4, border: '1px solid var(--border)', background: 'transparent', color: '#1f5d83', cursor: 'pointer' }}>
-          📷 Foto
+          style={{ fontSize: 11, padding: '4px 10px', borderRadius: 4, border: '1px solid var(--border)', background: 'transparent', color: '#1f5d83', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <Camera style={{ width: 12, height: 12 }} aria-hidden="true" /> Foto
         </button>
         <button type="button" onClick={() => onFirma && onFirma(p)}
           style={{ fontSize: 11, padding: '4px 10px', borderRadius: 4, border: '1px solid var(--border)', background: 'transparent', color: '#2e6e3e', cursor: 'pointer' }}>
@@ -3405,7 +3405,7 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
       streamRef.current = stream;
       if (videoRef.current) { videoRef.current.srcObject = stream; videoRef.current.play(); }
       setOcrStatus('scanning');
-      setOcrMsg('Punta la fotocamera sulla targa e premi 📸');
+      setOcrMsg('Punta la fotocamera sulla targa e scatta');
     } catch (err) {
       setOcrStatus('error');
       setOcrMsg(`Fotocamera non disponibile: ${err.message}`);
@@ -3987,7 +3987,7 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
                   style={{ width: 16, height: 16, accentColor: 'var(--accent)', cursor: 'pointer' }}
                 />
                 <span style={{ fontSize: 13 }}>
-                  <strong>📡 {isNew ? 'Invia anche a RentMe' : 'Re-invia a RentMe'}</strong>
+                  <strong>{isNew ? 'Invia anche a RentMe' : 'Re-invia a RentMe'}</strong>
                   <span style={{ color: 'var(--ink-2)', marginLeft: 6, fontSize: 12 }}>
                     {sendToRentme
                       ? isNew ? '— la prenotazione sarà creata nel gestionale RentMe' : '— i dati aggiornati saranno inviati a RentMe'
@@ -4094,7 +4094,7 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
                 )}
                 {ocrStatus === 'error' && (
                   <button type="button"
-                    onClick={() => { setOcrStatus('scanning'); setOcrMsg('Punta la fotocamera sulla targa e premi 📸'); setOcrFound(null); }}
+                    onClick={() => { setOcrStatus('scanning'); setOcrMsg('Punta la fotocamera sulla targa e scatta'); setOcrFound(null); }}
                     style={{ padding: '10px 24px', borderRadius: 8, border: 'none',
                       background: 'rgba(255,255,255,0.15)', color: '#fff', fontWeight: 700, cursor: 'pointer' }}>
                     🔄 Riprova
@@ -4210,7 +4210,7 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rent
       if (sendToRentme && rentmePush) {
         const rmVeh = (rentmeVehicles || []).find(v => v.targa === rec.vehicleId || v.rentmeCode === rec.vehicleId);
         rentmePush(rec, rmVeh?.slug || rec.vehicleType || 'auto')
-          .then(() => pushToast && pushToast({ tone: 'success', title: '📡 Inviato a RentMe', message: `${[rec.clienteCognome, rec.clienteNome].filter(Boolean).join(' ')}` }))
+          .then(() => pushToast && pushToast({ tone: 'success', title: 'Inviato a RentMe', message: `${[rec.clienteCognome, rec.clienteNome].filter(Boolean).join(' ')}` }))
           .catch(err => pushToast && pushToast({ tone: 'warning', title: 'RentMe: invio fallito', message: err.message, duration: 6000 }));
       }
       return;
@@ -4282,7 +4282,7 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rent
       );
       const slug = rmVeh?.slug || cleanData.vehicleType || 'auto';
       rentmePush({ ...cleanData, id: form.id }, slug)
-        .then(() => pushToast && pushToast({ tone: 'success', title: '📡 Re-inviato a RentMe', message: `${[cleanData.clienteCognome, cleanData.clienteNome].filter(Boolean).join(' ')}` }))
+        .then(() => pushToast && pushToast({ tone: 'success', title: 'Re-inviato a RentMe', message: `${[cleanData.clienteCognome, cleanData.clienteNome].filter(Boolean).join(' ')}` }))
         .catch(err => pushToast && pushToast({ tone: 'warning', title: 'RentMe: invio fallito', message: err.message, duration: 6000 }));
     }
   }
@@ -6830,7 +6830,7 @@ function PreventiviPage({ setPage, setPrenotazioniPrefill, listino: listinoProps
                 color: linkCopiato ? '#2e6e3e' : 'var(--ink-2)',
                 fontWeight: 500, display: 'flex', alignItems: 'center', gap: 5,
               }}>
-              {linkCopiato ? '✓ Link copiato!' : '🔗 Copia link'}
+              {linkCopiato ? '✓ Link copiato!' : <><Link style={{ width: 13, height: 13 }} aria-hidden="true" /> Copia link</>}
             </button>
           )}
           {['preventivo', 'listino'].map(v => (
@@ -11988,7 +11988,7 @@ function FotoBadge({ preno }) {
     <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 7px', borderRadius: 10,
       background: '#eaf4fb', color: '#1f5d83', border: '1px solid #c0dff0',
       display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-      📷 {n}
+      <Camera style={{ width: 11, height: 11 }} aria-hidden="true" /> {n}
     </span>
   );
 }
@@ -12072,7 +12072,7 @@ function FotoModal({ prenotazione, onSave, onClose }) {
         ) : (
           <div onClick={() => inputRef.current?.click()}
             style={{ border: '2px dashed var(--border)', borderRadius: 8, padding: '28px 16px', textAlign: 'center', cursor: 'pointer', color: 'var(--muted)' }}>
-            <div style={{ fontSize: 28, marginBottom: 8 }}>📷</div>
+            <div style={{ marginBottom: 8, display: 'flex', justifyContent: 'center' }}><Camera style={{ width: 26, height: 26 }} aria-hidden="true" /></div>
             <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--ink-2)' }}>Aggiungi foto {label.toLowerCase()}</div>
             <div style={{ fontSize: 11, marginTop: 4 }}>Scatta con la fotocamera o carica dal file</div>
           </div>
@@ -13538,7 +13538,7 @@ function OggiPage({ prenotazioni, setPrenotazioni, fleet, scadenze, customers, s
             if (sendToRentme && rentmePush) {
               const rmVeh = (rentmeVehicles || []).find(v => v.targa === rec.vehicleId);
               rentmePush(rec, rmVeh?.slug || rec.vehicleType || 'auto')
-                .then(() => pushToast && pushToast({ tone: 'success', title: '📡 Inviato a RentMe' }))
+                .then(() => pushToast && pushToast({ tone: 'success', title: 'Inviato a RentMe' }))
                 .catch(err => pushToast && pushToast({ tone: 'warning', title: 'RentMe: invio fallito', message: err.message }));
             }
           }}
@@ -16144,7 +16144,7 @@ export default function App() {
       type: 'confirm',
       title: '⚠️ Reset totale ai dati iniziali?',
       message: <>Ultima conferma: questa operazione è <strong>irreversibile</strong>. Cancella clienti, prenotazioni e contratti. Ripristina flotta/strutture/operatori ai valori iniziali.</>,
-      confirmLabel: '🗑️ Sì, resetta tutto',
+      confirmLabel: 'Sì, resetta tutto',
       onConfirm: resetEverything,
     });
   }, [resetEverything]);
@@ -16281,7 +16281,7 @@ export default function App() {
               {page === 'preventivi'    && <PreventiviPage setPage={setPage} setPrenotazioniPrefill={setPrenotazioniPrefill} listino={listino} fleet={fleet} rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} pushToast={pushToast} fermiFlotta={fermiFlotta} />}
               {page === 'prenotazioni' && <PrenotazioniPage prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} setCassa={setCassa} fleet={fleet} rentmeVehicles={rentmeVehicles} customers={customers} partners={partners} operator={operator} onOpenWizard={openWizard} pushToast={pushToast} prefill={prenotazioniPrefill} onClearPrefill={() => setPrenotazioniPrefill(null)} fermiFlotta={fermiFlotta} rentmePush={rentmeSync.pushBooking} rentmeConnected={rentmeSync.status === 'ok'} agency={agency} />}
               {page === 'contracts'  && <ContractsList contracts={localContracts} operators={operators} onRetry={retryContract} onMarkReturned={markContractReturned} online={online} />}
-              {page === 'fleet'      && <FleetPage fleet={fleet} prenotazioni={prenotazioni} admin={admin} onAddVehicle={() => setModal('newVehicle')} onEditVehicle={(v) => setModal({ type: 'editVehicle', vehicle: v })} onDeleteVehicle={requestDeleteVehicle} onImportCSV={() => setShowCsvImport(true)} onResetFleet={() => setModal({ type: 'confirm', title: 'Azzera flotta?', message: <><strong>Tutti i {fleet.length} veicoli</strong> verranno eliminati dalla flotta. Le prenotazioni esistenti restano invariate. Dopo puoi reimportare con un CSV aggiornato. <strong>Azione irreversibile.</strong></>, confirmLabel: '🗑 Azzera flotta', variant: 'danger', onConfirm: () => { setFleet([]); pushToast({ tone: 'info', title: 'Flotta azzerata', message: 'Tutti i veicoli rimossi. Importa un nuovo CSV per ricaricare.' }); } })} onSetFleet={setFleet} scadenze={scadenze} setScadenze={setScadenze} fermiFlotta={fermiFlotta} setFermiFlotta={setFermiFlotta} rentmeVehicles={rentmeVehicles} manutenzioni={manutenzioni} setManutenzioni={setManutenzioni} partners={partners} />}
+              {page === 'fleet'      && <FleetPage fleet={fleet} prenotazioni={prenotazioni} admin={admin} onAddVehicle={() => setModal('newVehicle')} onEditVehicle={(v) => setModal({ type: 'editVehicle', vehicle: v })} onDeleteVehicle={requestDeleteVehicle} onImportCSV={() => setShowCsvImport(true)} onResetFleet={() => setModal({ type: 'confirm', title: 'Azzera flotta?', message: <><strong>Tutti i {fleet.length} veicoli</strong> verranno eliminati dalla flotta. Le prenotazioni esistenti restano invariate. Dopo puoi reimportare con un CSV aggiornato. <strong>Azione irreversibile.</strong></>, confirmLabel: 'Azzera flotta', variant: 'danger', onConfirm: () => { setFleet([]); pushToast({ tone: 'info', title: 'Flotta azzerata', message: 'Tutti i veicoli rimossi. Importa un nuovo CSV per ricaricare.' }); } })} onSetFleet={setFleet} scadenze={scadenze} setScadenze={setScadenze} fermiFlotta={fermiFlotta} setFermiFlotta={setFermiFlotta} rentmeVehicles={rentmeVehicles} manutenzioni={manutenzioni} setManutenzioni={setManutenzioni} partners={partners} />}
               {page === 'customers'  && <CustomersPage customers={customers} setCustomers={setCustomers} prenotazioni={prenotazioni} admin={admin} onShowQR={(c) => setModal({ type: 'qr', customer: c })} onNewWithCustomer={openWizard} onAddCustomer={() => setModal('newCustomer')} onEditCustomer={(c) => setModal({ type: 'editCustomer', customer: c })} onDeleteCustomer={deleteCustomer} onShowStorico={(c) => setStorioClienteId(c.id)} />}
               {page === 'partners'   && <PartnersPage partners={partners} admin={admin} onAddPartner={() => setModal('newPartner')} onEditPartner={(p) => setModal({ type: 'editPartner', partner: p })} onDeletePartner={requestDeletePartner} />}
               {page === 'listino'    && <div style={{padding:'28px 32px',maxWidth:900,margin:'0 auto'}}>
@@ -18158,7 +18158,7 @@ function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, on
             {onResetFleet && fleet.length > 0 && (
               <button type="button" onClick={onResetFleet}
                 style={{ padding: '8px 14px', borderRadius: 5, background: 'transparent', border: '1px solid #e0b0b0', color: '#c0392b', fontSize: 13, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
-                🗑 Azzera flotta
+                <Trash2 style={{ width:14, height:14 }} aria-hidden="true" /> Azzera flotta
               </button>
             )}
             {/* Ricalcola tipi — migrazione per flotte importate con vecchio parser */}
@@ -18806,7 +18806,7 @@ function CustomersPage({ customers, setCustomers, prenotazioni, admin, onShowQR,
           <input ref={importRef} type="file" accept=".csv,.txt" onChange={handleImportFile} style={{ display:'none' }} />
           <button type="button" onClick={() => importRef.current?.click()}
             style={{ padding:'7px 14px', borderRadius:6, border:'1px solid var(--border)', background:'transparent', color:'var(--ink-2)', fontSize:13, cursor:'pointer', display:'flex', alignItems:'center', gap:6 }}>
-            ⬆ Importa
+            <Upload style={{ width:14, height:14 }} aria-hidden="true" /> Importa
           </button>
           <button type="button" onClick={onAddCustomer} className="btn-primary px-4 py-2 rounded text-sm font-semibold flex items-center gap-2">
             <Plus className="w-4 h-4" /> Nuovo
@@ -19006,7 +19006,7 @@ function CustomersPage({ customers, setCustomers, prenotazioni, admin, onShowQR,
             </button>
             <button type="button" onClick={confirmImport}
               style={{ padding:'9px 18px', borderRadius:6, border:'none', background:'var(--ink)', color:'var(--paper)', cursor:'pointer', fontSize:13, fontWeight:700 }}>
-              ⬆ Importa {importModal.preview.length} clienti
+              Importa {importModal.preview.length} clienti
             </button>
           </div>
         </div>
@@ -19759,7 +19759,7 @@ function SettingsPage({ operator, operators, cargosConfig, admin, backendStatus,
               onClick={() => window.open(`${getApiBase()}/google/connect`, '_blank')}
               className="flex items-center gap-2 px-4 py-2 rounded text-sm font-medium"
               style={{ border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--ink-1)', cursor: 'pointer' }}>
-              🔗 Collega Google Drive
+              <Link className="w-4 h-4" aria-hidden="true" /> Collega Google Drive
             </button>
             <button type="button"
               onClick={onDriveBackup}
@@ -22213,7 +22213,7 @@ function NewCustomerModal({ customer, onClose, onSave }) {
             <button type="button" onClick={() => setScanOpen(true)}
               className="px-3 py-2 rounded text-sm inline-flex items-center gap-2"
               style={{ border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--ink)', cursor: 'pointer', fontWeight: 600 }}>
-              📷 Scansiona documento <span style={{ color: 'var(--muted)', fontWeight: 400 }}>· precompila i campi</span>
+              <Camera className="w-4 h-4" aria-hidden="true" /> Scansiona documento <span style={{ color: 'var(--muted)', fontWeight: 400 }}>· precompila i campi</span>
             </button>
           ) : (
             <div className="card-paper p-4 fade-in">
