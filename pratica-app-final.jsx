@@ -7587,7 +7587,305 @@ async function exportReportXLSX(data, year, pushToast) {
 }
 
 
-function ReportPage({ prenotazioni, contracts, cassa, customers, fleet, operators, pushToast }) {
+// ═══════════════════════════════════════════════════════════════════
+// FINANCE GATE — schermata di blocco quando la Modalità Admin è spenta.
+// La sezione Finance è riservata alla proprietà e si sblocca con la
+// stessa password della Modalità Admin (pulsante "Admin" in alto a destra).
+// ═══════════════════════════════════════════════════════════════════
+function FinanceGate() {
+  return (
+    <div style={{ padding: '28px 32px', maxWidth: 560, margin: '40px auto 0' }}>
+      <div className="card-paper" style={{ padding: '36px 32px', textAlign: 'center' }}>
+        <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'var(--surface-2)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: 18 }}>
+          <Lock style={{ width: 24, height: 24, color: 'var(--ink-2)' }} aria-hidden="true" />
+        </div>
+        <div className="label" style={{ color: 'var(--sea)', marginBottom: 6 }}>Sezione riservata</div>
+        <h1 className="serif" style={{ fontSize: 24, fontWeight: 500, color: 'var(--ink)', letterSpacing: '-0.01em', margin: '0 0 10px' }}>Finance</h1>
+        <p style={{ fontSize: 14, color: 'var(--ink-2)', lineHeight: 1.6, margin: '0 0 8px' }}>
+          Qui vivono fatturato, incassi, previsioni e tutti i dati economici per la governance dell'azienda.
+        </p>
+        <p style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.6, margin: 0 }}>
+          Per accedere attiva la <strong style={{ color: 'var(--ink-2)' }}>Modalità Admin</strong> dal pulsante
+          {' '}<span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '1px 7px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--surface-2)', fontWeight: 600, color: 'var(--ink-2)' }}><Lock style={{ width: 11, height: 11 }} /> Admin</span>{' '}
+          in alto a destra (richiede la password della proprietà).
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// REPORT OPERATIVO (pubblico) — solo metriche NON monetarie.
+// Tutto ciò che riguarda fatturato/revenue/incassi vive in Finance (protetta).
+// ═══════════════════════════════════════════════════════════════════
+function ReportOperativoPage({ prenotazioni, contracts, customers, fleet, operators }) {
+  const currentYear = new Date().getFullYear().toString();
+  const [year, setYear] = useState(currentYear);
+  const [tab, setTab] = useState('panoramica');
+
+  const availYears = useMemo(() => {
+    const ys = new Set([currentYear]);
+    (prenotazioni || []).forEach(p => { if (p.dal) ys.add(p.dal.slice(0, 4)); });
+    return [...ys].sort((a, b) => b - a);
+  }, [prenotazioni, currentYear]);
+
+  const attive = (p) => p.stato !== 'annullata' && p.stato !== 'cancellata';
+  const mesiLabels = ['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic'];
+
+  const data = useMemo(() => {
+    const prenoAnno = (prenotazioni || []).filter(p => (p.dal || '').startsWith(year) && attive(p));
+    const fleetAttiva = (fleet || []).filter(v => v.status !== 'fuori_uso');
+    const nMezzi = fleetAttiva.length || 1;
+
+    // Per mese: conteggio + giorni occupati (per occupazione %)
+    const mesi = mesiLabels.map((label, mi) => {
+      const ms = `${year}-${String(mi + 1).padStart(2, '0')}`;
+      const pm = prenoAnno.filter(p => (p.dal || '').startsWith(ms));
+      const giorniMese = new Date(Number(year), mi + 1, 0).getDate();
+      const giorniOcc = pm.reduce((s, p) => {
+        if (!p.dal || !p.al) return s;
+        const dalD = new Date(p.dal), alD = new Date(p.al);
+        if (isNaN(dalD) || isNaN(alD)) return s;
+        const dal = new Date(Math.max(dalD, new Date(`${ms}-01`)));
+        const al = new Date(Math.min(alD, new Date(`${ms}-${String(giorniMese).padStart(2, '0')}`)));
+        const diff = Math.max(0, Math.round((al - dal) / 86400000) + 1);
+        return s + (Number.isFinite(diff) ? diff : 0);
+      }, 0);
+      const occ = Math.min(100, Math.round(giorniOcc / (nMezzi * giorniMese) * 100));
+      return { label, ms, count: pm.length, occ };
+    });
+    const maxCount = Math.max(1, ...mesi.map(m => m.count));
+    const occMedia = Math.round(mesi.reduce((s, m) => s + m.occ, 0) / 12);
+
+    // Categorie più richieste (per numero)
+    const catMap = {};
+    prenoAnno.forEach(p => { const c = canonicalTipo(p) || 'altro'; catMap[c] = (catMap[c] || 0) + 1; });
+    const topCats = Object.entries(catMap).sort((a, b) => b[1] - a[1]);
+    const maxCat = Math.max(1, ...topCats.map(c => c[1]));
+
+    // Stati prenotazioni
+    const stati = {};
+    prenoAnno.forEach(p => { stati[p.stato] = (stati[p.stato] || 0) + 1; });
+
+    // Flotta: noleggi + giorni per veicolo
+    const perVeicolo = {};
+    prenoAnno.forEach(p => {
+      const key = p.vehicleLabel || p.vehicleType || canonicalTipo(p) || '—';
+      if (!perVeicolo[key]) perVeicolo[key] = { label: key, noleggi: 0, giorni: 0 };
+      perVeicolo[key].noleggi += 1;
+      if (p.dal && p.al) {
+        const g = Math.max(1, Math.round((new Date(p.al) - new Date(p.dal)) / 86400000) + 1);
+        if (Number.isFinite(g)) perVeicolo[key].giorni += g;
+      }
+    });
+    const flottaRows = Object.values(perVeicolo).sort((a, b) => b.noleggi - a.noleggi);
+    const maxNoleggi = Math.max(1, ...flottaRows.map(r => r.noleggi));
+
+    // Clienti: per numero noleggi + nuovi/ritornati
+    const perCliente = {};
+    prenoAnno.forEach(p => {
+      const nome = [p.clienteCognome, p.clienteNome].filter(Boolean).join(' ').trim();
+      if (!nome) return;
+      perCliente[nome] = (perCliente[nome] || 0) + 1;
+    });
+    const clientiRows = Object.entries(perCliente).sort((a, b) => b[1] - a[1]);
+    const clientiUnici = clientiRows.length;
+    const clientiRitornati = clientiRows.filter(([, n]) => n > 1).length;
+    const tassoRitorno = clientiUnici > 0 ? Math.round(clientiRitornati / clientiUnici * 100) : 0;
+
+    // Operatori: pratiche (contratti) gestite per operatore
+    const opMap = {};
+    (contracts || []).filter(c => (c.createdAt || '').startsWith(year)).forEach(c => {
+      const oid = c.operatorId || '—';
+      opMap[oid] = (opMap[oid] || 0) + 1;
+    });
+    const opRows = Object.entries(opMap).map(([oid, n]) => {
+      const op = (operators || []).find(o => o.id === oid);
+      return { nome: op?.nome || (oid === '—' ? 'Non assegnato' : oid), n };
+    }).sort((a, b) => b.n - a.n);
+    const maxOp = Math.max(1, ...opRows.map(r => r.n));
+
+    return { prenoAnno, nMezzi, mesi, maxCount, occMedia, topCats, maxCat, stati,
+      flottaRows, maxNoleggi, clientiRows, clientiUnici, clientiRitornati, tassoRitorno, opRows, maxOp };
+  }, [prenotazioni, contracts, customers, fleet, operators, year]);
+
+  const TABS = [
+    { id: 'panoramica', label: 'Panoramica' },
+    { id: 'occupazione', label: 'Occupazione %' },
+    { id: 'flotta', label: 'Utilizzo flotta' },
+    { id: 'clienti', label: 'Clienti' },
+    { id: 'operatori', label: 'Operatori' },
+  ];
+  const KPI = [
+    { label: 'Prenotazioni', value: data.prenoAnno.length, sub: `nel ${year}`, color: 'var(--edo-sea)' },
+    { label: 'Mezzi attivi', value: data.nMezzi, sub: 'in flotta', color: 'var(--success)' },
+    { label: 'Occupazione media', value: `${data.occMedia}%`, sub: 'sull\'anno', color: 'var(--status-corso-fg)' },
+    { label: 'Clienti unici', value: data.clientiUnici, sub: `${data.tassoRitorno}% ritornano`, color: 'var(--edo-sun-warm)' },
+  ];
+
+  const SectionBox = ({ title, children }) => (
+    <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, padding: '16px 18px' }}>
+      <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--ink-2)', marginBottom: 14 }}>{title}</div>
+      {children}
+    </div>
+  );
+  const Bars = ({ rows, max, color = 'var(--ink)' }) => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {rows.length === 0 ? <div style={{ fontSize: 12, color: 'var(--muted)', fontStyle: 'italic' }}>Nessun dato</div>
+        : rows.map(([label, n]) => (
+          <div key={label}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 3 }}>
+              <span style={{ color: 'var(--ink)', fontWeight: 500 }}>{label}</span>
+              <span style={{ color: 'var(--muted)' }} className="mono">{n}</span>
+            </div>
+            <div style={{ height: 6, background: 'var(--surface-2)', borderRadius: 3, overflow: 'hidden' }}>
+              <div style={{ height: '100%', width: `${(n / max) * 100}%`, background: color, borderRadius: 3 }} />
+            </div>
+          </div>
+        ))}
+    </div>
+  );
+
+  return (
+    <div style={{ padding: '28px 32px', maxWidth: 1000, margin: '0 auto' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 16, marginBottom: 20, flexWrap: 'wrap' }}>
+        <div>
+          <div className="label" style={{ color: 'var(--sea)', marginBottom: 4 }}>Analisi operativa</div>
+          <h1 className="serif" style={{ fontSize: 22, fontWeight: 500, color: 'var(--ink)', letterSpacing: '-0.01em', margin: 0 }}>Report</h1>
+          <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>Volumi, occupazione e attività. I dati economici sono in <strong style={{ color: 'var(--ink-2)' }}>Finance</strong>.</p>
+        </div>
+        <select value={year} onChange={e => setYear(e.target.value)} className="input mono" style={{ width: 'auto', minWidth: 90 }}>
+          {availYears.map(y => <option key={y} value={y}>{y}</option>)}
+        </select>
+      </div>
+
+      {/* KPI operativi */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 22 }}>
+        {KPI.map((k, i) => (
+          <div key={i} className="card-paper" style={{ padding: '14px 16px', borderTop: `3px solid ${k.color}` }}>
+            <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--muted)', marginBottom: 6 }}>{k.label}</div>
+            <div className="mono" style={{ fontSize: 30, fontWeight: 600, color: k.color, lineHeight: 1, letterSpacing: '-0.02em' }}>{k.value}</div>
+            <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 5 }}>{k.sub}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Tabs */}
+      <div style={{ display: 'flex', gap: 4, marginBottom: 20, flexWrap: 'wrap', borderBottom: '1px solid var(--border)' }}>
+        {TABS.map(t => (
+          <button key={t.id} type="button" onClick={() => setTab(t.id)}
+            style={{ padding: '8px 14px', fontSize: 13, fontWeight: tab === t.id ? 700 : 500, cursor: 'pointer',
+              color: tab === t.id ? 'var(--ink)' : 'var(--muted)', background: 'transparent', border: 'none',
+              borderBottom: tab === t.id ? '2px solid var(--sea)' : '2px solid transparent', marginBottom: -1 }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'panoramica' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+          <SectionBox title={`Prenotazioni per mese · ${year}`}>
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, height: 120 }}>
+              {data.mesi.map(m => (
+                <div key={m.ms} title={`${m.label}: ${m.count} prenotazioni`} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                  <div style={{ fontSize: 9, color: 'var(--muted)', fontWeight: 600 }}>{m.count || ''}</div>
+                  <div style={{ width: '100%', borderRadius: '2px 2px 0 0', height: `${Math.max(2, (m.count / data.maxCount) * 100)}px`, background: 'var(--edo-sea)', opacity: 0.35 + (m.count / data.maxCount) * 0.65 }} />
+                  <div style={{ fontSize: 9, color: 'var(--muted)' }}>{m.label}</div>
+                </div>
+              ))}
+            </div>
+          </SectionBox>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+            <SectionBox title="Categorie più richieste"><Bars rows={data.topCats} max={data.maxCat} color="var(--ink)" /></SectionBox>
+            <SectionBox title="Stato prenotazioni">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {Object.entries({ confermata: 'Confermate', completata: 'Completate', in_corso: 'In corso', attesa: 'In attesa', cancellata: 'Cancellate' }).map(([st, label]) => {
+                  const n = data.stati[st] || 0; const s = PRENO_STATI[st] || { color: 'var(--ink)' };
+                  const tot = data.prenoAnno.length + (data.stati.cancellata || 0);
+                  return (
+                    <div key={st} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div style={{ width: 90, fontSize: 12, color: 'var(--ink-2)' }}>{label}</div>
+                      <div style={{ flex: 1, height: 8, background: 'var(--surface-2)', borderRadius: 4, overflow: 'hidden' }}>
+                        <div style={{ height: '100%', width: `${tot > 0 ? (n / tot) * 100 : 0}%`, background: s.color, borderRadius: 4 }} />
+                      </div>
+                      <div className="mono" style={{ width: 28, fontSize: 12, fontWeight: 600, textAlign: 'right', color: s.color }}>{n}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </SectionBox>
+          </div>
+        </div>
+      )}
+
+      {tab === 'occupazione' && (
+        <SectionBox title={`Occupazione mensile · ${year} (media ${data.occMedia}%)`}>
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, height: 140 }}>
+            {data.mesi.map(m => (
+              <div key={m.ms} title={`${m.label}: ${m.occ}%`} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                <div style={{ fontSize: 9, color: 'var(--muted)', fontWeight: 600 }}>{m.occ || ''}</div>
+                <div style={{ width: '100%', borderRadius: '2px 2px 0 0', height: `${Math.max(2, m.occ)}px`,
+                  background: m.occ >= 80 ? '#c0392b' : m.occ >= 50 ? '#b07820' : 'var(--success)', opacity: 0.85 }} />
+                <div style={{ fontSize: 9, color: 'var(--muted)' }}>{m.label}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 10 }}>Verde = margine · giallo = pieno · rosso = al limite. Calcolata su giorni-mezzo occupati / disponibili.</div>
+        </SectionBox>
+      )}
+
+      {tab === 'flotta' && (
+        <SectionBox title="Utilizzo per veicolo (numero noleggi e giorni)">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {data.flottaRows.length === 0 ? <div style={{ fontSize: 12, color: 'var(--muted)', fontStyle: 'italic' }}>Nessun noleggio nel {year}</div>
+              : data.flottaRows.map(r => (
+                <div key={r.label}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 3 }}>
+                    <span style={{ color: 'var(--ink)', fontWeight: 500 }}>{r.label}</span>
+                    <span style={{ color: 'var(--muted)' }}><span className="mono">{r.noleggi}</span> noleggi · <span className="mono">{r.giorni}</span> gg</span>
+                  </div>
+                  <div style={{ height: 6, background: 'var(--surface-2)', borderRadius: 3, overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${(r.noleggi / data.maxNoleggi) * 100}%`, background: 'var(--edo-sea)', borderRadius: 3 }} />
+                  </div>
+                </div>
+              ))}
+          </div>
+        </SectionBox>
+      )}
+
+      {tab === 'clienti' && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 20 }}>
+          <SectionBox title="Clienti per numero di noleggi">
+            <Bars rows={data.clientiRows.slice(0, 12)} max={Math.max(1, ...data.clientiRows.slice(0, 12).map(c => c[1]))} color="var(--ink)" />
+          </SectionBox>
+          <SectionBox title="Fedeltà">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {[
+                { label: 'Clienti unici', val: data.clientiUnici, color: 'var(--ink)' },
+                { label: 'Tornati (>1 noleggio)', val: data.clientiRitornati, color: '#2e6e3e' },
+                { label: 'Tasso di ritorno', val: `${data.tassoRitorno}%`, color: data.tassoRitorno > 30 ? '#2e6e3e' : data.tassoRitorno > 15 ? '#b87333' : '#c85050' },
+              ].map(r => (
+                <div key={r.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: 12, color: 'var(--ink-2)' }}>{r.label}</span>
+                  <span className="mono" style={{ fontSize: 18, fontWeight: 700, color: r.color }}>{r.val}</span>
+                </div>
+              ))}
+            </div>
+          </SectionBox>
+        </div>
+      )}
+
+      {tab === 'operatori' && (
+        <SectionBox title={`Pratiche gestite per operatore · ${year}`}>
+          <Bars rows={data.opRows.map(r => [r.nome, r.n])} max={data.maxOp} color="var(--edo-sea)" />
+          <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 12 }}>Conteggio delle pratiche CARGOS create da ciascun operatore.</div>
+        </SectionBox>
+      )}
+    </div>
+  );
+}
+
+function ReportPage({ prenotazioni, contracts, cassa, customers, fleet, operators, pushToast, financeMode }) {
   const currentYear = new Date().getFullYear().toString();
   const [year, setYear] = useState(currentYear);
   const [tab,  setTab]  = useState('overview'); // overview | occupazione | clienti | operatori
@@ -7689,10 +7987,13 @@ function ReportPage({ prenotazioni, contracts, cassa, customers, fleet, operator
       {/* Header */}
       <div style={{ display:'flex', alignItems:'flex-end', justifyContent:'space-between', marginBottom:20 }}>
         <div>
-          <div className="label" style={{ color: 'var(--edo-sea)', marginBottom: 2 }}>Analisi &amp; statistiche</div>
-          <h1 style={{ margin:0, fontSize:22, fontFamily:'var(--font-serif)', fontWeight:600, letterSpacing: '-0.01em' }}>Report</h1>
+          <div className="label" style={{ color: 'var(--edo-sea)', marginBottom: 2 }}>{financeMode ? 'Direzione · riservato' : 'Analisi & statistiche'}</div>
+          <h1 style={{ margin:0, fontSize:22, fontFamily:'var(--font-serif)', fontWeight:600, letterSpacing: '-0.01em', display:'flex', alignItems:'center', gap:8 }}>
+            {financeMode && <Lock className="w-4 h-4" style={{ color:'var(--muted)' }} aria-hidden="true" />}
+            {financeMode ? 'Finance' : 'Report'}
+          </h1>
           <p style={{ margin:'4px 0 0', fontSize:13, color:'var(--muted)' }}>
-            Analisi occupazione, incassi e clienti · anno {year}
+            {financeMode ? `Fatturato, incassi e governance economica · anno ${year}` : `Analisi occupazione e clienti · anno ${year}`}
           </p>
         </div>
         <div style={{ display:'flex', gap:8, alignItems:'center' }}>
@@ -16485,7 +16786,10 @@ export default function App() {
               {page === 'dashboard'  && <Dashboard onNew={() => openWizard()} setPage={setPage} operator={operator} fleet={fleet} contracts={localContracts} partners={partners} onMarkReturned={markContractReturned} scadenze={scadenze} prenotazioni={prenotazioni} agency={agency} />}
               {page === 'cassa'      && <RegistroCassaPage cassa={cassa} setCassa={setCassa} prenotazioni={prenotazioni} customers={customers} operator={operator} pushToast={pushToast} />}
               {page === 'banco'      && <BancoRapidoPage rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} fleet={fleet} setPage={setPage} setPrenotazioniPrefill={setPrenotazioniPrefill} listino={listino} pushToast={pushToast} rentmeSyncStatus={rentmeSync.status} onRentmeSync={rentmeSync.sync} rentmeLastSync={rentmeSync.lastSync} fermiFlotta={fermiFlotta} />}
-              {page === 'report'        && <ReportPage prenotazioni={prenotazioni} contracts={localContracts} cassa={cassa} customers={customers} fleet={fleet} operators={operators} pushToast={pushToast} />}
+              {page === 'report'        && <ReportOperativoPage prenotazioni={prenotazioni} contracts={localContracts} customers={customers} fleet={fleet} operators={operators} />}
+              {page === 'finance'       && (admin
+                ? <ReportPage prenotazioni={prenotazioni} contracts={localContracts} cassa={cassa} customers={customers} fleet={fleet} operators={operators} pushToast={pushToast} financeMode />
+                : <FinanceGate />)}
               {page === 'preventivi'    && <PreventiviPage setPage={setPage} setPrenotazioniPrefill={setPrenotazioniPrefill} listino={listino} fleet={fleet} rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} pushToast={pushToast} fermiFlotta={fermiFlotta} />}
               {page === 'prenotazioni' && <PrenotazioniPage prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} setCassa={setCassa} fleet={fleet} rentmeVehicles={rentmeVehicles} customers={customers} partners={partners} operator={operator} onOpenWizard={openWizard} pushToast={pushToast} prefill={prenotazioniPrefill} onClearPrefill={() => setPrenotazioniPrefill(null)} fermiFlotta={fermiFlotta} rentmePush={rentmeSync.pushBooking} rentmeConnected={rentmeSync.status === 'ok'} agency={agency} />}
               {page === 'contracts'  && <ContractsList contracts={localContracts} operators={operators} onRetry={retryContract} onMarkReturned={markContractReturned} online={online} />}
@@ -17051,6 +17355,7 @@ function Sidebar({ page, setPage, onNew, online, agency, rentmeSyncStatus, rentm
     { id: 'cassa',        label: 'Cassa',        icon: Wallet },
     { id: 'preventivi',   label: 'Preventivi',   icon: Receipt },
     { id: 'report',       label: 'Report',       icon: BarChart2 },
+    { id: 'finance',      label: 'Finance',      icon: Lock },
     { id: 'contracts',    label: 'Pratiche',     icon: FileText },
     { id: 'prenotazioni', label: 'Prenotazioni', icon: CalendarDays },
     { id: 'fleet',        label: 'Flotta',       icon: Car },
@@ -17154,7 +17459,7 @@ function Sidebar({ page, setPage, onNew, online, agency, rentmeSyncStatus, rentm
 // Sostituiscono il nome agenzia, già presente nella sidebar (era ridondante).
 const TOPBAR_PAGE_LABELS = {
   dashboard: 'Dashboard', oggi: 'Oggi', calendario: 'Calendario', banco: 'Banco rapido',
-  cassa: 'Cassa', preventivi: 'Preventivi', report: 'Report', contracts: 'Pratiche',
+  cassa: 'Cassa', preventivi: 'Preventivi', report: 'Report', finance: 'Finance', contracts: 'Pratiche',
   prenotazioni: 'Prenotazioni', fleet: 'Flotta', customers: 'Clienti', partners: 'Strutture',
   listino: 'Prezzi', settings: 'Impostazioni',
 };
