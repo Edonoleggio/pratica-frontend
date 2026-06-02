@@ -13282,6 +13282,9 @@ function NaviLampedusaWidget({ feed } = {}) {
       Tracking navi non ancora collegato. Imposta la chiave <strong>VESSELAPI_KEY</strong> (e gli MMSI delle navi) nelle env del backend su Render.
     </div></Card>
   );
+  if (vessels.length === 0 && data?.rateLimited) return <Card><div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.5 }}>
+    Servizio AIS al limite di utilizzo (quota gratuita) — le posizioni torneranno appena si libera. Riprovo automaticamente più tardi.
+  </div></Card>;
   if (vessels.length === 0) return <Card><div style={{ fontSize: 12, color: 'var(--muted)' }}>
     Nessuna nave in navigazione ora{hiddenCount > 0 ? ` (${hiddenCount} ferma/e in porto)` : ''}.
   </div></Card>;
@@ -13830,7 +13833,7 @@ function OggiPage({ prenotazioni, setPrenotazioni, fleet, scadenze, customers, s
                       <div style={{ ...big, fontSize: 18, textTransform: 'capitalize' }}>{(nextShip.name || `MMSI ${nextShip.mmsi}`).toLowerCase()}</div>
                       <div style={meta}>{nextShip.stato || 'in mare'}{nextShip.etaAis && new Date(nextShip.etaAis) > now ? ` · ~${fmtHHMM(nextShip.etaAis)}` : ''}</div>
                     </>
-                  ) : <div style={{ ...meta, marginTop: 0 }}>{naviFeed.loading ? 'caricamento…' : 'nessuna in mare'}</div>}
+                  ) : <div style={{ ...meta, marginTop: 0 }}>{naviFeed.data?.rateLimited ? 'servizio al limite' : naviFeed.loading ? 'caricamento…' : 'nessuna in mare'}</div>}
                 </button>
 
                 {/* AZIONI */}
@@ -18587,6 +18590,45 @@ function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, on
   const [manutenzioniModalVeh, setManutenzioniModalVeh] = useState(null);
   const counts = useFleetCounts(fleet);
 
+  // Export OFFICINA — scarica scadenze + manutenzioni + fermi per ogni mezzo
+  // in CSV (Excel-friendly: separatore ; e BOM UTF-8). Disponibile a tutti
+  // (serve all'officina), non solo agli admin: sono dati tecnici, non economici.
+  function exportOfficinaCSV() {
+    const today = todayISO();
+    const SEP = ';';
+    const esc = (v) => {
+      const s = (v == null ? '' : String(v));
+      return /[";\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const statoLabel = (d) => { const st = scadenzaStatus(d); return st === 'scaduto' ? 'SCADUTO' : st === 'urgente' ? 'in scadenza' : st === 'ok' ? 'ok' : ''; };
+    const headers = ['Targa', 'Tipo', 'Modello', 'Stato mezzo',
+      'Revisione', 'Stato rev.', 'Assicurazione', 'Stato ass.', 'Tagliando', 'Stato tagl.', 'Bollo', 'Stato bollo',
+      'Manutenzioni aperte', 'Prossima manutenzione', 'Fermo attivo'];
+    const rows = (fleet || []).map((v) => {
+      const sc = (scadenze && scadenze[v.id]) || {};
+      const manOpen = (manutenzioni || []).filter(m => m.vehicleId === v.id && !m.completata);
+      const nextMan = manOpen.filter(m => m.dataScadenza).sort((a, b) => a.dataScadenza.localeCompare(b.dataScadenza))[0];
+      const fermo = (fermiFlotta || []).find(f => f.vehicleId === v.id && f.dal <= today && f.al >= today);
+      return [
+        v.targa || '', canonicalTipo(v) || v.tipo || '', v.modello || v.label || '', v.stato || 'available',
+        sc.revisione || '', statoLabel(sc.revisione),
+        sc.assicurazione || '', statoLabel(sc.assicurazione),
+        sc.tagliando || '', statoLabel(sc.tagliando),
+        sc.bollo || '', statoLabel(sc.bollo),
+        manOpen.length || '',
+        nextMan ? `${nextMan.dataScadenza} ${nextMan.tipo || nextMan.descrizione || ''}`.trim() : '',
+        fermo ? `${fermo.dal}→${fermo.al} ${fermo.motivo || ''}`.trim() : '',
+      ].map(esc).join(SEP);
+    });
+    const csv = '﻿' + [headers.join(SEP), ...rows].join('\r\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `edonoleggio-officina-${today}.csv`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
   // Veicoli attualmente in noleggio (oggi) — chiave normalizzata a fleet.v.id
   // (retrocompatibile: p.vehicleId potrebbe essere targa legacy)
   const inNoleggio = useMemo(() => {
@@ -18681,8 +18723,15 @@ function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, on
             {statusCounts.incidentato > 0 && <span style={{ color: 'var(--accent)' }}> · {statusCounts.incidentato} incidentati</span>}
           </p>
         </div>
-        {admin && (
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          {fleet.length > 0 && (
+            <button type="button" onClick={exportOfficinaCSV}
+              title="Scarica scadenze, manutenzioni e fermi di tutti i mezzi (CSV per l'officina)"
+              style={{ padding: '8px 14px', borderRadius: 5, background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--ink-2)', fontSize: 13, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Download className="w-4 h-4" aria-hidden="true" /> Export officina
+            </button>
+          )}
+          {admin && (<>
             {onResetFleet && fleet.length > 0 && (
               <button type="button" onClick={onResetFleet}
                 style={{ padding: '8px 14px', borderRadius: 5, background: 'transparent', border: '1px solid #e0b0b0', color: '#c0392b', fontSize: 13, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -18720,8 +18769,8 @@ function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, on
             <button type="button" onClick={onAddVehicle} className="btn-primary px-4 py-2 rounded text-sm font-semibold flex items-center gap-2">
               <Plus className="w-4 h-4" aria-hidden="true" /> Nuovo veicolo
             </button>
-          </div>
-        )}
+          </>)}
+        </div>
       </div>
 
       <div className="flex gap-2 mt-5 mb-2 flex-wrap" role="group" aria-label="Filtra per tipo veicolo">
