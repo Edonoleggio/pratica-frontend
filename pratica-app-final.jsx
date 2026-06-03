@@ -13381,71 +13381,6 @@ function NaviLampedusaWidget({ feed } = {}) {
   );
 }
 
-// ── Widget meteo Lampedusa (Open-Meteo, free, no API key) ─────────
-function MeteoLampedusaWidget({ feed } = {}) {
-  const own = useMeteoFeed(!feed);
-  const { loading, data, at, reload } = feed || own;
-  const WMO = WMO_DESC;
-  const load = reload;
-  const cur = data?.meteo?.current;
-  const waveH = data?.marine?.current?.wave_height;
-  const aggMin = at ? Math.round((Date.now() - at) / 60000) : null;
-
-  if (!loading && !cur) return null;
-
-  return (
-    <div style={{ marginBottom: 18 }}>
-      <div className="card-paper" style={{ padding: '14px 18px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--edo-sun-warm)', flexShrink: 0, display: 'inline-block' }} />
-            <span style={{ fontFamily: 'var(--font-serif)', fontWeight: 600, fontSize: 15, color: 'var(--ink)' }}>Meteo · Lampedusa</span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            {aggMin !== null && <span style={{ fontSize: 10, color: 'var(--muted)' }}>agg. {aggMin === 0 ? 'ora' : `${aggMin} min fa`}</span>}
-            <button type="button" onClick={load}
-              style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 5, padding: '2px 7px', fontSize: 10, color: 'var(--muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3 }}
-              title="Aggiorna meteo">
-              <RefreshCw style={{ width: 10, height: 10 }} />
-            </button>
-          </div>
-        </div>
-        {loading ? (
-          <div style={{ fontSize: 12, color: 'var(--muted)' }}>Caricamento…</div>
-        ) : cur ? (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 16 }}>
-            <div>
-              <div className="mono" style={{ fontSize: 34, fontWeight: 600, color: 'var(--edo-coral)', lineHeight: 1, letterSpacing: '-0.02em' }}>
-                {Math.round(cur.temperature_2m)}°
-              </div>
-              <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 3 }}>Temperatura</div>
-            </div>
-            <div>
-              <div className="mono" style={{ fontSize: 34, fontWeight: 600, color: 'var(--sea)', lineHeight: 1, letterSpacing: '-0.02em' }}>
-                {Math.round(cur.windspeed_10m)}<span style={{ fontSize: 13, fontWeight: 400, marginLeft: 2 }}>km/h</span>
-              </div>
-              <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 3 }}>Vento {degToDir(cur.winddirection_10m)}</div>
-            </div>
-            {waveH != null && (
-              <div>
-                <div className="mono" style={{ fontSize: 34, fontWeight: 600, color: 'var(--edo-acqua)', lineHeight: 1, letterSpacing: '-0.02em' }}>
-                  {waveH.toFixed(1)}<span style={{ fontSize: 13, fontWeight: 400, marginLeft: 2 }}>m</span>
-                </div>
-                <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 3 }}>Onde</div>
-              </div>
-            )}
-            <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
-              <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink)', lineHeight: 1.3 }}>
-                {WMO[cur.weathercode] ?? `Codice ${cur.weathercode}`}
-              </div>
-              <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 3 }}>Cielo</div>
-            </div>
-          </div>
-        ) : null}
-      </div>
-    </div>
-  );
-}
 
 function OggiPage({ prenotazioni, setPrenotazioni, fleet, scadenze, customers, setPage, rentmeVehicles, setPrenotazioniPrefill, pushToast,
   operator, fermiFlotta, rentmePush, rentmeConnected, manutenzioni, partners }) {
@@ -13705,7 +13640,6 @@ function OggiPage({ prenotazioni, setPrenotazioni, fleet, scadenze, customers, s
   const nextSchedArrival = (naviFeed.data?.schedule || [])
     .filter(s => s.direction === 'arrivo' && s.arriveISO && new Date(s.arriveISO) >= now)
     .sort((a, b) => new Date(a.arriveISO) - new Date(b.arriveISO))[0] || null;
-  const naviConfigured = !naviFeed.data || naviFeed.data.configured !== false;
   // Meteo
   const _mcur = meteoFeed.data?.meteo?.current;
   const _wave = meteoFeed.data?.marine?.current?.wave_height;
