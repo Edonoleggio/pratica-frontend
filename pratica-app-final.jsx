@@ -14710,13 +14710,14 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
   const today = todayISO();
   const COLS = 28; // 4 settimane
 
-  // Carbonio "Quadro strumenti": la fascia-testata (mesi + giorni + "MEZZO") è
-  // scura fissa come la sidebar, sia in tema chiaro che scuro. Il CORPO della
-  // griglia usa i token var(--…) → in dark mode si scurisce da solo ("plancia").
-  const HEAD_BG = '#16181d';
-  const HEAD_TEXT = '#8e887e';        // etichette tenui (giorni feriali, mesi)
-  const HEAD_TEXT_STRONG = '#d4cdc1'; // numeri giorno
-  const HEAD_BORDER = '#2c2e35';
+  // Carbonio "Quadro strumenti": la fascia-testata (mesi + giorni + "MEZZO") è scura.
+  // In tema CHIARO usa un grigio-grafite caldo (non quasi-nero) per non affaticare il
+  // contrasto col cream e far risaltare la colonna blu di "oggi"; in dark mode resta
+  // scurissima così si fonde nella "plancia". Il CORPO usa sempre i token var(--…).
+  const HEAD_BG = darkMode ? '#16181d' : '#454039';
+  const HEAD_TEXT = darkMode ? '#8e887e' : '#c9c2b6';        // etichette tenui (feriali, mesi)
+  const HEAD_TEXT_STRONG = darkMode ? '#d4cdc1' : '#f5f2ec'; // numeri giorno
+  const HEAD_BORDER = darkMode ? '#2c2e35' : '#5a544b';
 
   // Vista a 4 settimane ancorata al lunedì della settimana corrente + weekOffset.
   // Offset al lunedì = (getDay()+6)%7 → la DOMENICA resta nella sua settimana
@@ -19021,7 +19022,7 @@ function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, on
       ) : (
         <div className="grid grid-cols-3 gap-4">
           {filtered.map(v => {
-            const t = VEHICLE_TYPES[v.tipo] || VEHICLE_TYPES.auto; // fallback se tipo non riconosciuto
+            const t = VEHICLE_TYPES[canonicalTipo(v)] || VEHICLE_TYPES[v.tipo] || VEHICLE_TYPES.auto; // canonicalTipo prima: quad150/300→quad
             const status = VEHICLE_STATUS[v.stato] || VEHICLE_STATUS.available;
             const StatusIcon = status.icon;
             const dimmed = v.stato === 'venduto';
