@@ -4645,8 +4645,8 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rent
           { label: 'Movimenti oggi',        value: oggi,    color: '#1f5d83' },
         ].map(k => (
           <div key={k.label} className="card-paper" style={{ padding: '14px 16px', borderTop: `3px solid ${k.color}` }}>
-            <div style={{ fontSize: 28, fontWeight: 700, fontFamily: 'var(--font-serif)', color: k.color }}>{k.value}</div>
-            <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{k.label}</div>
+            <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--muted)', marginBottom: 6 }}>{k.label}</div>
+            <div className="mono" style={{ fontSize: 34, fontWeight: 600, color: k.color, lineHeight: 1, letterSpacing: '-0.02em' }}>{k.value}</div>
           </div>
         ))}
       </div>
@@ -7973,9 +7973,9 @@ function ReportPage({ prenotazioni, contracts, cassa, customers, fleet, operator
   );
 
   const card = (label, value, sub, color='var(--ink)') => (
-    <div style={{ background:'var(--bg)', border:'1px solid var(--border)', borderRadius:8, padding:'16px 18px' }}>
+    <div style={{ background:'var(--bg)', border:'1px solid var(--border)', borderTop:`3px solid ${color}`, borderRadius:8, padding:'16px 18px' }}>
       <div style={{ fontSize:11, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:6 }}>{label}</div>
-      <div style={{ fontSize:26, fontWeight:700, fontFamily:'var(--font-serif)', color, lineHeight:1 }}>{value}</div>
+      <div className="mono" style={{ fontSize:26, fontWeight:600, color, lineHeight:1, letterSpacing:'-0.02em' }}>{value}</div>
       {sub && <div style={{ fontSize:11, color:'var(--muted)', marginTop:4 }}>{sub}</div>}
     </div>
   );
@@ -11351,9 +11351,9 @@ function RegistroCassaPage({ cassa, setCassa, prenotazioni, customers, operator,
           { label: 'Movimenti', value: filtered.length, sub: `${periodoLabel[periodo].toLowerCase()}`, color: 'var(--ink)' },
         ].map(k => (
           <div key={k.label} className="card-paper" style={{ padding: '14px 16px', borderTop: `3px solid ${k.color}` }}>
-            <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--muted)', marginBottom: 4 }}>{k.label}</div>
-            <div style={{ fontSize: 22, fontWeight: 700, fontFamily: 'var(--font-serif)', color: k.color }}>{k.value}</div>
-            <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{k.sub}</div>
+            <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--muted)', marginBottom: 6 }}>{k.label}</div>
+            <div className="mono" style={{ fontSize: 28, fontWeight: 600, color: k.color, lineHeight: 1, letterSpacing: '-0.02em' }}>{k.value}</div>
+            <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 5 }}>{k.sub}</div>
           </div>
         ))}
       </div>
@@ -17781,18 +17781,21 @@ function Dashboard({ onNew, setPage, operator, fleet, contracts, partners, onMar
           ? 'nessun contratto ancora'
           : `${byType.auto} auto · ${byType.scooter} scoot · ${byType.quad} quad · ${byType.ebike} e-bike`,
         accent: false,
+        color: 'var(--edo-sea)',
       },
       {
         k: 'Inviate a CARGOS',
         v: sent,
         sub: dueCargos === 0 ? 'nessun invio dovuto oggi' : `su ${dueCargos} dovute (solo auto)`,
         accent: false,
+        color: 'var(--success)',
       },
       {
         k: 'In errore',
         v: errors,
         sub: errors === 0 ? 'tutto in regola' : 'richiede attenzione',
         accent: errors > 0,
+        color: errors > 0 ? 'var(--accent)' : 'var(--success)',
       },
       {
         k: 'Veicoli fuori',
@@ -17803,6 +17806,7 @@ function Dashboard({ onNew, setPage, operator, fleet, contracts, partners, onMar
           ? `${overdue} in ritardo`
           : 'tutti nei tempi',
         accent: overdue > 0,
+        color: overdue > 0 ? 'var(--accent)' : 'var(--edo-sun-warm)',
       },
     ];
   }, [contracts]);
@@ -17847,9 +17851,9 @@ function Dashboard({ onNew, setPage, operator, fleet, contracts, partners, onMar
 
       <div className="grid grid-cols-4 gap-3 mb-6" role="list" aria-label="Statistiche giornaliere">
         {stats.map(s => (
-          <div key={s.k} className={`card-paper p-5 ${s.accent ? 'stat-accent' : ''}`} role="listitem">
+          <div key={s.k} className="card-paper p-5" role="listitem" style={{ borderTop: `3px solid ${s.color}` }}>
             <div className="text-[11px] uppercase tracking-wider mb-3" style={{ color: 'var(--muted)' }}>{s.k}</div>
-            <div className="serif text-4xl font-medium" style={{ color: s.accent ? 'var(--accent)' : 'var(--ink)' }}>{s.v}</div>
+            <div className="mono" style={{ fontSize: 34, fontWeight: 600, color: s.color, lineHeight: 1, letterSpacing: '-0.02em' }}>{s.v}</div>
             <div className="text-xs mt-2" style={{ color: 'var(--ink-2)' }}>{s.sub}</div>
           </div>
         ))}
