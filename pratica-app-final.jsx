@@ -2469,6 +2469,14 @@ function PrenoCard({ p, onEdit, onConvert, onDelete, onFoto, onContratto, onFirm
   const giorni = daysDiff(p.dal, p.al);
   const [saldoRapidoOpen, setSaldoRapidoOpen] = useState(false);
   const [pagamentoOpen, setPagamentoOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef(null);
+  useEffect(() => {
+    if (!menuOpen) return undefined;
+    const onDoc = (e) => { if (menuRef.current && !menuRef.current.contains(e.target)) setMenuOpen(false); };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [menuOpen]);
   const sp = statoPagamento(p);
 
   // Genera messaggio pagamento via bonifico / PayPal
@@ -2501,8 +2509,9 @@ function PrenoCard({ p, onEdit, onConvert, onDelete, onFoto, onContratto, onFirm
     <div style={{
       background: 'var(--bg)', border: '1px solid var(--border)',
       borderRadius: 8, padding: '14px 16px',
-      display: 'flex', gap: 14, alignItems: 'flex-start',
+      display: 'flex', flexDirection: 'column', gap: 0,
     }}>
+      <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
       {/* date block */}
       <div style={{
         flexShrink: 0, width: 52, textAlign: 'center',
@@ -2699,163 +2708,95 @@ function PrenoCard({ p, onEdit, onConvert, onDelete, onFoto, onContratto, onFirm
           </div>
         )}
       </div>
+      </div>
 
-      {/* actions */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flexShrink: 0 }}>
-        {p.stato === 'confermata' && (
-          <button type="button" onClick={() => onConsegna && onConsegna(p)}
-            style={{ fontSize: 11, padding: '4px 10px', borderRadius: 4, border: 'none',
-              background: '#2e6e3e', color: 'white', fontWeight: 700, cursor: 'pointer' }}>
-            🚗 Consegna
+      {/* azioni — barra in basso: principale + Salda + icone rapide + menu ⋯ */}
+      {(() => {
+        const st = p.stato;
+        const isActive = st === 'in_corso' || st === 'confermata';
+        const residuo = sp.residuo;
+        let primary = null;
+        if (st === 'confermata') primary = { label: 'Consegna', onClick: () => onConsegna && onConsegna(p) };
+        else if (st === 'in_corso') primary = { label: 'Riconsegna', onClick: () => onRiconsegna && onRiconsegna(p) };
+        const items = [];
+        if (isActive && !p.contractId) items.push({ label: 'Genera pratica', onClick: () => onConvert(p) });
+        if (isActive && !p.saldoRegistrato) items.push({ label: 'Registra saldo', onClick: () => onSaldo && onSaldo(p) });
+        if (st === 'in_corso') items.push({ label: 'Segna rientrato', onClick: () => onRientro && onRientro(p) });
+        if (isActive) items.push({ label: 'Proroga', onClick: () => onProroga && onProroga(p) });
+        if (st === 'in_corso') items.push({ label: 'Sostituzione mezzo', onClick: () => onSostituzione && onSostituzione(p) });
+        if (st !== 'annullata' && st !== 'cancellata' && !p.depositoRegistrato) items.push({ label: 'Prendi caparra', onClick: () => onDeposito && onDeposito(p, 'prendi') });
+        if (p.depositoRegistrato && !p.depositoRimborsato) items.push({ label: 'Rimborsa caparra', onClick: () => onDeposito && onDeposito(p, 'rimborsa') });
+        items.push({ label: 'Stampa contratto', onClick: () => onContratto && onContratto(p) });
+        if (st === 'confermata' && onWaConferma) items.push({ label: 'WhatsApp conferma', onClick: () => onWaConferma(p) });
+        if (st === 'confermata' && rentmePush) items.push({ label: 'Invia a RentMe', onClick: () => {
+          const rmVeh = (rentmeVehicles || []).find(v => v.targa === p.vehicleId);
+          rentmePush(p, rmVeh?.slug || p.vehicleType || 'auto')
+            .then(() => pushToast && pushToast({ tone: 'success', title: 'Inviato a RentMe' }))
+            .catch(err => pushToast && pushToast({ tone: 'warning', title: 'RentMe fallito', message: err.message }));
+        } });
+        if ((st === 'completata' || st === 'annullata' || st === 'cancellata') && onRicrea) items.push({ label: 'Ricrea', onClick: () => onRicrea(p) });
+        if (onDuplica) items.push({ label: 'Duplica', onClick: () => onDuplica(p) });
+        items.push({ label: 'Annulla prenotazione', onClick: () => onDelete(p.id), danger: true });
+
+        const iconBtn = (title, icon, onClick) => (
+          <button type="button" title={title} onClick={onClick}
+            style={{ width: 30, height: 30, borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', color: 'var(--ink-2)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+            {icon}
           </button>
-        )}
-        <button type="button" onClick={() => onEdit(p)}
-          style={{ fontSize: 11, padding: '4px 10px', borderRadius: 4, border: '1px solid var(--border)', background: 'transparent', color: 'var(--ink-2)', cursor: 'pointer' }}>
-          Modifica
-        </button>
-        {(p.stato === 'confermata' || p.stato === 'in_corso') && !p.contractId && (
-          <button type="button" onClick={() => onConvert(p)}
-            style={{ fontSize: 11, padding: '4px 10px', borderRadius: 4, border: 'none', background: 'var(--accent)', color: 'white', fontWeight: 600, cursor: 'pointer' }}>
-            → Pratica
-          </button>
-        )}
-        <button type="button" onClick={() => onFoto && onFoto(p)}
-          style={{ fontSize: 11, padding: '4px 10px', borderRadius: 4, border: '1px solid var(--border)', background: 'transparent', color: '#1f5d83', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-          <Camera style={{ width: 12, height: 12 }} aria-hidden="true" /> Foto
-        </button>
-        <button type="button" onClick={() => onFirma && onFirma(p)}
-          style={{ fontSize: 11, padding: '4px 10px', borderRadius: 4, border: '1px solid var(--border)', background: 'transparent', color: '#2e6e3e', cursor: 'pointer' }}>
-          ✍️ Firma
-        </button>
-        {(p.stato === 'in_corso' || p.stato === 'confermata') && !p.saldoRegistrato && (
-          <button type="button" onClick={() => onSaldo && onSaldo(p)}
-            style={{ fontSize: 11, padding: '4px 10px', borderRadius: 4, border: 'none',
-              background: '#1f5d83', color: 'white', fontWeight: 600, cursor: 'pointer' }}>
-            💰 Saldo
-          </button>
-        )}
-        {(p.stato === 'in_corso' || p.stato === 'confermata') && !p.saldoRegistrato && sp.residuo > 0 && onSaldoRapido && (
-          <div style={{ position: 'relative' }}>
-            <button type="button" onClick={() => setSaldoRapidoOpen(o => !o)}
-              style={{ fontSize: 11, padding: '4px 10px', borderRadius: 4, border: '1px solid #1f5d83',
-                background: saldoRapidoOpen ? '#1f5d83' : 'transparent',
-                color: saldoRapidoOpen ? 'white' : '#1f5d83', fontWeight: 600, cursor: 'pointer' }}>
-              💶 Salda €{sp.residuo}
-            </button>
-            {saldoRapidoOpen && (
-              <div style={{
-                position: 'absolute', right: 0, top: '110%', zIndex: 200,
-                background: 'var(--bg)', border: '1px solid var(--border)',
-                borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,.18)',
-                padding: '12px 14px', minWidth: 180,
-              }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink)', marginBottom: 8 }}>
-                  Saldo rapido · €{sp.residuo}
-                </div>
-                {['contanti','carta','bonifico','altro'].map(m => (
-                  <button key={m} type="button"
-                    onClick={() => { onSaldoRapido(p, sp.residuo, m); setSaldoRapidoOpen(false); }}
-                    style={{ display: 'block', width: '100%', textAlign: 'left',
-                      fontSize: 12, padding: '6px 8px', marginBottom: 3, borderRadius: 5,
-                      border: '1px solid var(--border)', background: 'transparent',
-                      color: 'var(--ink)', cursor: 'pointer' }}>
-                    {m === 'contanti' ? '💵' : m === 'carta' ? '💳' : m === 'bonifico' ? '🏦' : '💶'} {m.charAt(0).toUpperCase() + m.slice(1)}
-                  </button>
-                ))}
-                <button type="button" onClick={() => setSaldoRapidoOpen(false)}
-                  style={{ fontSize: 10, color: 'var(--muted)', background: 'none', border: 'none', cursor: 'pointer', marginTop: 2 }}>
-                  Annulla
+        );
+
+        return (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 11, paddingTop: 10, borderTop: '1px solid var(--border)' }}>
+            {primary && (
+              <button type="button" onClick={primary.onClick}
+                style={{ fontSize: 12, fontWeight: 700, padding: '7px 16px', borderRadius: 7, border: 'none', background: 'var(--success)', color: '#fff', cursor: 'pointer' }}>
+                {primary.label} →
+              </button>
+            )}
+            {isActive && !p.saldoRegistrato && residuo > 0 && onSaldoRapido && (
+              <div style={{ position: 'relative' }}>
+                <button type="button" onClick={() => setSaldoRapidoOpen(o => !o)}
+                  style={{ fontSize: 12, fontWeight: 600, padding: '7px 13px', borderRadius: 7, border: '1px solid var(--sea)', background: saldoRapidoOpen ? 'var(--sea)' : 'transparent', color: saldoRapidoOpen ? '#fff' : 'var(--sea)', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                  Salda €{residuo}
                 </button>
+                {saldoRapidoOpen && (
+                  <div style={{ position: 'absolute', left: 0, top: '110%', zIndex: 200, background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,.18)', padding: '12px 14px', minWidth: 180 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink)', marginBottom: 8 }}>Saldo rapido · €{residuo}</div>
+                    {['contanti','carta','bonifico','altro'].map(m => (
+                      <button key={m} type="button" onClick={() => { onSaldoRapido(p, residuo, m); setSaldoRapidoOpen(false); }}
+                        style={{ display: 'block', width: '100%', textAlign: 'left', fontSize: 12, padding: '6px 8px', marginBottom: 3, borderRadius: 5, border: '1px solid var(--border)', background: 'transparent', color: 'var(--ink)', cursor: 'pointer' }}>
+                        {m.charAt(0).toUpperCase() + m.slice(1)}
+                      </button>
+                    ))}
+                    <button type="button" onClick={() => setSaldoRapidoOpen(false)}
+                      style={{ fontSize: 10, color: 'var(--muted)', background: 'none', border: 'none', cursor: 'pointer', marginTop: 2 }}>Annulla</button>
+                  </div>
+                )}
               </div>
             )}
+            <div style={{ flex: 1 }} />
+            {iconBtn('Modifica', <Pencil style={{ width: 15, height: 15 }} aria-hidden="true" />, () => onEdit(p))}
+            {onFoto && iconBtn('Foto stato', <Camera style={{ width: 15, height: 15 }} aria-hidden="true" />, () => onFoto(p))}
+            {onFirma && iconBtn('Firma', <FileSignature style={{ width: 15, height: 15 }} aria-hidden="true" />, () => onFirma(p))}
+            <div style={{ position: 'relative' }} ref={menuRef}>
+              <button type="button" onClick={() => setMenuOpen(o => !o)} title="Altre azioni"
+                style={{ width: 30, height: 30, borderRadius: 6, border: '1px solid var(--border)', background: menuOpen ? 'var(--surface-2)' : 'transparent', color: 'var(--ink-2)', cursor: 'pointer', fontSize: 18, lineHeight: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>⋯</button>
+              {menuOpen && (
+                <div style={{ position: 'absolute', right: 0, top: 36, zIndex: 200, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 9, boxShadow: '0 12px 30px -8px rgba(0,0,0,.25)', padding: 6, minWidth: 200 }}>
+                  {items.map((it, i) => (
+                    <button key={i} type="button" onClick={() => { setMenuOpen(false); it.onClick(); }}
+                      style={{ display: 'block', width: '100%', textAlign: 'left', fontSize: 13, padding: '8px 10px', borderRadius: 6, border: 'none', background: 'transparent', color: it.danger ? 'var(--accent)' : 'var(--ink)', cursor: 'pointer' }}
+                      onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface-2)'; }}
+                      onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}>
+                      {it.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
-        )}
-        {p.stato === 'in_corso' && (
-          <button type="button" onClick={() => onRiconsegna && onRiconsegna(p)}
-            style={{ fontSize: 11, padding: '4px 10px', borderRadius: 4, border: 'none',
-              background: '#2e6e3e', color: 'white', fontWeight: 700, cursor: 'pointer' }}>
-            📍 Riconsegna
-          </button>
-        )}
-        {p.stato === 'in_corso' && (
-          <button type="button" onClick={() => onRientro && onRientro(p)}
-            style={{ fontSize: 11, padding: '4px 10px', borderRadius: 4, border: '1px solid #2e6e3e',
-              background: 'transparent', color: '#2e6e3e', fontWeight: 600, cursor: 'pointer' }}>
-            ✓ Rientrato
-          </button>
-        )}
-        {(p.stato === 'in_corso' || p.stato === 'confermata') && (
-          <button type="button" onClick={() => onProroga && onProroga(p)}
-            style={{ fontSize: 11, padding: '4px 10px', borderRadius: 4, border: '1px solid #c88a2e',
-              background: 'transparent', color: '#c88a2e', cursor: 'pointer' }}>
-            ⏱ Proroga
-          </button>
-        )}
-        {p.stato === 'in_corso' && (
-          <button type="button" onClick={() => onSostituzione && onSostituzione(p)}
-            style={{ fontSize: 11, padding: '4px 10px', borderRadius: 4, border: '1px solid #c85050',
-              background: 'transparent', color: '#c85050', cursor: 'pointer' }}>
-            🔧 Sostituzione
-          </button>
-        )}
-        {p.stato !== 'annullata' && p.stato !== 'cancellata' && !p.depositoRegistrato && (
-          <button type="button" onClick={() => onDeposito && onDeposito(p, 'prendi')}
-            style={{ fontSize: 11, padding: '4px 10px', borderRadius: 4, border: '1px solid #e8c88a',
-              background: 'transparent', color: '#b87333', cursor: 'pointer' }}>
-            📦 Caparra
-          </button>
-        )}
-        {p.depositoRegistrato && !p.depositoRimborsato && (
-          <button type="button" onClick={() => onDeposito && onDeposito(p, 'rimborsa')}
-            style={{ fontSize: 11, padding: '4px 10px', borderRadius: 4, border: '1px solid #d7bef0',
-              background: 'transparent', color: '#7d3c98', cursor: 'pointer' }}>
-            ↩ Rimborsa
-          </button>
-        )}
-        <button type="button" onClick={() => onContratto && onContratto(p)}
-          style={{ fontSize: 11, padding: '4px 10px', borderRadius: 4, border: '1px solid var(--border)', background: 'transparent', color: '#6a3d8f', cursor: 'pointer' }}>
-          🖨️ Contratto
-        </button>
-        {p.stato === 'confermata' && onWaConferma && (
-          <button type="button" onClick={() => onWaConferma(p)}
-            style={{ fontSize: 11, padding: '4px 10px', borderRadius: 4, border: '1px solid #25d366',
-              background: 'transparent', color: '#25d366', cursor: 'pointer', fontWeight: 600 }}>
-            📱 WA Conferma
-          </button>
-        )}
-        {p.stato === 'confermata' && rentmePush && (
-          <button type="button" onClick={() => {
-            const rmVeh = (rentmeVehicles || []).find(v => v.targa === p.vehicleId);
-            rentmePush(p, rmVeh?.slug || p.vehicleType || 'auto')
-              .then(() => pushToast && pushToast({ tone: 'success', title: '✅ Inviato a RentMe' }))
-              .catch(err => pushToast && pushToast({ tone: 'warning', title: 'RentMe fallito', message: err.message }));
-          }}
-            style={{ fontSize: 11, padding: '4px 10px', borderRadius: 4, border: '1px solid #6a3d8f',
-              background: 'transparent', color: '#6a3d8f', cursor: 'pointer', fontWeight: 600 }}>
-            🔄 Invia a RentMe
-          </button>
-        )}
-        
-        {(p.stato === 'completata' || p.stato === 'annullata' || p.stato === 'cancellata') && onRicrea && (
-          <button type="button" onClick={() => onRicrea(p)}
-            style={{ fontSize: 11, padding: '4px 10px', borderRadius: 4, border: '1px solid #1f5d83',
-              background: 'transparent', color: '#1f5d83', cursor: 'pointer', fontWeight: 600 }}>
-            🔁 Ricrea
-          </button>
-        )}
-        {onDuplica && (
-          <button type="button" onClick={() => onDuplica(p)}
-            title="Duplica questa prenotazione con lo stesso cliente e le stesse date — potrai scegliere un mezzo diverso"
-            style={{ fontSize: 11, padding: '4px 10px', borderRadius: 4, border: '1px solid #2e7d32',
-              background: 'transparent', color: '#2e7d32', cursor: 'pointer', fontWeight: 600 }}>
-            📋 Duplica
-          </button>
-        )}
-        <button type="button" onClick={() => onDelete(p.id)}
-          style={{ fontSize: 11, padding: '4px 10px', borderRadius: 4, border: '1px solid #f0d0d0', background: 'transparent', color: '#c85050', cursor: 'pointer' }}>
-          Elimina
-        </button>
-      </div>
+        );
+      })()}
     </div>
   );
 }
