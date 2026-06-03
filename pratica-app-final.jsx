@@ -1212,6 +1212,15 @@ function makeApi(baseUrl) {
     // CSV fallback — restituisce il payload base64 e le istruzioni PEC
     csvBatch: (ids) =>
       apiFetch(baseUrl, '/contracts/csv-batch', { method: 'POST', body: { ids }, timeout: 10000 }),
+
+    // PEC — stato dell'invio automatico (interruttore + casella configurata + destinatario)
+    pecStatus: () => apiFetch(baseUrl, '/pec/status', { timeout: 8000 }),
+    // PEC — verifica connessione/credenziali SENZA inviare nulla (diagnostica)
+    pecVerify: () => apiFetch(baseUrl, '/pec/verify', { method: 'POST', timeout: 15000 }),
+    // PEC — invia i contratti indicati alla Questura via posta certificata.
+    // Il backend invia DAVVERO solo se PEC_AUTO_ENABLED=true (doppia sicurezza anti-invio accidentale).
+    sendPec: (ids, operatorId) =>
+      apiFetch(baseUrl, '/contracts/send-pec', { method: 'POST', body: { ids }, operatorId, timeout: 35000 }),
   };
 }
 
@@ -16573,6 +16582,62 @@ export default function App() {
     }
   }, [online, api, operator, setLocalContracts, pushToast]);
 
+  // ── PEC — invio del contratto alla Questura via posta certificata ─────────
+  // Stato dell'invio automatico (interruttore Render + casella configurata).
+  // null = non ancora verificato; { autoEnabled, configured, to } = risposta backend.
+  const [pecStatus, setPecStatus] = useState(null);
+  const refreshPecStatus = useCallback(async () => {
+    if (!online) return;
+    try { setPecStatus(await api.pecStatus()); }
+    catch { /* backend non raggiungibile (es. anteprima): lascia null, niente errori a video */ }
+  }, [online, api]);
+  // Verifica lo stato PEC all'avvio e quando torna la connessione.
+  useEffect(() => { refreshPecStatus(); }, [refreshPecStatus]);
+
+  // Invia un contratto alla Questura via PEC e CONSERVA la prova d'invio sul
+  // contratto (codice messaggio + data/ora + destinatario), così resta agganciata
+  // alla pratica e finisce nei backup. NB: la ricevuta di CONSEGNA vera arriva poi
+  // nella casella PEC (pezzo "B", separato): qui registriamo la prova di trasmissione.
+  const sendContractPec = useCallback(async (contractId) => {
+    if (!online) {
+      pushToast({ tone: 'warning', title: 'Sei offline', message: 'Riprova quando torna la connessione' });
+      return;
+    }
+    try {
+      const result = await api.sendPec([contractId], operator?.id);
+      const sentAt = new Date().toISOString();
+      setLocalContracts(cs => cs.map(c =>
+        c.contractId === contractId
+          ? { ...c, pecSentAt: sentAt, pecMessageId: result.messageId || null, pecTo: result.to || pecStatus?.to || null }
+          : c
+      ));
+      pushToast({ tone: 'success', title: 'Inviato via PEC alla Questura', message: `${contractId.slice(-8)} · ${(result.messageId || '').slice(0, 18) || 'consegnato al gestore'}` });
+    } catch (err) {
+      // 409 = interruttore spento o casella non configurata → messaggio chiaro, non un errore generico.
+      const kind = err.details?.error;
+      if (kind === 'pec_auto_non_attiva') {
+        pushToast({ tone: 'warning', title: 'PEC automatica non attiva', message: 'Va accesa su Render (PEC_AUTO_ENABLED) prima di poter inviare.', duration: 6000 });
+      } else if (kind === 'pec_non_configurata') {
+        pushToast({ tone: 'warning', title: 'Casella PEC non configurata', message: 'Mancano le credenziali PEC o il destinatario Questura.', duration: 6000 });
+      } else {
+        pushToast({ tone: 'error', title: 'Invio PEC fallito', message: err.message, duration: 6000 });
+      }
+    }
+  }, [online, api, operator, setLocalContracts, pushToast, pecStatus]);
+
+  // Diagnostica: verifica connessione/credenziali della casella PEC senza inviare nulla.
+  const verifyPecConnection = useCallback(async () => {
+    if (!online) { pushToast({ tone: 'warning', title: 'Sei offline', message: 'Riprova quando torna la connessione' }); return; }
+    try {
+      const r = await api.pecVerify();
+      await refreshPecStatus();
+      if (r?.ok) pushToast({ tone: 'success', title: 'Casella PEC raggiungibile', message: 'Connessione e credenziali OK.' });
+      else pushToast({ tone: 'warning', title: 'PEC non verificabile', message: r?.error === 'pec_non_configurata' ? 'Casella non ancora configurata su Render.' : (r?.error || 'Verifica fallita'), duration: 6000 });
+    } catch (err) {
+      pushToast({ tone: 'error', title: 'Verifica PEC fallita', message: err.message, duration: 6000 });
+    }
+  }, [online, api, pushToast, refreshPecStatus]);
+
   // Marca un contratto come "veicolo rientrato": cambia status a 'completed' e registra
   // il timestamp del rientro effettivo. Sparisce dal pannello "Veicoli fuori".
   // I dati restano in archivio per consultazioni successive.
@@ -16858,7 +16923,7 @@ export default function App() {
                 : <FinanceGate />)}
               {page === 'preventivi'    && <PreventiviPage setPage={setPage} setPrenotazioniPrefill={setPrenotazioniPrefill} listino={listino} fleet={fleet} rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} pushToast={pushToast} fermiFlotta={fermiFlotta} />}
               {page === 'prenotazioni' && <PrenotazioniPage prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} setCassa={setCassa} fleet={fleet} rentmeVehicles={rentmeVehicles} customers={customers} partners={partners} operator={operator} onOpenWizard={openWizard} pushToast={pushToast} prefill={prenotazioniPrefill} onClearPrefill={() => setPrenotazioniPrefill(null)} fermiFlotta={fermiFlotta} rentmePush={rentmeSync.pushBooking} rentmeConnected={rentmeSync.status === 'ok'} agency={agency} />}
-              {page === 'contracts'  && <ContractsList contracts={localContracts} operators={operators} onRetry={retryContract} onMarkReturned={markContractReturned} online={online} />}
+              {page === 'contracts'  && <ContractsList contracts={localContracts} operators={operators} onRetry={retryContract} onMarkReturned={markContractReturned} onSendPec={sendContractPec} pecStatus={pecStatus} online={online} />}
               {page === 'fleet'      && <FleetPage fleet={unifiedFleet} prenotazioni={prenotazioni} admin={admin} onAddVehicle={() => setModal('newVehicle')} onEditVehicle={(v) => setModal({ type: 'editVehicle', vehicle: v })} onDeleteVehicle={requestDeleteVehicle} onImportCSV={() => setShowCsvImport(true)} onResetFleet={() => setModal({ type: 'confirm', title: 'Azzera flotta?', message: <><strong>Tutti i {fleet.length} veicoli</strong> verranno eliminati dalla flotta. Le prenotazioni esistenti restano invariate. Dopo puoi reimportare con un CSV aggiornato. <strong>Azione irreversibile.</strong></>, confirmLabel: 'Azzera flotta', variant: 'danger', onConfirm: () => { setFleet([]); pushToast({ tone: 'info', title: 'Flotta azzerata', message: 'Tutti i veicoli rimossi. Importa un nuovo CSV per ricaricare.' }); } })} onSetFleet={setFleet} scadenze={scadenze} setScadenze={setScadenze} fermiFlotta={fermiFlotta} setFermiFlotta={setFermiFlotta} rentmeVehicles={rentmeVehicles} manutenzioni={manutenzioni} setManutenzioni={setManutenzioni} partners={partners} targhe={targhe} setTarghe={setTarghe} />}
               {page === 'customers'  && <CustomersPage customers={customers} setCustomers={setCustomers} prenotazioni={prenotazioni} admin={admin} onShowQR={(c) => setModal({ type: 'qr', customer: c })} onNewWithCustomer={openWizard} onAddCustomer={() => setModal('newCustomer')} onEditCustomer={(c) => setModal({ type: 'editCustomer', customer: c })} onDeleteCustomer={deleteCustomer} onShowStorico={(c) => setStorioClienteId(c.id)} />}
               {page === 'partners'   && <PartnersPage partners={partners} admin={admin} onAddPartner={() => setModal('newPartner')} onEditPartner={(p) => setModal({ type: 'editPartner', partner: p })} onDeletePartner={requestDeletePartner} />}
@@ -16871,7 +16936,7 @@ export default function App() {
                   <StagioniEditor stagioni={stagioni} onSave={(s)=>{setStagioni(s); pushToast && pushToast({tone:'success',title:'Stagioni aggiornate',message:'Configurazione stagionale salvata'});}} />
                 </div>
               </div>}
-              {page === 'settings'   && <SettingsPage operator={operator} operators={operators} admin={admin} cargosConfig={cargosConfig} backendStatus={backendStatus} lastCheck={lastCheck} apiBaseUrl={apiBaseUrl} syncStatus={allSyncStatus} agency={agency} customers={customers} contracts={localContracts} onSyncAll={syncAll} onExportBackup={exportBackup} onImportBackup={importBackup} pushToast={pushToast} onAddOperator={() => setModal('newOperator')} onEditOperator={(o) => setModal({ type: 'editOperator', operator: o })} onDeleteOperator={requestDeleteOperator} onEditCargos={() => setModal('cargosConfig')} onEditApiBase={() => setModal('apiBase')} onEditAgency={() => setModal('agency')} onResetCustomers={requestResetCustomers} onResetContracts={requestResetContracts} onResetEverything={requestResetEverything} onImportFleetFromRentMe={requestImportFleetFromRentMe} rentmeConfig={rentmeConfig} setRentmeConfig={setRentmeConfig} rentmeSync={rentmeSync} rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} appUsers={appUsers} setAppUsers={setAppUsers} onLogout={handleLogout} driveClientId={driveClientId} setDriveClientId={setDriveClientId} driveLastBackup={driveLastBackup} onDriveBackup={driveBackup} driveAutoEnabled={driveAutoEnabled} setDriveAutoEnabled={setDriveAutoEnabled} renderLastBackup={renderLastBackup} onRenderBackup={backupToRender} backupToken={backupToken} setBackupToken={setBackupToken} onImportStorico={({ prenotazioni: newP, clienti: newC }) => {
+              {page === 'settings'   && <SettingsPage operator={operator} operators={operators} admin={admin} cargosConfig={cargosConfig} backendStatus={backendStatus} lastCheck={lastCheck} apiBaseUrl={apiBaseUrl} syncStatus={allSyncStatus} agency={agency} customers={customers} contracts={localContracts} onSyncAll={syncAll} onExportBackup={exportBackup} onImportBackup={importBackup} pushToast={pushToast} onAddOperator={() => setModal('newOperator')} onEditOperator={(o) => setModal({ type: 'editOperator', operator: o })} onDeleteOperator={requestDeleteOperator} onEditCargos={() => setModal('cargosConfig')} onEditApiBase={() => setModal('apiBase')} onEditAgency={() => setModal('agency')} onResetCustomers={requestResetCustomers} onResetContracts={requestResetContracts} onResetEverything={requestResetEverything} onImportFleetFromRentMe={requestImportFleetFromRentMe} rentmeConfig={rentmeConfig} setRentmeConfig={setRentmeConfig} rentmeSync={rentmeSync} rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} appUsers={appUsers} setAppUsers={setAppUsers} onLogout={handleLogout} driveClientId={driveClientId} setDriveClientId={setDriveClientId} driveLastBackup={driveLastBackup} onDriveBackup={driveBackup} driveAutoEnabled={driveAutoEnabled} setDriveAutoEnabled={setDriveAutoEnabled} renderLastBackup={renderLastBackup} onRenderBackup={backupToRender} backupToken={backupToken} setBackupToken={setBackupToken} pecStatus={pecStatus} onPecVerify={verifyPecConnection} onImportStorico={({ prenotazioni: newP, clienti: newC }) => {
                 setPrenotazioni(prev => {
                   const existKeys = new Set(prev.map(p => p.id));
                   return [...prev, ...newP.filter(p => !existKeys.has(p.id))];
@@ -18152,7 +18217,7 @@ function ReturnColumn({ title, color, items, empty, fmtTime, urgent, muted, onMa
 // ═══════════════════════════════════════════════════════════════════
 // CONTRACTS LIST — basata su localContracts reali (no mock)
 // ═══════════════════════════════════════════════════════════════════
-function ContractsList({ contracts, operators, onRetry, onMarkReturned, online }) {
+function ContractsList({ contracts, operators, onRetry, onMarkReturned, onSendPec, pecStatus, online }) {
   const [statusFilter, setStatusFilter] = useState('all');
   const [query, setQuery] = useState('');
 
@@ -18349,6 +18414,27 @@ function ContractsList({ contracts, operators, onRetry, onMarkReturned, online }
                               <span className="text-[11px] mono inline-flex items-center gap-1" style={{ color: 'var(--ink-2)' }}>
                                 {c.receipt.slice(0, 12)}… <ArrowUpRight className="w-3 h-3" aria-hidden="true" />
                               </span>
+                            )}
+                            {/* PEC — prova d'invio già registrata sul contratto */}
+                            {c.pecSentAt && (
+                              <span className="text-[11px] inline-flex items-center gap-1" style={{ color: 'var(--success)' }}
+                                title={`Inviato via PEC il ${new Date(c.pecSentAt).toLocaleString('it-IT')}${c.pecMessageId ? ` · ${c.pecMessageId}` : ''}${c.pecTo ? ` → ${c.pecTo}` : ''}`}>
+                                <Mail className="w-3 h-3" /> PEC {new Date(c.pecSentAt).toLocaleDateString('it-IT', { day: '2-digit', month: 'short' })}
+                              </span>
+                            )}
+                            {/* PEC — pulsante d'invio: solo se l'invio automatico è ACCESO su Render,
+                                il contratto è soggetto a CARGOS e non è già stato inviato via PEC */}
+                            {!c.pecSentAt && onSendPec && pecStatus?.autoEnabled && c.cargosRequired !== false && c.status !== 'paper' && (
+                              <button
+                                type="button"
+                                onClick={() => onSendPec(c.contractId)}
+                                disabled={!online}
+                                className="btn-ghost px-2 py-1 rounded text-xs border inline-flex items-center gap-1 disabled:opacity-40"
+                                style={{ borderColor: 'var(--sea, #2b6e8f)', color: 'var(--sea, #2b6e8f)' }}
+                                title={online ? 'Invia questo contratto alla Questura via PEC' : 'Offline · non si può inviare ora'}
+                              >
+                                <Mail className="w-3 h-3" /> Invia PEC
+                              </button>
                             )}
                           </div>
                         </td>
@@ -19997,7 +20083,7 @@ function SecuritySection({ appUsers, setAppUsers, onLogout, pushToast }) {
   );
 }
 
-function SettingsPage({ operator, operators, cargosConfig, admin, backendStatus, lastCheck, apiBaseUrl, syncStatus, agency, onSyncAll, onExportBackup, onImportBackup, pushToast, onAddOperator, onEditOperator, onDeleteOperator, onEditCargos, onEditApiBase, onEditAgency, onResetCustomers, onResetContracts, onResetEverything, onImportFleetFromRentMe, customers, contracts, rentmeConfig, setRentmeConfig, rentmeSync, rentmeVehicles, prenotazioni, onImportStorico, appUsers, setAppUsers, onLogout, driveClientId, setDriveClientId, driveLastBackup, onDriveBackup, driveAutoEnabled, setDriveAutoEnabled, renderLastBackup, onRenderBackup, backupToken, setBackupToken }) {
+function SettingsPage({ operator, operators, cargosConfig, admin, backendStatus, lastCheck, apiBaseUrl, syncStatus, agency, onSyncAll, onExportBackup, onImportBackup, pushToast, onAddOperator, onEditOperator, onDeleteOperator, onEditCargos, onEditApiBase, onEditAgency, onResetCustomers, onResetContracts, onResetEverything, onImportFleetFromRentMe, customers, contracts, rentmeConfig, setRentmeConfig, rentmeSync, rentmeVehicles, prenotazioni, onImportStorico, appUsers, setAppUsers, onLogout, driveClientId, setDriveClientId, driveLastBackup, onDriveBackup, driveAutoEnabled, setDriveAutoEnabled, renderLastBackup, onRenderBackup, backupToken, setBackupToken, pecStatus, onPecVerify }) {
   const importInputRef = useRef();
   const [showCargosSecrets, setShowCargosSecrets] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -20142,6 +20228,35 @@ function SettingsPage({ operator, operators, cargosConfig, admin, backendStatus,
             <div className="text-xs p-3 rounded mt-2" style={{ background: 'var(--surface-2)', color: 'var(--ink-2)' }}>
               <Info className="w-3.5 h-3.5 inline mr-1" aria-hidden="true" />
               Credenziali rilasciate dalla <strong>Questura di Agrigento</strong>, competente sulla sede legale di {agency.citta}. Conservate cifrate (AES-256-GCM) lato server.
+            </div>
+
+            {/* ── PEC — invio certificato alla Questura ───────────────────── */}
+            <div className="mt-4 pt-4" style={{ borderTop: '1px solid var(--border)' }}>
+              <div className="flex items-center gap-2 mb-2">
+                <Mail className="w-4 h-4" style={{ color: 'var(--ink-2)' }} aria-hidden="true" />
+                <span className="label" style={{ color: 'var(--edo-sea)' }}>Invio via PEC</span>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                {pecStatus?.autoEnabled
+                  ? <span className="pill pill-ok"><CheckCircle2 className="w-3 h-3" aria-hidden="true" /> Invio PEC attivo</span>
+                  : <span className="pill pill-warn"><AlertTriangle className="w-3 h-3" aria-hidden="true" /> Invio PEC non attivo</span>}
+                {pecStatus?.configured
+                  ? <span className="text-xs" style={{ color: 'var(--muted)' }}>Casella configurata</span>
+                  : <span className="text-xs" style={{ color: 'var(--muted)' }}>Casella non configurata</span>}
+                {admin && onPecVerify && (
+                  <button type="button" onClick={onPecVerify}
+                    className="btn-ghost px-2.5 py-1 rounded text-xs border inline-flex items-center gap-1.5 ml-auto"
+                    style={{ borderColor: 'var(--border)' }}>
+                    <RefreshCw className="w-3 h-3" /> Verifica connessione
+                  </button>
+                )}
+              </div>
+              <div className="text-xs p-3 rounded mt-2" style={{ background: 'var(--surface-2)', color: 'var(--ink-2)' }}>
+                <Info className="w-3.5 h-3.5 inline mr-1" aria-hidden="true" />
+                {pecStatus?.autoEnabled
+                  ? <>Il pulsante <strong>Invia PEC</strong> compare su ogni contratto auto nella pagina <strong>Pratiche</strong>. Ogni invio resta registrato sul contratto (data, ora, codice messaggio).</>
+                  : <>L'invio PEC dall'app è spento per sicurezza. Si accende su Render impostando <span className="mono">PEC_AUTO_ENABLED=true</span> + le credenziali della casella. Finché è spento, l'invio resta manuale dalla casella <span className="mono">{agency.pec || 'PEC'}</span>.</>}
+              </div>
             </div>
           </div>
         </section>
