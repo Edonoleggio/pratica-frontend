@@ -16796,7 +16796,7 @@ export default function App() {
               {page === 'preventivi'    && <PreventiviPage setPage={setPage} setPrenotazioniPrefill={setPrenotazioniPrefill} listino={listino} fleet={fleet} rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} pushToast={pushToast} fermiFlotta={fermiFlotta} />}
               {page === 'prenotazioni' && <PrenotazioniPage prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} setCassa={setCassa} fleet={fleet} rentmeVehicles={rentmeVehicles} customers={customers} partners={partners} operator={operator} onOpenWizard={openWizard} pushToast={pushToast} prefill={prenotazioniPrefill} onClearPrefill={() => setPrenotazioniPrefill(null)} fermiFlotta={fermiFlotta} rentmePush={rentmeSync.pushBooking} rentmeConnected={rentmeSync.status === 'ok'} agency={agency} />}
               {page === 'contracts'  && <ContractsList contracts={localContracts} operators={operators} onRetry={retryContract} onMarkReturned={markContractReturned} online={online} />}
-              {page === 'fleet'      && <FleetPage fleet={unifiedFleet} prenotazioni={prenotazioni} admin={admin} onAddVehicle={() => setModal('newVehicle')} onEditVehicle={(v) => setModal({ type: 'editVehicle', vehicle: v })} onDeleteVehicle={requestDeleteVehicle} onImportCSV={() => setShowCsvImport(true)} onResetFleet={() => setModal({ type: 'confirm', title: 'Azzera flotta?', message: <><strong>Tutti i {fleet.length} veicoli</strong> verranno eliminati dalla flotta. Le prenotazioni esistenti restano invariate. Dopo puoi reimportare con un CSV aggiornato. <strong>Azione irreversibile.</strong></>, confirmLabel: 'Azzera flotta', variant: 'danger', onConfirm: () => { setFleet([]); pushToast({ tone: 'info', title: 'Flotta azzerata', message: 'Tutti i veicoli rimossi. Importa un nuovo CSV per ricaricare.' }); } })} onSetFleet={setFleet} scadenze={scadenze} setScadenze={setScadenze} fermiFlotta={fermiFlotta} setFermiFlotta={setFermiFlotta} rentmeVehicles={rentmeVehicles} manutenzioni={manutenzioni} setManutenzioni={setManutenzioni} partners={partners} />}
+              {page === 'fleet'      && <FleetPage fleet={unifiedFleet} prenotazioni={prenotazioni} admin={admin} onAddVehicle={() => setModal('newVehicle')} onEditVehicle={(v) => setModal({ type: 'editVehicle', vehicle: v })} onDeleteVehicle={requestDeleteVehicle} onImportCSV={() => setShowCsvImport(true)} onResetFleet={() => setModal({ type: 'confirm', title: 'Azzera flotta?', message: <><strong>Tutti i {fleet.length} veicoli</strong> verranno eliminati dalla flotta. Le prenotazioni esistenti restano invariate. Dopo puoi reimportare con un CSV aggiornato. <strong>Azione irreversibile.</strong></>, confirmLabel: 'Azzera flotta', variant: 'danger', onConfirm: () => { setFleet([]); pushToast({ tone: 'info', title: 'Flotta azzerata', message: 'Tutti i veicoli rimossi. Importa un nuovo CSV per ricaricare.' }); } })} onSetFleet={setFleet} scadenze={scadenze} setScadenze={setScadenze} fermiFlotta={fermiFlotta} setFermiFlotta={setFermiFlotta} rentmeVehicles={rentmeVehicles} manutenzioni={manutenzioni} setManutenzioni={setManutenzioni} partners={partners} targhe={targhe} setTarghe={setTarghe} />}
               {page === 'customers'  && <CustomersPage customers={customers} setCustomers={setCustomers} prenotazioni={prenotazioni} admin={admin} onShowQR={(c) => setModal({ type: 'qr', customer: c })} onNewWithCustomer={openWizard} onAddCustomer={() => setModal('newCustomer')} onEditCustomer={(c) => setModal({ type: 'editCustomer', customer: c })} onDeleteCustomer={deleteCustomer} onShowStorico={(c) => setStorioClienteId(c.id)} />}
               {page === 'partners'   && <PartnersPage partners={partners} admin={admin} onAddPartner={() => setModal('newPartner')} onEditPartner={(p) => setModal({ type: 'editPartner', partner: p })} onDeletePartner={requestDeletePartner} />}
               {page === 'listino'    && <div style={{padding:'28px 32px',maxWidth:900,margin:'0 auto'}}>
@@ -16871,9 +16871,17 @@ export default function App() {
         <FleetCSVImport
           fleet={fleet}
           onImport={(newFleet) => {
+            // Flotta unificata: il CSV aggiorna la TABELLA TARGHE (codice RentMe → targa reale),
+            // che è la fonte delle targhe della Flotta. Aggiorna anche `fleet` (fallback offline).
+            const updates = {};
+            (newFleet || []).forEach(v => {
+              const code = String(v.rentmeCode || v.idRentme || '').trim().split(' ').pop();
+              if (code && v.targa) updates[code] = String(v.targa).toUpperCase();
+            });
+            if (Object.keys(updates).length) setTarghe({ ...targhe, ...updates });
             setFleet(newFleet);
             setShowCsvImport(false);
-            pushToast({ tone: 'success', title: 'Flotta importata', message: `${newFleet.length} mezzi in flotta` });
+            pushToast({ tone: 'success', title: 'Targhe aggiornate', message: `${Object.keys(updates).length} targhe dal file · ${newFleet.length} mezzi` });
           }}
           onClose={() => setShowCsvImport(false)}
         />
@@ -18568,7 +18576,9 @@ function ManutenzioniModal({ vehicle, manutenzioni, setManutenzioni, onClose }) 
 // ═══════════════════════════════════════════════════════════════════
 // FLEET
 // ═══════════════════════════════════════════════════════════════════
-function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, onDeleteVehicle, onImportCSV, onResetFleet, onSetFleet, scadenze, setScadenze, fermiFlotta, setFermiFlotta, rentmeVehicles, manutenzioni, setManutenzioni, partners }) {
+function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, onDeleteVehicle, onImportCSV, onResetFleet, onSetFleet, scadenze, setScadenze, fermiFlotta, setFermiFlotta, rentmeVehicles, manutenzioni, setManutenzioni, partners, targhe, setTarghe }) {
+  const [targaEdit, setTargaEdit] = useState(null); // {code,val} — modifica targa inline (Flotta unificata)
+  const saveTarga = (code, val) => { if (setTarghe) setTarghe({ ...(targhe || {}), [code]: (val || '').toUpperCase().replace(/\s+/g, '') }); setTargaEdit(null); };
   const [typeFilter, setTypeFilter] = useState('all');
   const [categoriaFilter, setCategoriaFilter] = useState(null);
   const [statusFilter, setStatusFilter] = useState('all');
@@ -18969,12 +18979,27 @@ function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, on
                   <VehicleIcon type={v.tipo} className="w-5 h-5" />
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                  {/* Targa reale — badge principale */}
-                  <div className="mono text-sm font-semibold tracking-wider px-2 py-1 inline-block rounded"
-                    style={{ background: realTarga ? 'var(--surface-2)' : '#fff4e5', color: realTarga ? 'var(--ink)' : '#b25000', border: realTarga ? 'none' : '1px solid #f0c080' }}
-                    title="Targa reale">
-                    {realTarga || '⚠ targa mancante'}
-                  </div>
+                  {/* Targa reale — badge principale (Flotta unificata: editabile inline da admin) */}
+                  {admin && v._unified && targaEdit?.code === v.id ? (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                      <input autoFocus value={targaEdit.val}
+                        onChange={e => setTargaEdit({ code: v.id, val: e.target.value.toUpperCase().replace(/\s+/g, '') })}
+                        onKeyDown={e => { if (e.key === 'Enter') saveTarga(v.id, targaEdit.val); if (e.key === 'Escape') setTargaEdit(null); }}
+                        placeholder="TARGA" maxLength={10}
+                        style={{ width: 100, fontFamily: 'var(--font-mono)', fontSize: 13, padding: '4px 6px', borderRadius: 5, border: '1.5px solid var(--sea)', textTransform: 'uppercase', outline: 'none' }} />
+                      <button type="button" onClick={() => saveTarga(v.id, targaEdit.val)}
+                        style={{ fontSize: 11, fontWeight: 700, padding: '4px 8px', borderRadius: 5, border: 'none', background: 'var(--sea)', color: '#fff', cursor: 'pointer' }}>OK</button>
+                      <button type="button" onClick={() => setTargaEdit(null)}
+                        style={{ fontSize: 14, padding: '2px 6px', borderRadius: 5, border: '1px solid var(--border)', background: 'transparent', color: 'var(--muted)', cursor: 'pointer', lineHeight: 1 }}>×</button>
+                    </span>
+                  ) : (
+                    <div className="mono text-sm font-semibold tracking-wider px-2 py-1 inline-block rounded"
+                      onClick={admin && v._unified ? () => setTargaEdit({ code: v.id, val: realTarga || '' }) : undefined}
+                      style={{ background: realTarga ? 'var(--surface-2)' : '#fff4e5', color: realTarga ? 'var(--ink)' : '#b25000', border: realTarga ? 'none' : '1px solid #f0c080', cursor: admin && v._unified ? 'pointer' : 'default' }}
+                      title={admin && v._unified ? 'Clicca per inserire/modificare la targa' : 'Targa reale'}>
+                      {realTarga || '⚠ targa mancante'}
+                    </div>
+                  )}
                   {/* Codice RentMe — badge secondario */}
                   {rmCode && (
                     <div className="mono text-xs px-2 py-1 inline-block rounded"
