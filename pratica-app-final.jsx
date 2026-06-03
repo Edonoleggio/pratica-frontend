@@ -9339,6 +9339,103 @@ function calcAvailability(dal, al, rentmeVehicles, prenotazioni, fleet, fermiFlo
 // └─────────────────────────────────────────────────────────────────┘
 // ── Mappa statica RentMe ID → targa reale (da censimento flotta) ─────────────
 // Chiave = codice RentMe intero (es. "panda 81") O solo numero ("81")
+// ═══════════════════════════════════════════════════════════════════
+// FLOTTA UNIFICATA — tabella targhe + join con RentMe
+// La fonte dei MEZZI è RentMe (tipo, cilindrata, prenotazioni, manutenzione);
+// la TABELLA TARGHE (codice RentMe → targa reale) è ciò che cura l'utente.
+// Si uniscono per codice RentMe. Niente più DB flotta separato che diverge.
+// TARGHE_SEED = seme iniziale (dal Foglio 3); la tabella vera è in stato
+// persistente 'edo:v1:targhe', editabile in-app e via upload CSV.
+// ═══════════════════════════════════════════════════════════════════
+const TARGHE_SEED = {"1":"CG25160","2":"CV61957","3":"DT07281","4":"DT07199","5":"DM59120","6":"ET46342","7":"ET46340","8":"ET46341","10":"CG25175","11":"CP85154","12":"CV78763","13":"DE81460","14":"CW77242","15":"DJ16006","16":"ER52914","17":"BV68609","18":"DV40167","19":"BW58323","20":"CW77242","21":"DM06845","22":"DV46333","23":"DV46926","24":"DV40304","25":"DN16471","27":"BY77132","28":"DV92194","29":"DV46995","30":"DT07280","31":"DT07282","33":"FP74556","34":"FP74554","35":"EW92292","36":"EW92293","37":"EW92294","38":"EW92295","39":"EW92296","40":"EW92297","41":"EW92298","42":"EW92299","43":"EW92300","44":"EW92301","45":"FF16659","46":"FK08061","47":"FK08098","48":"FB88295","49":"FB88299","50":"FB88260","51":"FB88330","52":"FB88344","53":"FB88345","54":"FB88346","55":"FB88347","56":"FB88348","57":"FB88349","58":"FF16747","59":"FF16748","60":"FK08089","61":"FK08090","62":"FK08091","63":"FK08092","64":"FK08093","65":"FD33808","66":"FA13043","67":"FA13042","68":"FA13040","69":"FA13038","70":"FA13039","71":"FA13036","72":"FA13035","73":"FA13037","74":"FA13041","75":"EX61503","76":"EX61501","77":"EX61500","78":"EX61499","79":"EX61505","80":"EX61498","81":"CY937XX","82":"DS995DN","83":"CL890CZ","84":"DA014MD","85":"CN308TV","86":"CR452BP","87":"DY669GW","88":"CP969XS","89":"CF847GS","90":"DV274MC","91":"GH869KA","92":"DB506ZV","93":"CX824KS","94":"FG705MC","95":"CW417RM","96":"DP417KM","97":"DE474WL","98":"CV403WW","99":"DH407YR","100":"GA413YP","101":"CR042MZ","102":"DP428KM","103":"CX124KZ","104":"FV485FB","105":"DG894VJ","106":"CX312NY","107":"DP331AA","108":"DB391VR","109":"ED949RX","110":"DS248VG","111":"CV464EH","112":"DE371MM","113":"DT796CM","114":"DF197JW","115":"EH739XT","116":"DY441HX","118":"DR856NT","119":"DZ063EP","120":"DJ507XH","121":"DE530WF","122":"CX891TB","123":"EM416AA","124":"FB599WD","125":"EP804YM","126":"EV888PB","127":"FS944BA","128":"CP875NR","129":"FL409XV","130":"SV256194","131":"PR292027","132":"VI3397198","133":"PC210411","134":"TS1922630","135":"AG253022","136":"AG253021","137":"TOM28765","138":"FH854KY","139":"MI35777G","140":"UD514492","141":"TP342201","142":"AG279352","143":"PV407892","144":"ROMA10123H","145":"MO484122","146":"BL113579","147":"AX391EK","148":"LT421661","149":"NAP41156","150":"BZ085ZB","151":"GH649LD","152":"CK710JG","153":"BG345SV","154":"CZ241RA","155":"XB8W8M","156":"X2Y3HD","157":"X5VP8L","158":"X8CN8T","159":"X5VPR6","160":"X2Y3D5","161":"X79M47","162":"X4BPC8","163":"XBBF38","164":"X7VK41","165":"X8KTMS","166":"X2Y3H5","168":"EF82687","169":"DC06822","170":"X5B5DM","171":"XB7854","172":"X2XN4Z","173":"X2Y3HH","174":"X7SSPW","175":"X7MMXX","176":"X2XN4N","177":"X5VP8K","178":"X5VP8N","179":"X86FTS","180":"X7NRR3","181":"X2XN53","182":"X5VP8M","183":"X4BJLB","184":"X2Y3H9","185":"X7SSPV","186":"X2Y3HG","187":"X4BJLC","188":"X86FTR","189":"X7MMXW","190":"X7NRR2","191":"X7NRR4","192":"X7XXZB","193":"X7MMXV","194":"X3BGRP","195":"X2Y3HB","196":"X2Y3HF","197":"X2Y3HC","198":"X7XXZC","199":"X7YZYP","200":"X84X4N","201":"X2Y3HJ","202":"X9RTS7","203":"X2XN4Y","204":"X2XN4P","205":"X6RZ3M","206":"X84X9C","207":"X2XN4R","208":"X8KTLT","209":"X2XN54","210":"X2XN52","211":"X2Y3HK","212":"X2Y3HL","213":"X2Y3H8","214":"X79M4M","256":"TOM97379","257":"VC567189","258":"MI00033R","261":"X6RZ3R","277":"DZ500KR","278":"FM873GS","279":"EM056GE","280":"EM461AA","281":"FY821LW","282":"EX856DA","283":"AG214750","284":"CM506JG","285":"AG340818","286":"CR267214","287":"RML01307","288":"VI272757","306":"DL923YK","308":"EV53905","309":"EV53904","310":"FP74555","311":"FS23036","312":"DW08528","313":"PI267354","315":"EJ001VV"};
+
+// buildUnifiedFleet: unisce i veicoli RentMe (verità sui mezzi) con la tabella
+// targhe (targhe reali). Ritorna oggetti "fleet-shaped" usati dalla pagina Flotta.
+// id = codice RentMe (chiave stabile). targa '' = mancante (da inserire).
+function buildUnifiedFleet(rentmeVehicles, targhe) {
+  const tab = targhe || {};
+  return (rentmeVehicles || []).map(v => {
+    const code = String(v.rentmeCode || v.idRentme || '').trim();
+    const targa = (tab[code] || '').toUpperCase();
+    return {
+      id:         code,                      // chiave canonica = codice RentMe
+      rentmeCode: code,
+      idRentme:   v.idRentme || code,
+      targa,                                 // '' = targa mancante
+      tipo:       v.tipo,                    // già canonical (canonicalTipo in useRentMeSync)
+      marca:      v.marca || '',
+      modello:    v.modello || v.nome || '',
+      colore:     '',
+      cc:         v.cilindrata || (v.cc ? v.cc + 'cc' : ''),
+      stato:      v.riparazione ? 'fermo' : 'available',
+      anno:       null,
+      _unified:   true,
+    };
+  });
+}
+
+// ── Migrazione chiavi alla "Flotta unificata" (codice RentMe) ────────
+// scadenze (oggetto keyed by id) e manutenzioni/fermi (array con vehicleId) erano
+// indicizzati sul vecchio id fleet / targa. Nel modello unificato la chiave canonica
+// è il CODICE RentMe. Queste funzioni re-keyano in modo IDEMPOTENTE e NON distruttivo
+// (le chiavi non risolvibili restano invariate → nessuna perdita). Usate come `migrate`
+// di usePersistentState (girano su load locale E remoto → niente race).
+function codeFromRentme(idRentme) {
+  if (!idRentme) return null;
+  const m = String(idRentme).trim().match(/(\d+)\s*$/);
+  return m ? m[1] : null;
+}
+function buildVehicleKeyResolver(fleet, targhe) {
+  const codes = new Set(Object.keys(targhe || {}));
+  const targaToCode = {};
+  Object.entries(targhe || {}).forEach(([code, t]) => {
+    const targa = (typeof t === 'string' ? t : (t && t.targa)) || '';
+    if (targa) targaToCode[targa.toUpperCase().trim()] = code;
+  });
+  const oldIdToCode = {};
+  (fleet || []).forEach(v => {
+    const code = codeFromRentme(v.idRentme || v.rentmeId) || targaToCode[(v.targa || '').toUpperCase().trim()] || null;
+    if (v.id && code) oldIdToCode[String(v.id)] = code;
+    if (v.targa && code) targaToCode[(v.targa || '').toUpperCase().trim()] = code;
+  });
+  return (key) => {
+    if (!key) return null;
+    const k = String(key);
+    if (codes.has(k)) return k;                  // è già un codice RentMe
+    const up = k.toUpperCase().trim();
+    if (targaToCode[up]) return targaToCode[up]; // è una targa reale
+    if (oldIdToCode[k]) return oldIdToCode[k];   // è un vecchio id fleet
+    return null;                                 // non risolvibile → orfano (lasciato com'è)
+  };
+}
+function migrateScadenzeKeys(scadenze, fleet, targhe) {
+  if (!scadenze || typeof scadenze !== 'object' || Array.isArray(scadenze)) return scadenze;
+  const resolve = buildVehicleKeyResolver(fleet, targhe);
+  const out = {};
+  let changed = false, orfani = 0;
+  Object.entries(scadenze).forEach(([k, v]) => {
+    const code = resolve(k);
+    const newKey = code || k;
+    if (!code) orfani++;
+    if (newKey !== k) changed = true;
+    out[newKey] = out[newKey] ? { ...out[newKey], ...v } : v;
+  });
+  if (changed && orfani) { try { console.info(`[flotta] scadenze: ${orfani} chiavi orfane non risolte (lasciate intatte)`); } catch {} }
+  return changed ? out : scadenze;
+}
+function migrateVehicleIdArray(arr, fleet, targhe) {
+  if (!Array.isArray(arr)) return arr;
+  const resolve = buildVehicleKeyResolver(fleet, targhe);
+  let changed = false;
+  const out = arr.map(item => {
+    if (!item || !item.vehicleId) return item;
+    const code = resolve(item.vehicleId);
+    if (code && code !== String(item.vehicleId)) { changed = true; return { ...item, vehicleId: code, _vehicleIdOld: item.vehicleId }; }
+    return item;
+  });
+  return changed ? out : arr;
+}
+
 const RENTME_TARGA_MAP = {
   'c3 119': { targa: 'DZ063EP', modello: 'C3' },
   '119': { targa: 'DZ063EP', modello: 'C3' },
@@ -9753,6 +9850,11 @@ function useRentMeSync({ fleet, rentmeVehicles, setRentmeVehicles, setPrenotazio
         idRentme:            rmCode,             // alias usato da getVehicleCategoria per matching (es. "mxu 168", "xwolf 311")
         targa:               realTar,            // targa reale (da fleet locale o codice RentMe come fallback)
         uuidDittaAssociata:  v.uuidDittaAssociata,
+        marca:               v.marca || '',      // per la Flotta unificata
+        modello:             v.modello || '',
+        cilindrata:          v.cilindrata || '',
+        riparazione:         !!v.riparazione,    // RentMe: mezzo in manutenzione
+        impegnato:           !!v.impegnato,
         nome:                [v.tipo, v.marca, v.modello, v.cilindrata].filter(Boolean).join(' '),
         slug:                [v.tipo, v.marca, v.modello, v.cilindrata].join('-').toLowerCase().replace(/\s+/g,'').replace(/[^a-z0-9-]/g,''),
         tipo:                canonicalTipo({ tipo: v.tipo, modello: v.modello }),
@@ -15782,6 +15884,14 @@ export default function App() {
     },
   });
   const [rentmeVehicles, setRentmeVehicles] = usePersistentState('edo:v1:rentme_vehicles', [], { skipRemote: true });
+  // Tabella targhe (codice RentMe → targa reale), curata dall'utente. Seme = Foglio 3.
+  const [targhe, setTarghe, targheSync] = usePersistentState('edo:v1:targhe', TARGHE_SEED, sharedOpts);
+  // Flotta UNIFICATA: se ci sono mezzi RentMe, la Flotta è RentMe ⋈ targhe (fonte unica,
+  // sempre allineata); altrimenti fallback al fleet locale (offline / primo avvio).
+  const unifiedFleet = useMemo(
+    () => (rentmeVehicles && rentmeVehicles.length ? buildUnifiedFleet(rentmeVehicles, targhe) : fleet),
+    [rentmeVehicles, targhe, fleet]
+  );
   const [stagioni, setStagioni, stagioniSync] = usePersistentState('edo:v1:stagioni', DEFAULT_STAGIONI_CONFIG, sharedOpts);
   // rentmeConfig: controlla il "bridge" verso RentMe.
   // enabled: false → Pratica gira in autonomia, zero chiamate a RentMe.
@@ -15807,12 +15917,12 @@ export default function App() {
     setSessionUser(null);
   }, []);
   // Scadenze flotta: revisione, assicurazione, tagliando, bollo per ogni veicolo.
-  const [scadenze, setScadenze, scadenzeSync] = usePersistentState('edo:v1:scadenze', {}, sharedOpts);
+  const [scadenze, setScadenze, scadenzeSync] = usePersistentState('edo:v1:scadenze', {}, { ...sharedOpts, migrate: (d) => migrateScadenzeKeys(d, fleet, targhe) });
   // Fermi flotta: periodi di blocco programmati (officina, revisione, ecc.)
   // Struttura: [{ id, vehicleId, dal, al, motivo }]
-  const [fermiFlotta, setFermiFlotta, fermiFlottaSync] = usePersistentState('edo:v1:fermiFlotta', [], sharedOpts);
+  const [fermiFlotta, setFermiFlotta, fermiFlottaSync] = usePersistentState('edo:v1:fermiFlotta', [], { ...sharedOpts, migrate: (d) => migrateVehicleIdArray(d, fleet, targhe) });
   // Manutenzioni programmate: [{ id, vehicleId, tipo, descrizione, dataScadenza, note, completata, dataCompletata }]
-  const [manutenzioni, setManutenzioni, manutenzioniSync] = usePersistentState('edo:v1:manutenzioni', [], sharedOpts);
+  const [manutenzioni, setManutenzioni, manutenzioniSync] = usePersistentState('edo:v1:manutenzioni', [], { ...sharedOpts, migrate: (d) => migrateVehicleIdArray(d, fleet, targhe) });
   // Google Drive Client ID — skipRemote, specifico del dispositivo
   const [driveClientId, setDriveClientId] = usePersistentState('edo:v1:driveClientId', '', { skipRemote: true });
   const [driveLastBackup, setDriveLastBackup] = usePersistentState('edo:v1:driveLastBackup', null, { skipRemote: true });
@@ -16748,7 +16858,7 @@ export default function App() {
               {page === 'preventivi'    && <PreventiviPage setPage={setPage} setPrenotazioniPrefill={setPrenotazioniPrefill} listino={listino} fleet={fleet} rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} pushToast={pushToast} fermiFlotta={fermiFlotta} />}
               {page === 'prenotazioni' && <PrenotazioniPage prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} setCassa={setCassa} fleet={fleet} rentmeVehicles={rentmeVehicles} customers={customers} partners={partners} operator={operator} onOpenWizard={openWizard} pushToast={pushToast} prefill={prenotazioniPrefill} onClearPrefill={() => setPrenotazioniPrefill(null)} fermiFlotta={fermiFlotta} rentmePush={rentmeSync.pushBooking} rentmeConnected={rentmeSync.status === 'ok'} agency={agency} />}
               {page === 'contracts'  && <ContractsList contracts={localContracts} operators={operators} onRetry={retryContract} onMarkReturned={markContractReturned} online={online} />}
-              {page === 'fleet'      && <FleetPage fleet={fleet} prenotazioni={prenotazioni} admin={admin} onAddVehicle={() => setModal('newVehicle')} onEditVehicle={(v) => setModal({ type: 'editVehicle', vehicle: v })} onDeleteVehicle={requestDeleteVehicle} onImportCSV={() => setShowCsvImport(true)} onResetFleet={() => setModal({ type: 'confirm', title: 'Azzera flotta?', message: <><strong>Tutti i {fleet.length} veicoli</strong> verranno eliminati dalla flotta. Le prenotazioni esistenti restano invariate. Dopo puoi reimportare con un CSV aggiornato. <strong>Azione irreversibile.</strong></>, confirmLabel: 'Azzera flotta', variant: 'danger', onConfirm: () => { setFleet([]); pushToast({ tone: 'info', title: 'Flotta azzerata', message: 'Tutti i veicoli rimossi. Importa un nuovo CSV per ricaricare.' }); } })} onSetFleet={setFleet} scadenze={scadenze} setScadenze={setScadenze} fermiFlotta={fermiFlotta} setFermiFlotta={setFermiFlotta} rentmeVehicles={rentmeVehicles} manutenzioni={manutenzioni} setManutenzioni={setManutenzioni} partners={partners} />}
+              {page === 'fleet'      && <FleetPage fleet={unifiedFleet} prenotazioni={prenotazioni} admin={admin} onAddVehicle={() => setModal('newVehicle')} onEditVehicle={(v) => setModal({ type: 'editVehicle', vehicle: v })} onDeleteVehicle={requestDeleteVehicle} onImportCSV={() => setShowCsvImport(true)} onResetFleet={() => setModal({ type: 'confirm', title: 'Azzera flotta?', message: <><strong>Tutti i {fleet.length} veicoli</strong> verranno eliminati dalla flotta. Le prenotazioni esistenti restano invariate. Dopo puoi reimportare con un CSV aggiornato. <strong>Azione irreversibile.</strong></>, confirmLabel: 'Azzera flotta', variant: 'danger', onConfirm: () => { setFleet([]); pushToast({ tone: 'info', title: 'Flotta azzerata', message: 'Tutti i veicoli rimossi. Importa un nuovo CSV per ricaricare.' }); } })} onSetFleet={setFleet} scadenze={scadenze} setScadenze={setScadenze} fermiFlotta={fermiFlotta} setFermiFlotta={setFermiFlotta} rentmeVehicles={rentmeVehicles} manutenzioni={manutenzioni} setManutenzioni={setManutenzioni} partners={partners} targhe={targhe} setTarghe={setTarghe} />}
               {page === 'customers'  && <CustomersPage customers={customers} setCustomers={setCustomers} prenotazioni={prenotazioni} admin={admin} onShowQR={(c) => setModal({ type: 'qr', customer: c })} onNewWithCustomer={openWizard} onAddCustomer={() => setModal('newCustomer')} onEditCustomer={(c) => setModal({ type: 'editCustomer', customer: c })} onDeleteCustomer={deleteCustomer} onShowStorico={(c) => setStorioClienteId(c.id)} />}
               {page === 'partners'   && <PartnersPage partners={partners} admin={admin} onAddPartner={() => setModal('newPartner')} onEditPartner={(p) => setModal({ type: 'editPartner', partner: p })} onDeletePartner={requestDeletePartner} />}
               {page === 'listino'    && <div style={{padding:'28px 32px',maxWidth:900,margin:'0 auto'}}>
@@ -16823,9 +16933,17 @@ export default function App() {
         <FleetCSVImport
           fleet={fleet}
           onImport={(newFleet) => {
+            // Flotta unificata: il CSV aggiorna la TABELLA TARGHE (codice RentMe → targa reale),
+            // che è la fonte delle targhe della Flotta. Aggiorna anche `fleet` (fallback offline).
+            const updates = {};
+            (newFleet || []).forEach(v => {
+              const code = String(v.rentmeCode || v.idRentme || '').trim().split(' ').pop();
+              if (code && v.targa) updates[code] = String(v.targa).toUpperCase();
+            });
+            if (Object.keys(updates).length) setTarghe({ ...targhe, ...updates });
             setFleet(newFleet);
             setShowCsvImport(false);
-            pushToast({ tone: 'success', title: 'Flotta importata', message: `${newFleet.length} mezzi in flotta` });
+            pushToast({ tone: 'success', title: 'Targhe aggiornate', message: `${Object.keys(updates).length} targhe dal file · ${newFleet.length} mezzi` });
           }}
           onClose={() => setShowCsvImport(false)}
         />
@@ -18520,7 +18638,9 @@ function ManutenzioniModal({ vehicle, manutenzioni, setManutenzioni, onClose }) 
 // ═══════════════════════════════════════════════════════════════════
 // FLEET
 // ═══════════════════════════════════════════════════════════════════
-function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, onDeleteVehicle, onImportCSV, onResetFleet, onSetFleet, scadenze, setScadenze, fermiFlotta, setFermiFlotta, rentmeVehicles, manutenzioni, setManutenzioni, partners }) {
+function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, onDeleteVehicle, onImportCSV, onResetFleet, onSetFleet, scadenze, setScadenze, fermiFlotta, setFermiFlotta, rentmeVehicles, manutenzioni, setManutenzioni, partners, targhe, setTarghe }) {
+  const [targaEdit, setTargaEdit] = useState(null); // {code,val} — modifica targa inline (Flotta unificata)
+  const saveTarga = (code, val) => { if (setTarghe) setTarghe({ ...(targhe || {}), [code]: (val || '').toUpperCase().replace(/\s+/g, '') }); setTargaEdit(null); };
   const [typeFilter, setTypeFilter] = useState('all');
   const [categoriaFilter, setCategoriaFilter] = useState(null);
   const [statusFilter, setStatusFilter] = useState('all');
@@ -18632,7 +18752,8 @@ function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, on
         (v.marca || '').toLowerCase().includes(q) ||
         (v.modello || '').toLowerCase().includes(q) ||
         (v.colore || '').toLowerCase().includes(q) ||
-        (getCat(v) || '').toLowerCase().includes(q)
+        (getCat(v) || '').toLowerCase().includes(q) ||
+        (v.rentmeCode || v.idRentme || '').toLowerCase().includes(q)  // ricerca per codice RentMe (es. "155", "350")
       );
     }
     return f;
@@ -18921,12 +19042,27 @@ function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, on
                   <VehicleIcon type={v.tipo} className="w-5 h-5" />
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                  {/* Targa reale — badge principale */}
-                  <div className="mono text-sm font-semibold tracking-wider px-2 py-1 inline-block rounded"
-                    style={{ background: realTarga ? 'var(--surface-2)' : '#fff4e5', color: realTarga ? 'var(--ink)' : '#b25000', border: realTarga ? 'none' : '1px solid #f0c080' }}
-                    title="Targa reale">
-                    {realTarga || '⚠ targa mancante'}
-                  </div>
+                  {/* Targa reale — badge principale (Flotta unificata: editabile inline da admin) */}
+                  {admin && v._unified && targaEdit?.code === v.id ? (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                      <input autoFocus value={targaEdit.val}
+                        onChange={e => setTargaEdit({ code: v.id, val: e.target.value.toUpperCase().replace(/\s+/g, '') })}
+                        onKeyDown={e => { if (e.key === 'Enter') saveTarga(v.id, targaEdit.val); if (e.key === 'Escape') setTargaEdit(null); }}
+                        placeholder="TARGA" maxLength={10}
+                        style={{ width: 100, fontFamily: 'var(--font-mono)', fontSize: 13, padding: '4px 6px', borderRadius: 5, border: '1.5px solid var(--sea)', textTransform: 'uppercase', outline: 'none' }} />
+                      <button type="button" onClick={() => saveTarga(v.id, targaEdit.val)}
+                        style={{ fontSize: 11, fontWeight: 700, padding: '4px 8px', borderRadius: 5, border: 'none', background: 'var(--sea)', color: '#fff', cursor: 'pointer' }}>OK</button>
+                      <button type="button" onClick={() => setTargaEdit(null)}
+                        style={{ fontSize: 14, padding: '2px 6px', borderRadius: 5, border: '1px solid var(--border)', background: 'transparent', color: 'var(--muted)', cursor: 'pointer', lineHeight: 1 }}>×</button>
+                    </span>
+                  ) : (
+                    <div className="mono text-sm font-semibold tracking-wider px-2 py-1 inline-block rounded"
+                      onClick={admin && v._unified ? () => setTargaEdit({ code: v.id, val: realTarga || '' }) : undefined}
+                      style={{ background: realTarga ? 'var(--surface-2)' : '#fff4e5', color: realTarga ? 'var(--ink)' : '#b25000', border: realTarga ? 'none' : '1px solid #f0c080', cursor: admin && v._unified ? 'pointer' : 'default' }}
+                      title={admin && v._unified ? 'Clicca per inserire/modificare la targa' : 'Targa reale'}>
+                      {realTarga || '⚠ targa mancante'}
+                    </div>
+                  )}
                   {/* Codice RentMe — badge secondario */}
                   {rmCode && (
                     <div className="mono text-xs px-2 py-1 inline-block rounded"
