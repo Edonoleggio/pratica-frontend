@@ -13225,6 +13225,7 @@ function VoliLampedusaWidget({ feed } = {}) {
 function NaviLampedusaWidget({ feed } = {}) {
   const own = useNaviFeed(!feed);
   const { loading, data, error, at, now, reload } = feed || own;
+  const [showMap, setShowMap] = useState(false);
   // Nascondi le navi la cui ultima posizione AIS è oltre 24h fa: sono ferme in
   // porto / non in navigazione e "sporcano" il riquadro. Le contiamo a parte.
   const allVessels = data?.vessels || [];
@@ -13352,6 +13353,30 @@ function NaviLampedusaWidget({ feed } = {}) {
         <div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.5 }}>{liveEmptyNote}</div>
       )}
       {orariBlock}
+
+      {/* Mappa live VesselFinder (gratis, iframe — copre le navi anche quando
+          l'AIS terrestre del nostro feed non le capta). Lampedusa + canale. */}
+      <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--border)' }}>
+        <button type="button" onClick={() => setShowMap(s => !s)}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'none', border: '1px solid var(--border)',
+            borderRadius: 6, padding: '5px 10px', cursor: 'pointer', color: 'var(--sea)', fontSize: 12, fontWeight: 600 }}>
+          <MapPin style={{ width: 13, height: 13 }} /> {showMap ? 'Nascondi mappa' : 'Vedi le navi sulla mappa'}
+          <ChevronDown style={{ width: 12, height: 12, transform: showMap ? 'rotate(180deg)' : 'none', transition: 'transform .18s' }} />
+        </button>
+        {showMap && (
+          <div style={{ marginTop: 10, borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border)' }}>
+            <iframe
+              title="Mappa navi Lampedusa · VesselFinder"
+              src="https://www.vesselfinder.com/aismap?zoom=8&lat=36.1&lon=12.9&width=100%25&height=340&names=true&fleet=false"
+              style={{ width: '100%', height: 340, border: 'none', display: 'block' }}
+              loading="lazy"
+            />
+            <div style={{ fontSize: 9, color: 'var(--muted)', padding: '4px 8px', background: 'var(--surface-2)' }}>
+              Mappa live di VesselFinder · Lampedusa e Canale di Sicilia
+            </div>
+          </div>
+        )}
+      </div>
     </Card>
   );
 }
