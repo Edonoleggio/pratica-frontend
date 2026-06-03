@@ -585,8 +585,8 @@ const CATEGORIA_KEYWORDS = {
   'STANDARD':   ['standard'],
   'BASE':       ['base'],
   'SCOOTER50':  ['liberty'],
-  'QUAD300':    ['xwolf'],
-  'QUAD150':    ['mxu 168', 'mxu 169', 'mxu 312'],
+  'QUAD300':    ['xwolf', 'quad300'],
+  'QUAD150':    ['mxu 168', 'mxu 169', 'mxu 312', 'quad150'],
   'QUAD50':     ['mxu'],
 };
 function getVehicleCategoria(v) {
