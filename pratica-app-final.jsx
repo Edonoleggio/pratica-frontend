@@ -14599,7 +14599,7 @@ function GlobalSearchModal({ prenotazioni, customers, contracts, fleet, onClose,
 // ═══════════════════════════════════════════════════════════════════
 // CALENDARIO FLOTTA — griglia Gantt mezzo × giorno (4 settimane)
 // ═══════════════════════════════════════════════════════════════════
-function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, setPrenotazioniPrefill, fermiFlotta }) {
+function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, setPrenotazioniPrefill, fermiFlotta, darkMode }) {
   const [weekOffset, setWeekOffset] = useState(0);
   const [tipoFilter, setTipoFilter] = useState('');         // filtro tipo mezzo
   const [selectedCell, setSelectedCell] = useState(null);  // {preno, vehicleId, day}
@@ -14607,6 +14607,14 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
   const [highlightCliente, setHighlightCliente] = useState(null); // chiave cliente evidenziata
   const today = todayISO();
   const COLS = 28; // 4 settimane
+
+  // Carbonio "Quadro strumenti": la fascia-testata (mesi + giorni + "MEZZO") è
+  // scura fissa come la sidebar, sia in tema chiaro che scuro. Il CORPO della
+  // griglia usa i token var(--…) → in dark mode si scurisce da solo ("plancia").
+  const HEAD_BG = '#16181d';
+  const HEAD_TEXT = '#8e887e';        // etichette tenui (giorni feriali, mesi)
+  const HEAD_TEXT_STRONG = '#d4cdc1'; // numeri giorno
+  const HEAD_BORDER = '#2c2e35';
 
   // Vista a 4 settimane ancorata al lunedì della settimana corrente + weekOffset.
   // Offset al lunedì = (getDay()+6)%7 → la DOMENICA resta nella sua settimana
@@ -14815,11 +14823,11 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
         {/* ── Colonna label FISSA (non scrolla) ─────────────────── */}
         <div style={{ flexShrink: 0, width: LABEL_W, borderRight: '1px solid var(--border)', zIndex: 2, background: 'var(--bg)' }}>
           {/* Header mesi (spazio vuoto allineato) */}
-          <div style={{ height: 20, borderBottom: '1px solid var(--border)', background: 'var(--surface-2)' }} />
+          <div style={{ height: 20, borderBottom: `1px solid ${HEAD_BORDER}`, background: HEAD_BG }} />
           {/* Header giorni */}
           <div style={{ padding: '6px 12px', fontSize: 10, fontWeight: 700, letterSpacing: '.06em',
-            color: 'var(--muted)', textTransform: 'uppercase', background: 'var(--surface-2)',
-            borderBottom: '2px solid var(--border)', height: ROW_H, display: 'flex', alignItems: 'center' }}>
+            color: HEAD_TEXT, textTransform: 'uppercase', background: HEAD_BG,
+            borderBottom: `2px solid ${HEAD_BORDER}`, height: ROW_H, display: 'flex', alignItems: 'center' }}>
             MEZZO
           </div>
           {/* Righe label */}
@@ -14831,9 +14839,9 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
                 style={{ height: ROW_H, padding: '4px 12px', display: 'flex', flexDirection: 'column',
                   justifyContent: 'center', cursor: 'pointer',
                   borderTop: vi === 0 ? 'none' : '1px solid var(--border)',
-                  background: selectedVehicle?.id === v.id ? 'rgba(124,77,255,.08)'
+                  background: selectedVehicle?.id === v.id ? 'rgba(45,108,139,.10)'
                     : vi % 2 === 1 ? 'var(--surface-2)' : 'var(--bg)',
-                  borderLeft: selectedVehicle?.id === v.id ? '3px solid #7c4dff' : '3px solid transparent',
+                  borderLeft: selectedVehicle?.id === v.id ? '3px solid var(--edo-sea)' : '3px solid transparent',
                 }}>
                 <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--ink)',
                   whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -14867,10 +14875,10 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
         <div style={{ width: COLS * COL_W, overflow: 'hidden' }}>
 
           {/* Header mesi — senza colonna label (è fissa a sinistra) */}
-          <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', background: 'var(--surface-2)' }}>
+          <div style={{ display: 'flex', borderBottom: `1px solid ${HEAD_BORDER}`, background: HEAD_BG }}>
             {days.map((d, i) => (
-              <div key={d} style={{ width: COL_W, flexShrink: 0, borderLeft: '1px solid var(--border)',
-                fontSize: 9, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase',
+              <div key={d} style={{ width: COL_W, flexShrink: 0, borderLeft: `1px solid ${HEAD_BORDER}`,
+                fontSize: 9, fontWeight: 700, color: HEAD_TEXT, textTransform: 'uppercase',
                 letterSpacing: '.06em', paddingTop: 3, paddingLeft: 3 }}>
                 {monthChanges[i] || ''}
               </div>
@@ -14878,7 +14886,7 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
           </div>
 
           {/* Header giorni — senza label (è nella colonna fissa) */}
-          <div style={{ display: 'flex', borderBottom: '2px solid var(--border)', background: 'var(--surface-2)' }}>
+          <div style={{ display: 'flex', borderBottom: `2px solid ${HEAD_BORDER}`, background: HEAD_BG }}>
             {days.map(d => {
               const dt = new Date(d + 'T12:00:00');
               const isToday = d === today;
@@ -14886,14 +14894,14 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
               return (
                 <div key={d} style={{
                   width: COL_W, flexShrink: 0, textAlign: 'center', padding: '5px 0',
-                  background: isToday ? 'var(--edo-sea)' : isWeekend ? 'rgba(184,115,51,.12)' : 'transparent',
-                  color: isToday ? 'white' : isWeekend ? 'var(--edo-coral)' : 'var(--ink-2)',
-                  borderLeft: isToday ? '2px solid var(--edo-sea)' : '1px solid var(--border)',
+                  background: isToday ? 'var(--edo-sea)' : isWeekend ? 'rgba(184,115,51,.18)' : 'transparent',
+                  color: isToday ? 'white' : isWeekend ? '#d09452' : HEAD_TEXT_STRONG,
+                  borderLeft: isToday ? '2px solid var(--edo-sea)' : `1px solid ${HEAD_BORDER}`,
                 }}>
-                  <div style={{ fontSize: 13, fontWeight: isToday ? 700 : isWeekend ? 400 : 500, lineHeight: 1 }}>
+                  <div style={{ fontSize: 13, fontFamily: 'var(--font-mono)', fontWeight: isToday ? 700 : isWeekend ? 500 : 500, lineHeight: 1 }}>
                     {dt.getDate()}
                   </div>
-                  <div style={{ fontSize: 9, marginTop: 1, opacity: .7 }}>
+                  <div style={{ fontSize: 9, marginTop: 2, opacity: .65 }}>
                     {dt.toLocaleDateString('it-IT', { weekday: 'narrow' })}
                   </div>
                 </div>
@@ -14968,7 +14976,7 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
                     }}
                     title={
                       preno  ? '' :
-                      fermo  ? `🔧 Fermo: ${fermo.motivo || 'manutenzione programmata'} (${formatDate(fermo.dal)}–${formatDate(fermo.al)})` :
+                      fermo  ? `Fermo: ${fermo.motivo || 'manutenzione programmata'} (${formatDate(fermo.dal)}–${formatDate(fermo.al)})` :
                                `+ Nuova prenotazione · ${v.targa || v.id} · ${d}`
                     }
                     style={{
@@ -14981,18 +14989,20 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
                     onMouseEnter={e => { if (!preno && !fermo) e.currentTarget.style.background = 'rgba(200,52,52,.09)'; }}
                     onMouseLeave={e => { if (!preno && !fermo) e.currentTarget.style.background = isToday ? 'rgba(45,108,139,.07)' : isWeekend ? 'rgba(184,115,51,.07)' : 'transparent'; }}
                   >
-                    {/* Fermo programmato — striatura grigia */}
+                    {/* Fermo programmato — striatura (adatta al tema) */}
                     {fermo && (
                       <div style={{
                         position: 'absolute', inset: 0,
-                        background: 'repeating-linear-gradient(135deg,rgba(0,0,0,.06) 0px,rgba(0,0,0,.06) 3px,transparent 3px,transparent 8px)',
-                        backgroundColor: '#f0f0f0',
-                        opacity: 0.7,
+                        background: darkMode
+                          ? 'repeating-linear-gradient(135deg,rgba(255,255,255,.06) 0px,rgba(255,255,255,.06) 3px,transparent 3px,transparent 8px)'
+                          : 'repeating-linear-gradient(135deg,rgba(0,0,0,.06) 0px,rgba(0,0,0,.06) 3px,transparent 3px,transparent 8px)',
+                        backgroundColor: 'var(--surface-2)',
+                        opacity: 0.75,
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                       }}>
-                        {/* Mostra "🔧" solo sul primo giorno del fermo nella vista */}
+                        {/* Icona chiave solo sul primo giorno del fermo nella vista */}
                         {(fermo.dal === d || d === days[0]) && (
-                          <span style={{ fontSize: 9, opacity: 0.55, userSelect: 'none' }}>🔧</span>
+                          <Wrench size={11} aria-hidden="true" style={{ color: 'var(--muted)', opacity: 0.7 }} />
                         )}
                       </div>
                     )}
@@ -15002,13 +15012,13 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
                         top: 4, bottom: 4,
                         left: isStart ? 2 : 0,
                         right: isEnd ? 2 : -1,
-                        background: color + (isSel ? 'cc' : '50'),
+                        background: color + (isSel ? 'ee' : (darkMode ? 'd9' : '50')),
                         borderRadius: `${isStart ? 5 : 0}px ${isEnd ? 5 : 0}px ${isEnd ? 5 : 0}px ${isStart ? 5 : 0}px`,
                         borderLeft:  isStart       ? `3px solid ${color}`  : 'none',
                         borderRight: isSegTransEnd ? `3px dashed ${color}` : 'none',
                         display: 'flex', alignItems: 'center', overflow: 'visible',
                         transition: 'background .12s, opacity .15s',
-                        boxShadow: isSel ? `0 0 0 1.5px ${color}` : 'none',
+                        boxShadow: isSel ? `0 0 0 1.5px ${color}` : (darkMode ? `0 0 10px -3px ${color}` : 'none'),
                         opacity: isDimmed ? 0.15 : 1,
                       }}>
                         {/* Freccia segmento in continuazione */}
@@ -15019,7 +15029,7 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
                             poi il testo "fluttua" sopra le celle successive grazie a overflow:visible + z-index */}
                         {isFirstVisible && !isSegTransStart && (
                           <span style={{
-                            fontSize: 9, fontWeight: 700, color,
+                            fontSize: 9, fontWeight: 700, color: darkMode ? '#fff' : color,
                             paddingLeft: isStart ? 5 : 3,
                             whiteSpace: 'nowrap',
                             overflow: 'hidden',
@@ -15063,8 +15073,8 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
               {highlightCliente && (
                 <button type="button" onClick={() => setHighlightCliente(null)}
-                  style={{ fontSize: 11, padding: '2px 8px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--muted)', cursor: 'pointer', fontWeight: 600 }}>
-                  ✕ Tutti
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, padding: '2px 9px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--muted)', cursor: 'pointer', fontWeight: 600 }}>
+                  <X size={11} aria-hidden="true" /> Tutti
                 </button>
               )}
               {clientiAttivi.map(({ key, label, color }) => (
@@ -15131,7 +15141,7 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
             <div style={{ padding: '18px 20px 14px', borderBottom: '1px solid var(--border)', background: 'var(--surface-2)' }}>
               <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <VehicleIcon type={canonicalTipo(sv)} className="w-8 h-8" style={{ width: 32, height: 32, color: '#7c4dff' }} />
+                  <VehicleIcon type={canonicalTipo(sv)} className="w-8 h-8" style={{ width: 32, height: 32, color: 'var(--edo-sea)' }} />
                   <div>
                     <div style={{ fontSize: 16, fontWeight: 700, fontFamily: 'var(--font-serif)', color: 'var(--ink)', lineHeight: 1.2 }}>
                       {fleetRecord?.marca ? `${fleetRecord.marca} ${fleetRecord.modello || ''}`.trim() : sv.modello || sv.tipo || '—'}
@@ -15184,8 +15194,8 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
 
               {/* Note veicolo */}
               {fleetRecord?.note && (
-                <div style={{ marginBottom: 16, padding: '10px 12px', borderRadius: 8, background: '#fffde7', border: '1px solid #f0d060', fontSize: 12, color: '#6b5a00' }}>
-                  📝 {fleetRecord.note}
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, marginBottom: 16, padding: '10px 12px', borderRadius: 8, background: '#fffde7', border: '1px solid #f0d060', fontSize: 12, color: '#6b5a00' }}>
+                  <Pencil size={13} aria-hidden="true" style={{ flexShrink: 0, marginTop: 1 }} /><span>{fleetRecord.note}</span>
                 </div>
               )}
 
@@ -15237,7 +15247,7 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
                   setSelectedVehicle(null);
                   setPage?.('prenotazioni');
                 }}
-                style={{ padding: '9px 14px', borderRadius: 7, border: 'none', background: '#7c4dff', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: 12, textAlign: 'center' }}>
+                style={{ padding: '9px 14px', borderRadius: 7, border: 'none', background: 'var(--edo-sea)', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: 12, textAlign: 'center' }}>
                 + Nuova prenotazione
               </button>
               <button type="button"
@@ -16726,7 +16736,7 @@ export default function App() {
                 il boundary si resetta automaticamente (la key cambia → nuovo mount). */}
             <ErrorBoundary key={page}>
             <div key={page} className="page-fade">
-              {page === 'calendario' && <CalendarioFlottaPage prenotazioni={prenotazioni} fleet={fleet} rentmeVehicles={rentmeVehicles} setPage={setPage} setPrenotazioniPrefill={setPrenotazioniPrefill} fermiFlotta={fermiFlotta} />}
+              {page === 'calendario' && <CalendarioFlottaPage prenotazioni={prenotazioni} fleet={fleet} rentmeVehicles={rentmeVehicles} setPage={setPage} setPrenotazioniPrefill={setPrenotazioniPrefill} fermiFlotta={fermiFlotta} darkMode={darkMode} />}
               {page === 'oggi'       && <OggiPage prenotazioni={prenotazioni} fleet={fleet} scadenze={scadenze} customers={customers} setPage={setPage} rentmeVehicles={rentmeVehicles} setPrenotazioniPrefill={setPrenotazioniPrefill} pushToast={pushToast} setPrenotazioni={setPrenotazioni} operator={operator} fermiFlotta={fermiFlotta} rentmePush={rentmeSync.pushBooking} rentmeConnected={rentmeSync.status === 'ok'} manutenzioni={manutenzioni} partners={partners} />}
               {page === 'dashboard'  && <Dashboard onNew={() => openWizard()} setPage={setPage} operator={operator} fleet={fleet} contracts={localContracts} partners={partners} onMarkReturned={markContractReturned} scadenze={scadenze} prenotazioni={prenotazioni} agency={agency} />}
               {page === 'cassa'      && <RegistroCassaPage cassa={cassa} setCassa={setCassa} prenotazioni={prenotazioni} customers={customers} operator={operator} pushToast={pushToast} />}
