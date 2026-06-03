@@ -9374,6 +9374,68 @@ function buildUnifiedFleet(rentmeVehicles, targhe) {
   });
 }
 
+// ── Migrazione chiavi alla "Flotta unificata" (codice RentMe) ────────
+// scadenze (oggetto keyed by id) e manutenzioni/fermi (array con vehicleId) erano
+// indicizzati sul vecchio id fleet / targa. Nel modello unificato la chiave canonica
+// è il CODICE RentMe. Queste funzioni re-keyano in modo IDEMPOTENTE e NON distruttivo
+// (le chiavi non risolvibili restano invariate → nessuna perdita). Usate come `migrate`
+// di usePersistentState (girano su load locale E remoto → niente race).
+function codeFromRentme(idRentme) {
+  if (!idRentme) return null;
+  const m = String(idRentme).trim().match(/(\d+)\s*$/);
+  return m ? m[1] : null;
+}
+function buildVehicleKeyResolver(fleet, targhe) {
+  const codes = new Set(Object.keys(targhe || {}));
+  const targaToCode = {};
+  Object.entries(targhe || {}).forEach(([code, t]) => {
+    const targa = (typeof t === 'string' ? t : (t && t.targa)) || '';
+    if (targa) targaToCode[targa.toUpperCase().trim()] = code;
+  });
+  const oldIdToCode = {};
+  (fleet || []).forEach(v => {
+    const code = codeFromRentme(v.idRentme || v.rentmeId) || targaToCode[(v.targa || '').toUpperCase().trim()] || null;
+    if (v.id && code) oldIdToCode[String(v.id)] = code;
+    if (v.targa && code) targaToCode[(v.targa || '').toUpperCase().trim()] = code;
+  });
+  return (key) => {
+    if (!key) return null;
+    const k = String(key);
+    if (codes.has(k)) return k;                  // è già un codice RentMe
+    const up = k.toUpperCase().trim();
+    if (targaToCode[up]) return targaToCode[up]; // è una targa reale
+    if (oldIdToCode[k]) return oldIdToCode[k];   // è un vecchio id fleet
+    return null;                                 // non risolvibile → orfano (lasciato com'è)
+  };
+}
+function migrateScadenzeKeys(scadenze, fleet, targhe) {
+  if (!scadenze || typeof scadenze !== 'object' || Array.isArray(scadenze)) return scadenze;
+  const resolve = buildVehicleKeyResolver(fleet, targhe);
+  const out = {};
+  let changed = false, orfani = 0;
+  Object.entries(scadenze).forEach(([k, v]) => {
+    const code = resolve(k);
+    const newKey = code || k;
+    if (!code) orfani++;
+    if (newKey !== k) changed = true;
+    out[newKey] = out[newKey] ? { ...out[newKey], ...v } : v;
+  });
+  if (changed && orfani) { try { console.info(`[flotta] scadenze: ${orfani} chiavi orfane non risolte (lasciate intatte)`); } catch {} }
+  return changed ? out : scadenze;
+}
+function migrateVehicleIdArray(arr, fleet, targhe) {
+  if (!Array.isArray(arr)) return arr;
+  const resolve = buildVehicleKeyResolver(fleet, targhe);
+  let changed = false;
+  const out = arr.map(item => {
+    if (!item || !item.vehicleId) return item;
+    const code = resolve(item.vehicleId);
+    if (code && code !== String(item.vehicleId)) { changed = true; return { ...item, vehicleId: code, _vehicleIdOld: item.vehicleId }; }
+    return item;
+  });
+  return changed ? out : arr;
+}
+
 const RENTME_TARGA_MAP = {
   'c3 119': { targa: 'DZ063EP', modello: 'C3' },
   '119': { targa: 'DZ063EP', modello: 'C3' },
@@ -15855,12 +15917,12 @@ export default function App() {
     setSessionUser(null);
   }, []);
   // Scadenze flotta: revisione, assicurazione, tagliando, bollo per ogni veicolo.
-  const [scadenze, setScadenze, scadenzeSync] = usePersistentState('edo:v1:scadenze', {}, sharedOpts);
+  const [scadenze, setScadenze, scadenzeSync] = usePersistentState('edo:v1:scadenze', {}, { ...sharedOpts, migrate: (d) => migrateScadenzeKeys(d, fleet, targhe) });
   // Fermi flotta: periodi di blocco programmati (officina, revisione, ecc.)
   // Struttura: [{ id, vehicleId, dal, al, motivo }]
-  const [fermiFlotta, setFermiFlotta, fermiFlottaSync] = usePersistentState('edo:v1:fermiFlotta', [], sharedOpts);
+  const [fermiFlotta, setFermiFlotta, fermiFlottaSync] = usePersistentState('edo:v1:fermiFlotta', [], { ...sharedOpts, migrate: (d) => migrateVehicleIdArray(d, fleet, targhe) });
   // Manutenzioni programmate: [{ id, vehicleId, tipo, descrizione, dataScadenza, note, completata, dataCompletata }]
-  const [manutenzioni, setManutenzioni, manutenzioniSync] = usePersistentState('edo:v1:manutenzioni', [], sharedOpts);
+  const [manutenzioni, setManutenzioni, manutenzioniSync] = usePersistentState('edo:v1:manutenzioni', [], { ...sharedOpts, migrate: (d) => migrateVehicleIdArray(d, fleet, targhe) });
   // Google Drive Client ID — skipRemote, specifico del dispositivo
   const [driveClientId, setDriveClientId] = usePersistentState('edo:v1:driveClientId', '', { skipRemote: true });
   const [driveLastBackup, setDriveLastBackup] = usePersistentState('edo:v1:driveLastBackup', null, { skipRemote: true });
@@ -18690,7 +18752,8 @@ function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, on
         (v.marca || '').toLowerCase().includes(q) ||
         (v.modello || '').toLowerCase().includes(q) ||
         (v.colore || '').toLowerCase().includes(q) ||
-        (getCat(v) || '').toLowerCase().includes(q)
+        (getCat(v) || '').toLowerCase().includes(q) ||
+        (v.rentmeCode || v.idRentme || '').toLowerCase().includes(q)  // ricerca per codice RentMe (es. "155", "350")
       );
     }
     return f;
