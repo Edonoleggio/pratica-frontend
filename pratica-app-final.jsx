@@ -11,7 +11,7 @@ import { CalendarDays, Receipt, BarChart2,
   Hotel, Anchor, Plane, Wallet, Printer, Save, Mail, Home, Compass,
   Upload, Image as ImageIcon, RefreshCw, Key, Eye as EyeIcon, EyeOff,
   CircleDot, Power, Shield, Briefcase, Zap, Package,
-  Moon, Sun, Monitor, Wrench, Link, Ship
+  Moon, Sun, Monitor, Wrench, Link, Ship, RotateCcw
 } from 'lucide-react';
 import Tesseract from 'tesseract.js';
 
@@ -2517,7 +2517,7 @@ function PrenoCard({ p, onEdit, onConvert, onDelete, onFoto, onContratto, onFirm
         flexShrink: 0, width: 52, textAlign: 'center',
         background: 'var(--surface-2)', borderRadius: 6, padding: '6px 4px',
       }}>
-        <div style={{ fontSize: 18, fontWeight: 700, fontFamily: 'var(--font-serif)', lineHeight: 1 }}>
+        <div style={{ fontSize: 18, fontWeight: 700, fontFamily: 'var(--font-mono)', lineHeight: 1 }}>
           {p.dal ? p.dal.slice(8) : '—'}
         </div>
         <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 2 }}>
@@ -2537,23 +2537,23 @@ function PrenoCard({ p, onEdit, onConvert, onDelete, onFoto, onContratto, onFirm
           <PrenoStatPill stato={p.stato} />
           <FotoBadge preno={p} />
           {p.firma && (
-            <span style={{ fontSize: 10, background: '#e8f5e9', color: '#2e6e3e', borderRadius: 10, padding: '2px 8px', fontWeight: 600 }}>
-              ✍️ firmato
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, background: '#e8f5e9', color: '#2e6e3e', borderRadius: 10, padding: '2px 8px', fontWeight: 600 }}>
+              <FileSignature size={11} /> firmato
             </span>
           )}
           {p.saldoRegistrato && (
-            <span style={{ fontSize: 10, background: '#e8f0fa', color: '#1f5d83', borderRadius: 10, padding: '2px 8px', fontWeight: 600 }}>
-              💰 saldato
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, background: '#e8f0fa', color: '#1f5d83', borderRadius: 10, padding: '2px 8px', fontWeight: 600 }}>
+              <Wallet size={11} /> saldato
             </span>
           )}
           {p.depositoRegistrato && !p.depositoRimborsato && (
-            <span style={{ fontSize: 10, background: '#fef5e7', color: '#b87333', borderRadius: 10, padding: '2px 8px', fontWeight: 600 }}>
-              📦 caparra €{p.depositoImporto}
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, background: '#fef5e7', color: '#b87333', borderRadius: 10, padding: '2px 8px', fontWeight: 600 }}>
+              <Package size={11} /> caparra €{p.depositoImporto}
             </span>
           )}
           {p.depositoRimborsato && (
-            <span style={{ fontSize: 10, background: '#f5eefa', color: '#7d3c98', borderRadius: 10, padding: '2px 8px', fontWeight: 600 }}>
-              ↩ caparra rimborsata
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, background: '#f5eefa', color: '#7d3c98', borderRadius: 10, padding: '2px 8px', fontWeight: 600 }}>
+              <RotateCcw size={11} /> caparra rimborsata
             </span>
           )}
           {p.contractId && (
@@ -2719,7 +2719,6 @@ function PrenoCard({ p, onEdit, onConvert, onDelete, onFoto, onContratto, onFirm
         if (st === 'confermata') primary = { label: 'Consegna', onClick: () => onConsegna && onConsegna(p) };
         else if (st === 'in_corso') primary = { label: 'Riconsegna', onClick: () => onRiconsegna && onRiconsegna(p) };
         const items = [];
-        if (isActive && !p.contractId) items.push({ label: 'Genera pratica', onClick: () => onConvert(p) });
         if (isActive && !p.saldoRegistrato) items.push({ label: 'Registra saldo', onClick: () => onSaldo && onSaldo(p) });
         if (st === 'in_corso') items.push({ label: 'Segna rientrato', onClick: () => onRientro && onRientro(p) });
         if (isActive) items.push({ label: 'Proroga', onClick: () => onProroga && onProroga(p) });
@@ -2727,6 +2726,7 @@ function PrenoCard({ p, onEdit, onConvert, onDelete, onFoto, onContratto, onFirm
         if (st !== 'annullata' && st !== 'cancellata' && !p.depositoRegistrato) items.push({ label: 'Prendi caparra', onClick: () => onDeposito && onDeposito(p, 'prendi') });
         if (p.depositoRegistrato && !p.depositoRimborsato) items.push({ label: 'Rimborsa caparra', onClick: () => onDeposito && onDeposito(p, 'rimborsa') });
         items.push({ label: 'Stampa contratto', onClick: () => onContratto && onContratto(p) });
+        if (onFoto) items.push({ label: 'Foto stato', onClick: () => onFoto(p) });
         if (st === 'confermata' && onWaConferma) items.push({ label: 'WhatsApp conferma', onClick: () => onWaConferma(p) });
         if (st === 'confermata' && rentmePush) items.push({ label: 'Invia a RentMe', onClick: () => {
           const rmVeh = (rentmeVehicles || []).find(v => v.targa === p.vehicleId);
@@ -2738,10 +2738,10 @@ function PrenoCard({ p, onEdit, onConvert, onDelete, onFoto, onContratto, onFirm
         if (onDuplica) items.push({ label: 'Duplica', onClick: () => onDuplica(p) });
         items.push({ label: 'Annulla prenotazione', onClick: () => onDelete(p.id), danger: true });
 
-        const iconBtn = (title, icon, onClick) => (
+        const iconBtn = (title, icon, onClick, label) => (
           <button type="button" title={title} onClick={onClick}
-            style={{ width: 30, height: 30, borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', color: 'var(--ink-2)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
-            {icon}
+            style={{ height: 30, padding: label ? '0 12px' : 0, width: label ? 'auto' : 30, borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', color: 'var(--ink-2)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}>
+            {icon}{label && <span>{label}</span>}
           </button>
         );
 
@@ -2775,9 +2775,9 @@ function PrenoCard({ p, onEdit, onConvert, onDelete, onFoto, onContratto, onFirm
               </div>
             )}
             <div style={{ flex: 1 }} />
-            {iconBtn('Modifica', <Pencil style={{ width: 15, height: 15 }} aria-hidden="true" />, () => onEdit(p))}
-            {onFoto && iconBtn('Foto stato', <Camera style={{ width: 15, height: 15 }} aria-hidden="true" />, () => onFoto(p))}
-            {onFirma && iconBtn('Firma', <FileSignature style={{ width: 15, height: 15 }} aria-hidden="true" />, () => onFirma(p))}
+            {iconBtn('Modifica', <Pencil style={{ width: 15, height: 15 }} aria-hidden="true" />, () => onEdit(p), 'Modifica')}
+            {isActive && !p.contractId && iconBtn('Genera pratica', <FileText style={{ width: 15, height: 15 }} aria-hidden="true" />, () => onConvert(p), 'Genera pratica')}
+            {onFirma && iconBtn('Firma', <FileSignature style={{ width: 15, height: 15 }} aria-hidden="true" />, () => onFirma(p), 'Firma')}
             <div style={{ position: 'relative' }} ref={menuRef}>
               <button type="button" onClick={() => setMenuOpen(o => !o)} title="Altre azioni"
                 style={{ width: 30, height: 30, borderRadius: 6, border: '1px solid var(--border)', background: menuOpen ? 'var(--surface-2)' : 'transparent', color: 'var(--ink-2)', cursor: 'pointer', fontSize: 18, lineHeight: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>⋯</button>
@@ -4573,7 +4573,7 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rent
         </div>
         <button type="button"
           onClick={() => setForm('new')}
-          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 16px', borderRadius: 6, border: 'none', background: 'var(--accent)', color: 'white', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>
+          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 16px', borderRadius: 6, border: 'none', background: 'var(--edo-sea)', color: 'white', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>
           <Plus style={{ width: 15, height: 15 }} /> Nuova prenotazione
         </button>
       </div>
