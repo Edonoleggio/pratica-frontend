@@ -2819,7 +2819,7 @@ function PrenoCard({ p, onEdit, onConvert, onDelete, onFoto, onContratto, onFirm
 // Ritorna: null se un singolo mezzo copre tutto il periodo,
 //          array di segmenti [{vehicleId, dal, al, vehicle}] altrimenti.
 // ═══════════════════════════════════════════════════════════════════
-function findBestVehicleCombination(tipo, dal, al, vehicles, prenotazioni, excludeBookingId = null) {
+function findBestVehicleCombination(tipo, dal, al, vehicles, prenotazioni, excludeBookingId = null, resolve = null) {
   if (!dal || !al || !tipo) return null;
 
   // Pool: mezzi del tipo richiesto — confronto su canonicalTipo (moto≡scooter,
@@ -2832,16 +2832,24 @@ function findBestVehicleCombination(tipo, dal, al, vehicles, prenotazioni, exclu
     p.stato !== 'annullata' && p.stato !== 'cancellata' && p.stato !== 'completata' && p.id !== excludeBookingId
   );
 
-  // Per ogni mezzo, calcola i giorni liberi (retrocompatibile: p.vehicleId può essere targa o fleet.id)
+  // Per ogni mezzo, calcola i giorni liberi (retrocompatibile: p.vehicleId può essere targa o fleet.id).
+  // `resolve` (opzionale) traduce vehicleId storici → codice RentMe: così l'aggancio prenotazioni
+  // concorda con calcAvailability (niente più "Impossibile coprire" mentre i liberi dicono il contrario).
+  const vCodeOf = (id) => (resolve ? (resolve(id) || null) : null);
+  const matchV = (bookingVid, vehicleId, vehicleTarga) => {
+    if (matchVehicle(bookingVid, vehicleId, vehicleTarga)) return true;
+    const vc = vCodeOf(vehicleId);
+    return !!(vc && bookingVid && resolve(bookingVid) === vc);
+  };
   function freeSegments(vehicleId, vehicleTarga) {
     const busy = activePreno
       .filter(p =>
-        matchVehicle(p.vehicleId, vehicleId, vehicleTarga) ||
-        (p.vehicleSchedule || []).some(s => matchVehicle(s.vehicleId, vehicleId, vehicleTarga))
+        matchV(p.vehicleId, vehicleId, vehicleTarga) ||
+        (p.vehicleSchedule || []).some(s => matchV(s.vehicleId, vehicleId, vehicleTarga))
       )
       .flatMap(p => {
         if (p.vehicleSchedule) {
-          const segs = p.vehicleSchedule.filter(s => matchVehicle(s.vehicleId, vehicleId, vehicleTarga));
+          const segs = p.vehicleSchedule.filter(s => matchV(s.vehicleId, vehicleId, vehicleTarga));
           return segs.length ? segs.map(s => ({ dal: s.dal, al: s.al })) : [{ dal: p.dal, al: p.al }];
         }
         return [{ dal: p.dal, al: p.al }];
@@ -3103,9 +3111,9 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
           const fleetV   = fleetByTarga[targa]; // veicolo locale corrispondente (se presente)
           return {
             id:      fleetV?.id || targa,        // fleet.v.id se disponibile → vehicleId consistente con calcAvailability
-            tipo:    fleetV?.tipo || v.tipo || 'auto',
-            marca:   fleetV?.marca || '',
-            modello: fleetV?.modello || v.nome || '',
+            tipo:    v.tipo || fleetV?.tipo || 'auto',  // RentMe = verità sul tipo (i quad-50 non vanno classificati "auto" da una flotta locale stantia)
+            marca:   v.marca || fleetV?.marca || '',
+            modello: v.modello || v.nome || fleetV?.modello || '',
             targa,
             stato:   fleetV?.stato || 'available',
             _source: 'rentme',
@@ -3144,11 +3152,12 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
       });
   }, [allVehicles, bookedIds, f.vehicleType, f.vehicleCategoria]);
 
-  // Smart assignment: calcola combinazione ottimale se nessun mezzo singolo è disponibile
+  // Smart assignment: calcola combinazione ottimale se nessun mezzo singolo è disponibile.
+  // Passa il traduttore (codice RentMe) così l'aggancio prenotazioni concorda con calcAvailability.
   const smartCombo = useMemo(() => {
     if (!f.vehicleType || !f.dal || !f.al || f.vehicleId) return null;
-    return findBestVehicleCombination(f.vehicleType, f.dal, f.al, allVehicles, prenotazioni, initial?.id);
-  }, [f.vehicleType, f.vehicleId, f.dal, f.al, allVehicles, prenotazioni, initial?.id]);
+    return findBestVehicleCombination(f.vehicleType, f.dal, f.al, allVehicles, prenotazioni, initial?.id, buildVehicleKeyResolver(fleet, targhe));
+  }, [f.vehicleType, f.vehicleId, f.dal, f.al, allVehicles, prenotazioni, initial?.id, fleet, targhe]);
 
   // Conflitto diretto: il veicolo scelto è già prenotato in quel periodo
   const conflitto = useMemo(() => {
@@ -6215,7 +6224,7 @@ function calcPreventivo(cat, dal, al) {
 }
 
 // ── QuoteCard — singola categoria con prezzo calcolato ───────────────
-function QuoteCard({ cat, dal, al, onPrenota, fleet, rentmeVehicles, prenotazioni, fermiFlotta }) {
+function QuoteCard({ cat, dal, al, onPrenota, fleet, rentmeVehicles, prenotazioni, fermiFlotta, targhe }) {
   const [open, setOpen] = useState(false);
   const [lang, setLang] = useState('it');
   // Codice univoco generato una volta per questo preventivo — segue fino alla prenotazione
@@ -6228,49 +6237,18 @@ function QuoteCard({ cat, dal, al, onPrenota, fleet, rentmeVehicles, prenotazion
   // ricade automaticamente sul fleet locale per quel tipo.
   const disponibilita = useMemo(() => {
     if (!dal || !al) return null;
-    const ct = (cat.tipo || '').toLowerCase();
-    const tipoMatch = v => {
-      const t = canonicalTipo(v);
-      return t === ct || (t === 'moto' && ct === 'scooter') || (t === 'scooter' && ct === 'moto');
-    };
-    // Scegli sorgente: RentMe se ha veicoli di questo tipo (canonicalTipo gestisce quad150/300/bicicletta),
-    // altrimenti fleet locale. Con i fix canonicalTipo, quad150/300 e bici muscolari sono trovati in RentMe.
-    const rmVehicles = (rentmeVehicles && rentmeVehicles.length > 0) ? rentmeVehicles : [];
-    const hasRmForTipo = rmVehicles.some(tipoMatch);
-    const source = hasRmForTipo ? rmVehicles : (fleet || []);
-    if (!source.length) return null;
-    // Primo filtro: stesso tipo (usa canonicalTipo per alias moto→scooter, bicicletta→ebike/bici, quad150→quad)
-    let stessoTipo = source.filter(tipoMatch);
-    // Secondo filtro: sottocategoria (cc/categoria) se la card ha un campo categoria
-    if (cat.categoria && stessoTipo.length > 0) {
-      stessoTipo = stessoTipo.filter(v => {
-        let vcat = getVehicleCategoria(v) || '';
-        if ((v.tipo || '').toLowerCase() === 'auto') vcat = normalizeAutoCategoria(vcat);
-        const targetCat = (v.tipo || '').toLowerCase() === 'auto' ? normalizeAutoCategoria(cat.categoria) : cat.categoria;
-        return vcat === targetCat;
-      });
-    }
-    if (!stessoTipo.length) return null;
-    const occupati = new Set();
-    (prenotazioni || [])
-      .filter(p => p.dal <= al && p.al >= dal && p.stato !== 'annullata' && p.stato !== 'cancellata' && p.stato !== 'completata')
-      .forEach(p => {
-        if (p.vehicleId) occupati.add(p.vehicleId);
-        (p.vehicleSchedule || []).forEach(s => {
-          if (s.vehicleId && s.dal <= al && s.al >= dal) occupati.add(s.vehicleId);
-        });
-      });
-    // Fermi programmati: manutenzione blocca il veicolo
-    (fermiFlotta || []).forEach(f => {
-      if (f.vehicleId && f.dal <= al && f.al >= dal) occupati.add(f.vehicleId);
-    });
-    // Normalizza id: rentmeVehicles usa targa come vehicleId (come in PrenoForm)
-    const liberi = stessoTipo.filter(v => {
-      const id = (v.targa || v.id || '').toUpperCase().trim();
-      return !id || !occupati.has(id);
-    }).length;
-    return { liberi, totale: stessoTipo.length };
-  }, [fleet, rentmeVehicles, prenotazioni, fermiFlotta, dal, al, cat.tipo, cat.categoria]);
+    // FONTE UNICA: la stessa calcAvailability di prenotazioni/banco/oggi (flotta RentMe unificata +
+    // traduttore codice). Niente più conteggio proprio → i quad-50 e gli occupati combaciano ovunque.
+    const groups = calcAvailability(dal, al, rentmeVehicles, prenotazioni, fleet, fermiFlotta, null, targhe);
+    const ct = canonicalTipo({ tipo: cat.tipo });
+    const ofTipo = groups.filter(x => x.tipo === ct);
+    if (!ofTipo.length) return null;
+    if (!cat.categoria) return { liberi: ofTipo[0].tipoFree, totale: ofTipo[0].tipoTotal };
+    const targetCat = ct === 'auto' ? normalizeAutoCategoria(cat.categoria) : cat.categoria;
+    const g = ofTipo.find(x => x.nome === cat.nome) || ofTipo.find(x => x.categoria === targetCat);
+    if (!g) return { liberi: 0, totale: 0 };
+    return { liberi: Math.min(g.free, g.tipoFree), totale: g.total };
+  }, [fleet, rentmeVehicles, prenotazioni, fermiFlotta, targhe, dal, al, cat.tipo, cat.categoria, cat.nome]);
   // Modal dati cliente prima di generare il PDF
   const [showClienteModal, setShowClienteModal] = useState(false);
   const [clientePdf, setClientePdf] = useState({ nome: '', tel: '', email: '', note: '' });
@@ -6652,7 +6630,7 @@ function ListinoTable({ filter }) {
 }
 
 // ── PreventiviPage ───────────────────────────────────────────────────
-function PreventiviPage({ setPage, setPrenotazioniPrefill, listino: listinoProps, fleet, rentmeVehicles, prenotazioni, pushToast, fermiFlotta }) {
+function PreventiviPage({ setPage, setPrenotazioniPrefill, listino: listinoProps, fleet, rentmeVehicles, prenotazioni, pushToast, fermiFlotta, targhe }) {
   // Merge: parte sempre dalle categorie MASTER (tutte e 11) per garantire
   // che nessuna categoria sparisca se il listino persistito è incompleto.
   // I prezzi personalizzati dall'utente (bassa/media/alta) sovrascrivono il master.
@@ -6926,7 +6904,7 @@ function PreventiviPage({ setPage, setPrenotazioniPrefill, listino: listinoProps
       ) : giorni > 0 ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {categorieVisibili.map(cat => (
-            <QuoteCard key={cat.id} cat={cat} dal={dal} al={al} onPrenota={handlePrenota} fleet={fleet} rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} fermiFlotta={fermiFlotta} />
+            <QuoteCard key={cat.id} cat={cat} dal={dal} al={al} onPrenota={handlePrenota} fleet={fleet} rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} fermiFlotta={fermiFlotta} targhe={targhe} />
           ))}
         </div>
       ) : (
@@ -17037,7 +17015,7 @@ export default function App() {
               {page === 'finance'       && (admin
                 ? <ReportPage prenotazioni={prenotazioni} contracts={localContracts} cassa={cassa} customers={customers} fleet={fleet} operators={operators} pushToast={pushToast} financeMode />
                 : <FinanceGate />)}
-              {page === 'preventivi'    && <PreventiviPage setPage={setPage} setPrenotazioniPrefill={setPrenotazioniPrefill} listino={listino} fleet={fleet} rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} pushToast={pushToast} fermiFlotta={fermiFlotta} />}
+              {page === 'preventivi'    && <PreventiviPage setPage={setPage} setPrenotazioniPrefill={setPrenotazioniPrefill} listino={listino} fleet={fleet} rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} pushToast={pushToast} fermiFlotta={fermiFlotta} targhe={targhe} />}
               {page === 'prenotazioni' && <PrenotazioniPage prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} setCassa={setCassa} fleet={fleet} rentmeVehicles={rentmeVehicles} customers={customers} partners={partners} operator={operator} onOpenWizard={openWizard} pushToast={pushToast} prefill={prenotazioniPrefill} onClearPrefill={() => setPrenotazioniPrefill(null)} fermiFlotta={fermiFlotta} rentmePush={rentmeSync.pushBooking} rentmeConnected={rentmeSync.status === 'ok'} agency={agency} targhe={targhe} />}
               {page === 'contracts'  && <ContractsList contracts={localContracts} operators={operators} onRetry={retryContract} onMarkReturned={markContractReturned} onSendPec={sendContractPec} pecStatus={pecStatus} online={online} />}
               {page === 'fleet'      && <FleetPage fleet={unifiedFleet} prenotazioni={prenotazioni} admin={admin} onAddVehicle={() => setModal('newVehicle')} onEditVehicle={(v) => setModal({ type: 'editVehicle', vehicle: v })} onDeleteVehicle={requestDeleteVehicle} onImportCSV={() => setShowCsvImport(true)} onResetFleet={() => setModal({ type: 'confirm', title: 'Azzera flotta?', message: <><strong>Tutti i {fleet.length} veicoli</strong> verranno eliminati dalla flotta. Le prenotazioni esistenti restano invariate. Dopo puoi reimportare con un CSV aggiornato. <strong>Azione irreversibile.</strong></>, confirmLabel: 'Azzera flotta', variant: 'danger', onConfirm: () => { setFleet([]); pushToast({ tone: 'info', title: 'Flotta azzerata', message: 'Tutti i veicoli rimossi. Importa un nuovo CSV per ricaricare.' }); } })} onSetFleet={setFleet} scadenze={scadenze} setScadenze={setScadenze} fermiFlotta={fermiFlotta} setFermiFlotta={setFermiFlotta} rentmeVehicles={rentmeVehicles} manutenzioni={manutenzioni} setManutenzioni={setManutenzioni} partners={partners} targhe={targhe} setTarghe={setTarghe} />}
