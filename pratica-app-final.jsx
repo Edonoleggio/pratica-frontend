@@ -2921,6 +2921,7 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
     vehicleId: pv.vehicleId || '', vehicleLabel: pv.vehicleLabel || '',
     vehicleTarga: pv.vehicleTarga || '',
     vehicleType: pv.vehicleType || 'auto',
+    vehicleCategoria: pv.vehicleCategoria || '',   // sotto-categoria scelta (es. '7POSTI'); '' = qualsiasi del tipo
     dal: pv.dal || todayISO(), al: pv.al || '',
     stato: 'attesa', fonte: pv.fonte || 'diretto',
     prezzo: '', acconto: '', metodoPagamento: 'contanti',
@@ -2939,6 +2940,7 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
     vehicleLabel: initial.vehicleLabel || '',
     vehicleTarga: initial.vehicleTarga || '',
     vehicleType: initial.vehicleType || 'auto',
+    vehicleCategoria: initial.vehicleCategoria || '',
     dal: initial.dal || todayISO(),
     al: initial.al || '',
     stato: initial.stato || 'attesa',
@@ -3112,10 +3114,14 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
 
   const availableVehicles = useMemo(() => {
     const TIPO_ORD = { scooter: 0, moto: 1, auto: 2, quad: 3, ebike: 4, bici: 5 };
+    const wantTipo = f.vehicleType ? canonicalTipo({ tipo: f.vehicleType }) : null;
     return allVehicles
       .filter(v => !bookedIds.has(v.id))
-      // Filtra per tipo scelto: se vehicleType è settato, mostra solo quella categoria
-      .filter(v => !f.vehicleType || v.tipo === f.vehicleType)
+      // Filtra per tipo scelto (canonicalTipo: quad150/300≡quad, moto≡scooter — regola #3)
+      .filter(v => !wantTipo || canonicalTipo(v) === wantTipo)
+      // Se è scelta una sotto-categoria, mostra solo i mezzi di quella sotto-categoria
+      .filter(v => !f.vehicleCategoria || getVehicleCategoria(v) === f.vehicleCategoria
+                   || (canonicalTipo(v) === 'auto' && normalizeAutoCategoria(getVehicleCategoria(v)) === f.vehicleCategoria))
       .sort((a, b) => {
         // 1. tipo (scooter → auto → quad → ebike → bici)
         const tA = TIPO_ORD[a.tipo] ?? 9;
@@ -3130,7 +3136,7 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
         const nB = parseInt((b.targa || b.id || '').replace(/\D+/g, '') || '0', 10);
         return nA - nB;
       });
-  }, [allVehicles, bookedIds, f.vehicleType]);
+  }, [allVehicles, bookedIds, f.vehicleType, f.vehicleCategoria]);
 
   // Smart assignment: calcola combinazione ottimale se nessun mezzo singolo è disponibile
   const smartCombo = useMemo(() => {
@@ -3165,6 +3171,7 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
       set('vehicleLabel', makeVehicleLabel(v));
       set('vehicleTarga', vr.targa || v.targa || v.plate || '');
       set('vehicleType', v.tipo || 'auto');
+      set('vehicleCategoria', '');
     } else {
       // fallback: cerca direttamente in fleet locale per id interno
       const fv = (fleet || []).find(x => x.id === id);
@@ -3220,9 +3227,10 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
       alert(`⚠️ Conflitto orario!\n\n${[conflitto.clienteCognome, conflitto.clienteNome].filter(Boolean).join(' ') || 'Cliente'} ha già prenotato questo mezzo\ndal ${formatDate(conflitto.dal)} al ${formatDate(conflitto.al)}.\n\nScegli un altro veicolo o modifica le date.`);
       return;
     }
-    // Blocco hard: categoria esaurita
+    // Blocco hard: sotto-categoria (o tipo, se "qualsiasi") esaurita nel periodo
     if (!f.vehicleId && !vehicleSchedule && categoriaOverbooking && categoriaOverbooking.liberi <= 0) {
-      alert(`⚠️ Categoria esaurita!\n\nTutti i ${categoriaOverbooking.totale} ${f.vehicleType} sono già prenotati dal ${formatDate(f.dal)} al ${formatDate(f.al)}.\n\nVerifica disponibilità in altre date o usa la combinazione automatica di più mezzi.`);
+      const cosa = categoriaOverbooking.perCategoria ? categoriaOverbooking.nome : `mezzi "${f.vehicleType}"`;
+      alert(`⚠️ ${categoriaOverbooking.perCategoria ? categoriaOverbooking.nome + ' esaurita' : 'Categoria esaurita'}!\n\nTutti i ${categoriaOverbooking.totale} ${cosa} sono già prenotati/occupati dal ${formatDate(f.dal)} al ${formatDate(f.al)}.\n\nScegli un'altra sotto-categoria o altre date, oppure usa la combinazione automatica di più mezzi.`);
       return;
     }
 
@@ -3269,49 +3277,31 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
     set('clienteTel',     c.telefono|| '');
   }
 
-  // Overbooking per categoria (quando nessun vehicleId è selezionato)
-  // Usa allVehicles (rentme preferred) come fonte di verità per il totale
+  // Sotto-categorie del TIPO scelto, con disponibilità reale nel periodo.
+  // FONTE UNICA = calcAvailability (stessa logica di Banco Rapido/Oggi): niente più
+  // conteggio duplicato. excludeId = la prenotazione in modifica (non conta sé stessa).
+  const categoriaGroups = useMemo(() => {
+    if (!f.vehicleType || !f.dal || !f.al) return [];
+    const wantTipo = canonicalTipo({ tipo: f.vehicleType });
+    return calcAvailability(f.dal, f.al, rentmeVehicles, prenotazioni, fleet, fermiFlotta, initial?.id)
+      .filter(g => g.tipo === wantTipo);
+  }, [rentmeVehicles, prenotazioni, fleet, fermiFlotta, f.vehicleType, f.dal, f.al, initial?.id]);
+
+  // Anti-overbooking: liberi/occupati/totali per la selezione corrente.
+  //  · sotto-categoria scelta → numeri di QUELLA sotto-categoria (capati dal pool del tipo)
+  //  · "qualsiasi"            → pool del tipo (somma sotto-categorie, generiche de-duplicate)
   const categoriaOverbooking = useMemo(() => {
     if (f.vehicleId || !f.vehicleType || !f.dal || !f.al) return null;
-    const totale = allVehicles.filter(v => v.tipo === f.vehicleType).length;
-    if (totale === 0) return null;
-    // Lookup targa→fleet.id per normalizzare vehicleId legacy
-    const fleetIdByTarga_cat = {};
-    (fleet || []).forEach(fv => { if (fv.targa && fv.id) fleetIdByTarga_cat[(fv.targa||'').toUpperCase().trim()] = fv.id; });
-    const normalizeVid = (vid) => vid ? (fleetIdByTarga_cat[(vid||'').toUpperCase()] || vid) : null;
-
-    const occupatiVehicleIds = new Set();
-    let occupatiSenzaId = 0;
-    (prenotazioni || []).forEach(p => {
-      if (p.stato === 'annullata' || p.stato === 'cancellata' || p.stato === 'completata') return;
-      if (p.id === initial?.id) return;
-      if (p.dal > f.al || p.al < f.dal) return;
-      const tipoP = p.vehicleType || allVehicles.find(v => v.id === p.vehicleId || matchVehicle(p.vehicleId, v.id, v.targa))?.tipo || '';
-      if (tipoP !== f.vehicleType) return;
-      if (p.vehicleId) {
-        occupatiVehicleIds.add(normalizeVid(p.vehicleId));
-      } else {
-        // Booking senza targa assegnata: conta come slot consumato
-        occupatiSenzaId++;
-      }
-      // Controlla anche i segmenti vehicleSchedule
-      if (p.vehicleSchedule) {
-        p.vehicleSchedule.forEach(s => {
-          if (s.vehicleId && s.dal <= f.al && s.al >= f.dal) occupatiVehicleIds.add(normalizeVid(s.vehicleId));
-        });
-      }
-    });
-    // Fermi programmati: riduce i "liberi" per categoria
-    (fermiFlotta || []).forEach(fermo => {
-      if (!fermo.vehicleId || !fermo.dal || !fermo.al) return;
-      if (fermo.dal > f.al || fermo.al < f.dal) return;
-      const fermoVid = normalizeVid(fermo.vehicleId);
-      const fermoV = allVehicles.find(v => v.id === fermoVid);
-      if (fermoV && fermoV.tipo === f.vehicleType) occupatiVehicleIds.add(fermoVid);
-    });
-    const occupati = occupatiVehicleIds.size + occupatiSenzaId;
-    return { totale, occupati, liberi: Math.max(0, totale - occupati) };
-  }, [prenotazioni, fermiFlotta, allVehicles, fleet, f.vehicleType, f.vehicleId, f.dal, f.al, initial?.id]);
+    if (categoriaGroups.length === 0) return null;
+    if (f.vehicleCategoria) {
+      const g = categoriaGroups.find(x => x.categoria === f.vehicleCategoria);
+      if (!g) return null;
+      const liberi = Math.min(g.free, g.tipoFree);   // non promettere più del pool del tipo
+      return { totale: g.total, occupati: Math.max(0, g.total - liberi), liberi, perCategoria: true, nome: g.nome };
+    }
+    const g0 = categoriaGroups[0]; // tutti i gruppi del tipo condividono tipoTotal/tipoFree
+    return { totale: g0.tipoTotal, occupati: g0.tipoBooked, liberi: g0.tipoFree, perCategoria: false, nome: null };
+  }, [categoriaGroups, f.vehicleId, f.vehicleType, f.vehicleCategoria, f.dal, f.al]);
 
   // ── Targa search: suggerimenti da allVehicles (anche occupati) ──────
   const targaSuggestions = useMemo(() => {
@@ -3329,6 +3319,7 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
     set('vehicleLabel', makeVehicleLabel(v));
     set('vehicleTarga', vr.targa || v.targa || v.plate || '');
     set('vehicleType', v.tipo || 'auto');
+    set('vehicleCategoria', '');   // scelto un mezzo preciso → la sotto-categoria non serve più
     setTargaSearch('');
     setVehicleSchedule(null);
   }
@@ -3618,6 +3609,24 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
                 ))}
               </select>
             )}
+            {/* Sotto-categoria: quando si prenota "generico" (senza targa) si sceglie la
+                sotto-categoria precisa (es. 7 posti) — il blocco anti-overbooking agisce su questa */}
+            {!f.vehicleId && f.dal && f.al && categoriaGroups.length > 1 && (
+              <select style={{ ...inp, marginTop: 6 }} value={f.vehicleCategoria}
+                onChange={e => set('vehicleCategoria', e.target.value)}>
+                <option value="">
+                  Qualsiasi {f.vehicleType} — {categoriaGroups[0]?.tipoFree ?? 0} liberi nel periodo
+                </option>
+                {categoriaGroups.map(g => {
+                  const liberi = Math.min(g.free, g.tipoFree);
+                  return (
+                    <option key={g.id} value={g.categoria} disabled={liberi <= 0}>
+                      {g.nome} — {liberi <= 0 ? 'esaurita' : `${liberi} liber${liberi === 1 ? 'o' : 'i'}`} su {g.total}
+                    </option>
+                  );
+                })}
+              </select>
+            )}
             {!f.vehicleId && (
               <input style={{ ...inp, marginTop: 6 }} value={f.vehicleLabel}
                 onChange={e => set('vehicleLabel', e.target.value)}
@@ -3626,12 +3635,12 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
             {!f.vehicleId && categoriaOverbooking && categoriaOverbooking.liberi === 0 && (
               <div style={{ marginTop: 6, padding: '7px 10px', borderRadius: 5,
                 background: '#fff0f0', border: '1px solid #f0d0d0', fontSize: 11, color: '#c85050' }}>
-                ⚠️ <strong>Categoria esaurita</strong> · {categoriaOverbooking.occupati}/{categoriaOverbooking.totale} {f.vehicleType} già prenotati in questo periodo
+                ⚠️ <strong>{categoriaOverbooking.perCategoria ? `${categoriaOverbooking.nome} esaurita` : 'Categoria esaurita'}</strong> · {categoriaOverbooking.occupati}/{categoriaOverbooking.totale} {categoriaOverbooking.perCategoria ? 'occupati' : `${f.vehicleType} occupati`} in questo periodo
               </div>
             )}
             {!f.vehicleId && categoriaOverbooking && categoriaOverbooking.liberi > 0 && f.dal && f.al && (
               <div style={{ marginTop: 5, fontSize: 11, color: '#2e6e3e' }}>
-                ✓ {categoriaOverbooking.liberi}/{categoriaOverbooking.totale} {f.vehicleType} disponibili nel periodo
+                ✓ {categoriaOverbooking.liberi}/{categoriaOverbooking.totale} {categoriaOverbooking.perCategoria ? categoriaOverbooking.nome : f.vehicleType} disponibili nel periodo
               </div>
             )}
             {conflitto && (
@@ -6925,7 +6934,7 @@ function PreventiviPage({ setPage, setPrenotazioniPrefill, listino: listinoProps
                 Nessun veicolo trovato in questa categoria.<br/>
                 <button type="button" onClick={() => {
                   setVehicleModal(null);
-                  if (setPrenotazioniPrefill) setPrenotazioniPrefill({ vehicleType: vehicleModal.cat.tipo, vehicleLabel: vehicleModal.cat.nome, dal, al, prezzo: vehicleModal.totale, fonte: 'preventivo' });
+                  if (setPrenotazioniPrefill) setPrenotazioniPrefill({ vehicleType: vehicleModal.cat.tipo, vehicleCategoria: vehicleModal.cat.categoria || '', vehicleLabel: vehicleModal.cat.nome, dal, al, prezzo: vehicleModal.totale, fonte: 'preventivo' });
                   setPage('prenotazioni');
                 }} style={{ marginTop:12, padding:'8px 18px', background:'var(--ink)', color:'var(--paper)', border:'none', borderRadius:6, fontSize:13, cursor:'pointer', fontWeight:600 }}>
                   Prenota senza mezzo specifico →
@@ -6986,7 +6995,7 @@ function PreventiviPage({ setPage, setPrenotazioniPrefill, listino: listinoProps
           <div style={{ padding:'12px 22px', borderTop:'1px solid var(--border)' }}>
             <button type="button" onClick={() => {
               setVehicleModal(null);
-              if (setPrenotazioniPrefill) setPrenotazioniPrefill({ vehicleType: vehicleModal.cat.tipo, vehicleLabel: vehicleModal.cat.nome, dal, al, prezzo: vehicleModal.totale, fonte: 'preventivo' });
+              if (setPrenotazioniPrefill) setPrenotazioniPrefill({ vehicleType: vehicleModal.cat.tipo, vehicleCategoria: vehicleModal.cat.categoria || '', vehicleLabel: vehicleModal.cat.nome, dal, al, prezzo: vehicleModal.totale, fonte: 'preventivo' });
               setPage('prenotazioni');
             }} style={{ width:'100%', padding:'9px', borderRadius:7, border:'1px solid var(--border)',
               background:'transparent', color:'var(--ink-2)', cursor:'pointer', fontSize:13 }}>
@@ -9212,7 +9221,7 @@ const RENTME_PROXY    = 'https://rentme.altervista.org/edox-proxy.php';
 // v0.43.1: grouping per tipo+categoria (usa getVehicleCategoria sul pool
 // unificato fleet+RentMe), così le sotto-categorie auto (5 Posti, Cabrio,
 // ecc.) appaiono come card distinte nel Banco Rapido / Walk-in.
-function calcAvailability(dal, al, rentmeVehicles, prenotazioni, fleet, fermiFlotta) {
+function calcAvailability(dal, al, rentmeVehicles, prenotazioni, fleet, fermiFlotta, excludeId) {
   const dalS = dal || todayISO();
   const alS  = al  || dalS;
 
@@ -9248,7 +9257,9 @@ function calcAvailability(dal, al, rentmeVehicles, prenotazioni, fleet, fermiFlo
     // permette di riconoscerle anche se grp.ids contiene l'UUID/migrated-id del veicolo.
     const targaToKey = {};
     allVehicles.forEach(v => {
-      const tipo = (v.tipo || '').toLowerCase();
+      // canonicalTipo: quad150/300→quad, moto→scooter, bicicletta→ebike/bici (regola #3).
+      // Così il gruppo combacia col confronto-tipo usato dal form anti-overbooking.
+      const tipo = canonicalTipo(v) || (v.tipo || '').toLowerCase();
       let cat = getVehicleCategoria(v) || 'BASE';
       // normalizeAutoCategoria: mantiene categorie LISTINO distinte (5POSTI, 6POSTI, 7POSTI, SERIE2, AUTOMATICA, APERTA…)
       // e mappa solo gli alias legacy (CHIUSA, STANDARD) a BASE.
@@ -9266,12 +9277,27 @@ function calcAvailability(dal, al, rentmeVehicles, prenotazioni, fleet, fermiFlo
       if (v.targa) targaToKey[v.targa.toUpperCase().trim()] = key;
     });
 
-    return Object.values(byKey).map(grp => {
+    // Prenotazioni generiche "qualsiasi" (senza targa E senza sotto-categoria scelta):
+    // pesano sul POOL del tipo, non su una sotto-categoria specifica. Le contiamo a parte
+    // per ricavare un pool-per-tipo corretto senza alterare i numeri delle viste esistenti.
+    const tipoQualsiasi = {};   // canonicalTipo -> n. prenotazioni generiche "qualsiasi"
+    (prenotazioni || []).forEach(b => {
+      if (!b.dal || !b.al) return;
+      if (excludeId && b.id === excludeId) return;
+      if (b.stato === 'annullata' || b.stato === 'completata' || b.stato === 'cancellata') return;
+      if (b.al < dalS || b.dal > alS) return;
+      if (b.vehicleId || b.vehicleCategoria) return; // hanno già attribuzione precisa
+      const t = canonicalTipo({ tipo: b.vehicleType });
+      if (t) tipoQualsiasi[t] = (tipoQualsiasi[t] || 0) + 1;
+    });
+
+    const groups = Object.values(byKey).map(grp => {
       const total = grp.ids.size;
       const busy  = new Set();
       let   busyNoId = 0;
       (prenotazioni || []).forEach(b => {
         if (!b.dal || !b.al) return;
+        if (excludeId && b.id === excludeId) return;
         if (b.stato === 'annullata' || b.stato === 'completata' || b.stato === 'cancellata') return;
         if (b.al < dalS || b.dal > alS) return;
         const vidB = b.vehicleId || '';
@@ -9281,9 +9307,14 @@ function calcAvailability(dal, al, rentmeVehicles, prenotazioni, fleet, fermiFlo
         } else if (vidB && targaToKey[vidB.toUpperCase()] === grp.key) {
           // Match retrocompatibile: vehicleId era la targa (booking pre-v0.43.10 o da RentMe sync)
           busy.add(vidB);
-        } else if (!vidB && b.vehicleType === grp.tipo) {
-          // Prenotazione tipo-only senza vehicleId: consuma 1 slot generico
-          busyNoId++;
+        } else if (!vidB && canonicalTipo({ tipo: b.vehicleType }) === grp.tipo) {
+          // Prenotazione generica senza targa:
+          //  · con sotto-categoria scelta → consuma 1 slot SOLO di quella sotto-categoria
+          //  · "qualsiasi" (nessuna sotto-categoria) → comportamento storico: 1 slot in ogni
+          //    sotto-categoria del tipo (conservativo per le viste; il pool-per-tipo sotto lo
+          //    riconcilia per l'anti-overbooking).
+          if (!b.vehicleCategoria) busyNoId++;
+          else if (b.vehicleCategoria === grp.categoria) busyNoId++;
         }
         if (b.vehicleSchedule) {
           b.vehicleSchedule.forEach(s => {
@@ -9307,7 +9338,27 @@ function calcAvailability(dal, al, rentmeVehicles, prenotazioni, fleet, fermiFlo
         id: grp.key, nome: grp.nome, tipo: grp.tipo, categoria: grp.categoria,
         total, booked, free, threshold, alert: free <= threshold && total > 0
       };
-    }).filter(c => c.total > 0).sort((a, b) => {
+    });
+
+    // ── Pool per TIPO (somma sotto-categorie) per l'anti-overbooking "qualsiasi" ──
+    // Le generiche "qualsiasi" sono contate una volta per OGNI sotto-categoria del tipo
+    // (busyNoId): per il pool del tipo vanno contate UNA volta sola → tolgo il sovra-conteggio.
+    const tipoAgg = {};
+    groups.forEach(g => {
+      const a = tipoAgg[g.tipo] || (tipoAgg[g.tipo] = { total: 0, bookedRaw: 0, nGroups: 0 });
+      a.total += g.total; a.bookedRaw += g.booked; a.nGroups += 1;
+    });
+    groups.forEach(g => {
+      const a = tipoAgg[g.tipo];
+      const q = tipoQualsiasi[g.tipo] || 0;
+      const overcount = q * Math.max(0, a.nGroups - 1);   // "qualsiasi" contata in ogni gruppo → de-duplica
+      const tipoBooked = Math.max(0, a.bookedRaw - overcount);
+      g.tipoTotal  = a.total;
+      g.tipoBooked = tipoBooked;
+      g.tipoFree   = Math.max(0, a.total - tipoBooked);
+    });
+
+    return groups.filter(c => c.total > 0).sort((a, b) => {
       const ta = TIPO_ORDER.indexOf(a.tipo);
       const tb = TIPO_ORDER.indexOf(b.tipo);
       if (ta !== tb) return (ta === -1 ? 99 : ta) - (tb === -1 ? 99 : tb);
@@ -10362,7 +10413,7 @@ function BancoRapidoPage({ rentmeVehicles, prenotazioni, fleet, setPage, setPren
                 <button type="button" onClick={() => {
                   setVehicleModal(null);
                   // Prenota generica per categoria
-                  setPrenotazioniPrefill({ vehicleType: vehicleModal.cat.tipo, vehicleLabel: vehicleModal.cat.nome, dal, al, fonte: 'walk_in' });
+                  setPrenotazioniPrefill({ vehicleType: vehicleModal.cat.tipo, vehicleCategoria: vehicleModal.cat.categoria || '', vehicleLabel: vehicleModal.cat.nome, dal, al, fonte: 'walk_in' });
                   setPage('prenotazioni');
                 }} style={{ marginTop:12, padding:'8px 18px', background:'var(--ink)', color:'var(--paper)', border:'none', borderRadius:6, fontSize:13, cursor:'pointer', fontWeight:600 }}>
                   Prenota senza mezzo specifico →
@@ -10423,7 +10474,7 @@ function BancoRapidoPage({ rentmeVehicles, prenotazioni, fleet, setPage, setPren
           <div style={{ padding:'12px 22px', borderTop:'1px solid var(--border)' }}>
             <button type="button" onClick={() => {
               setVehicleModal(null);
-              setPrenotazioniPrefill({ vehicleType: vehicleModal.cat.tipo, vehicleLabel: vehicleModal.cat.nome, dal, al, fonte: 'walk_in' });
+              setPrenotazioniPrefill({ vehicleType: vehicleModal.cat.tipo, vehicleCategoria: vehicleModal.cat.categoria || '', vehicleLabel: vehicleModal.cat.nome, dal, al, fonte: 'walk_in' });
               setPage('prenotazioni');
             }} style={{ width:'100%', padding:'9px', borderRadius:7, border:'1px solid var(--border)',
               background:'transparent', color:'var(--ink-2)', cursor:'pointer', fontSize:13 }}>
@@ -13973,7 +14024,7 @@ function OggiPage({ prenotazioni, setPrenotazioni, fleet, scadenze, customers, s
             pushToast && pushToast({ tone: 'warning', title: 'Categoria esaurita', message: `Nessun ${cat.nome} libero` });
             return;
           }
-          const prefill = { vehicleType: cat.tipo, vehicleLabel: cat.nome, dal: walkInDal, al: walkInAl, fonte: 'walk_in' };
+          const prefill = { vehicleType: cat.tipo, vehicleCategoria: cat.categoria || '', vehicleLabel: cat.nome, dal: walkInDal, al: walkInAl, fonte: 'walk_in' };
           if (setPrenotazioni) {
             setWalkInForm(prefill);
           } else {
