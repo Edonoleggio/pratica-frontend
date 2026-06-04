@@ -2913,7 +2913,7 @@ function findBestVehicleCombination(tipo, dal, al, vehicles, prenotazioni, exclu
 // ── PrenoForm — add/edit ─────────────────────────────────────────────
 // prefillValues: valori pre-compilati dal BancoRapido / walk-in / calendario
 // (vehicleId, vehicleLabel, vehicleType, dal, al, fonte) — usato solo quando initial è null
-function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, onSave, onClose, prefillValues, fermiFlotta, rentmeConnected, partners }) {
+function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, onSave, onClose, prefillValues, fermiFlotta, rentmeConnected, partners, targhe }) {
   const pv = prefillValues || {};  // shorthand
   const isNew = !initial;
   const empty = {
@@ -3060,11 +3060,17 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
     // Mappa targa→fleet.id per tradurre booking legacy
     const fleetIdByTarga = {};
     (fleet || []).forEach(fv => { if (fv.targa && fv.id) fleetIdByTarga[fv.targa.toUpperCase().trim()] = fv.id; });
+    // Traduttore al CODICE RentMe (stesso di calcAvailability): allVehicles usa il codice
+    // come id per i mezzi RentMe → così un booking con vehicleId=targa/vecchio-id esclude
+    // comunque il mezzo giusto dal picker (coerente con il conteggio per categoria).
+    const resolveCode = buildVehicleKeyResolver(fleet, targhe);
     const addId = (vid) => {
       if (!vid) return;
       ids.add(vid);
       const translated = fleetIdByTarga[vid.toUpperCase()];
       if (translated) ids.add(translated); // aggiunge anche fleet.id se vid era una targa
+      const code = resolveCode(vid);
+      if (code) ids.add(code);             // aggiunge il codice RentMe risolto
     };
     const ids = new Set();
     (prenotazioni || [])
@@ -3077,7 +3083,7 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
       });
     (fermiFlotta || []).forEach(fermo => { if (fermo.vehicleId && fermo.dal <= f.al && fermo.al >= f.dal) addId(fermo.vehicleId); });
     return ids;
-  }, [prenotazioni, fermiFlotta, fleet, f.dal, f.al, initial?.id]);
+  }, [prenotazioni, fermiFlotta, fleet, targhe, f.dal, f.al, initial?.id]);
 
   // Lista mezzi: preferisce rentmeVehicles (fonte EDOX) se disponibili, altrimenti usa fleet locale.
   // IMPORTANTE: usa fleet.v.id come vehicleId quando il veicolo RentMe ha un corrispondente in flotta.
@@ -3295,9 +3301,9 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
   const categoriaGroups = useMemo(() => {
     if (!f.vehicleType || !f.dal || !f.al) return [];
     const wantTipo = canonicalTipo({ tipo: f.vehicleType });
-    return calcAvailability(f.dal, f.al, rentmeVehicles, prenotazioni, fleet, fermiFlotta, initial?.id)
+    return calcAvailability(f.dal, f.al, rentmeVehicles, prenotazioni, fleet, fermiFlotta, initial?.id, targhe)
       .filter(g => g.tipo === wantTipo);
-  }, [rentmeVehicles, prenotazioni, fleet, fermiFlotta, f.vehicleType, f.dal, f.al, initial?.id]);
+  }, [rentmeVehicles, prenotazioni, fleet, fermiFlotta, f.vehicleType, f.dal, f.al, initial?.id, targhe]);
 
   // Anti-overbooking: liberi/occupati/totali per la selezione corrente.
   //  · sotto-categoria scelta → numeri di QUELLA sotto-categoria (capati dal pool del tipo)
@@ -4114,7 +4120,7 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
 }
 
 // ── PrenotazioniPage ─────────────────────────────────────────────────
-function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rentmeVehicles, customers, partners, operator, onOpenWizard, pushToast, prefill, onClearPrefill, fermiFlotta, rentmePush, rentmeConnected, agency }) {
+function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rentmeVehicles, customers, partners, operator, onOpenWizard, pushToast, prefill, onClearPrefill, fermiFlotta, rentmePush, rentmeConnected, agency, targhe }) {
   const [form, setForm] = useState(null); // null | 'new' | {record}
   const [showDisp, setShowDisp] = useState(false);
 
@@ -4922,7 +4928,7 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rent
           {showDisp ? '▲ Nascondi calendario' : '▼ Mostra disponibilità 4 settimane'}
         </button>
       </div>
-      {showDisp && <DisponibilitaView prenotazioni={prenotazioni} rentmeVehicles={rentmeVehicles || []} fleet={fleet} fermiFlotta={fermiFlotta} />}
+      {showDisp && <DisponibilitaView prenotazioni={prenotazioni} rentmeVehicles={rentmeVehicles || []} fleet={fleet} fermiFlotta={fermiFlotta} targhe={targhe} />}
 
       {/* Form modal */}
       {form && (
@@ -4936,6 +4942,7 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rent
           fermiFlotta={fermiFlotta}
           rentmeConnected={rentmeConnected}
           partners={partners}
+          targhe={targhe}
           onSave={form === 'new' || form?.id === '__new__' ? createPreno : updatePreno}
           onClose={() => setForm(null)}
         />
@@ -7055,7 +7062,7 @@ function PreventiviPage({ setPage, setPrenotazioniPrefill, listino: listinoProps
 // Mostra saturazione per categoria su 4 settimane
 // ═══════════════════════════════════════════════════════════════════
 
-function DisponibilitaView({ prenotazioni, rentmeVehicles, fleet, fermiFlotta }) {
+function DisponibilitaView({ prenotazioni, rentmeVehicles, fleet, fermiFlotta, targhe }) {
   const [refDate, setRefDate] = useState(() => todayISO());
 
   // Costruisce array di 28 giorni a partire dal lunedì della settimana di refDate
@@ -7091,7 +7098,7 @@ function DisponibilitaView({ prenotazioni, rentmeVehicles, fleet, fermiFlotta })
       days.forEach(day => {
         // Usa calcAvailability per i dati reali quando disponibili
         if (rentmeVehicles && rentmeVehicles.length > 0) {
-          const av = calcAvailability(day, day, rentmeVehicles, prenotazioni, fleet, fermiFlotta);
+          const av = calcAvailability(day, day, rentmeVehicles, prenotazioni, fleet, fermiFlotta, undefined, targhe);
           const match = av.find(c => c.nome === cat || c.id === cat);
           result[cat][day] = match ? match.booked : 0;
         } else {
@@ -9261,32 +9268,46 @@ const RENTME_PROXY    = 'https://rentme.altervista.org/edox-proxy.php';
 // v0.43.1: grouping per tipo+categoria (usa getVehicleCategoria sul pool
 // unificato fleet+RentMe), così le sotto-categorie auto (5 Posti, Cabrio,
 // ecc.) appaiono come card distinte nel Banco Rapido / Walk-in.
-function calcAvailability(dal, al, rentmeVehicles, prenotazioni, fleet, fermiFlotta, excludeId) {
+function calcAvailability(dal, al, rentmeVehicles, prenotazioni, fleet, fermiFlotta, excludeId, targhe) {
   const dalS = dal || todayISO();
   const alS  = al  || dalS;
 
-  // ── Pool unificato: fleet locale + RentMe, dedup per id ─────────
-  // Fleet ha precedenza (dati più precisi su categoria/cc/targa)
+  // ── FONTE UNICA dei mezzi ──────────────────────────────────────────
+  // Se ci sono i veicoli RentMe, l'elenco è la FLOTTA UNIFICATA (RentMe = verità su
+  // tipo/cilindrata; targa dalla tabella) — la STESSA che usa la pagina Flotta. Risolve
+  // la "doppia fonte" (REGISTRO PEZZE #1): basta quad-50 contati come "auto" dalla vecchia
+  // flotta locale. `resolveVid` traduce i vehicleId storici delle prenotazioni (targa /
+  // vecchio id fleet / codice) nel CODICE RentMe, così le prenotazioni esistenti restano
+  // agganciate (conteggi occupati corretti → niente over-booking).
+  const useUnified = !!(rentmeVehicles && rentmeVehicles.length);
+  const _resolve = useUnified ? buildVehicleKeyResolver(fleet, targhe) : null;
+  const resolveVid = (vid) => {
+    if (!vid) return vid;
+    if (_resolve) { const c = _resolve(vid); return c || vid; }
+    return vid;
+  };
+
   const allVehicles = [];
   const seenIds = new Set();
 
-  (fleet || []).forEach(v => {
-    if (v.stato === 'venduto' || v.stato === 'fuori_uso') return;
-    const id = v.id || v.targa;
-    if (!id) return;
-    if (seenIds.has(id)) return;
-    seenIds.add(id);
-    allVehicles.push(v);
-  });
-
-  (rentmeVehicles || []).forEach(v => {
-    // I veicoli RentMe non hanno v.id — usano v.targa come chiave univoca
-    const id = v.id || v.targa || v.rentmeCode;
-    if (!id) return;
-    if (seenIds.has(id)) return;   // già in flotta locale → skip (dedup)
-    seenIds.add(id);
-    allVehicles.push({ ...v, id });  // inietta id per il resto della pipeline
-  });
+  if (useUnified) {
+    // Flotta unificata da RentMe (id = codice RentMe, tipo già canonical). 'fermo' = in riparazione.
+    buildUnifiedFleet(rentmeVehicles, targhe).forEach(v => {
+      if (v.stato === 'venduto' || v.stato === 'fuori_uso' || v.stato === 'fermo') return;
+      if (!v.id || seenIds.has(v.id)) return;
+      seenIds.add(v.id);
+      allVehicles.push(v);
+    });
+  } else {
+    // Fallback (nessun RentMe sincronizzato): vecchia flotta locale.
+    (fleet || []).forEach(v => {
+      if (v.stato === 'venduto' || v.stato === 'fuori_uso') return;
+      const id = v.id || v.targa;
+      if (!id || seenIds.has(id)) return;
+      seenIds.add(id);
+      allVehicles.push(v);
+    });
+  }
 
   if (allVehicles.length > 0) {
     // ── Raggruppa per tipo + categoria ──────────────────────────
@@ -9341,12 +9362,13 @@ function calcAvailability(dal, al, rentmeVehicles, prenotazioni, fleet, fermiFlo
         if (b.stato === 'annullata' || b.stato === 'completata' || b.stato === 'cancellata') return;
         if (b.al < dalS || b.dal > alS) return;
         const vidB = b.vehicleId || '';
-        if (vidB && grp.ids.has(vidB)) {
-          // Match diretto: vehicleId = fleet v.id (UUID o migrated-xxx)
-          busy.add(vidB);
-        } else if (vidB && targaToKey[vidB.toUpperCase()] === grp.key) {
-          // Match retrocompatibile: vehicleId era la targa (booking pre-v0.43.10 o da RentMe sync)
-          busy.add(vidB);
+        const vcB = resolveVid(vidB);  // → codice RentMe (unified) o vidB invariato (fallback)
+        if (vidB && vcB && grp.ids.has(vcB)) {
+          // Match: vehicleId risolto a un mezzo di questo gruppo (codice/UUID/targa→codice)
+          busy.add(vcB);
+        } else if (vidB && targaToKey[(vidB||'').toUpperCase()] === grp.key) {
+          // Match retrocompatibile: vehicleId era la targa reale
+          busy.add(vcB || vidB);
         } else if (!vidB && canonicalTipo({ tipo: b.vehicleType }) === grp.tipo) {
           // Prenotazione generica senza targa:
           //  · con sotto-categoria scelta → consuma 1 slot SOLO di quella sotto-categoria
@@ -9359,7 +9381,8 @@ function calcAvailability(dal, al, rentmeVehicles, prenotazioni, fleet, fermiFlo
         if (b.vehicleSchedule) {
           b.vehicleSchedule.forEach(s => {
             if (!s.vehicleId || s.dal > alS || s.al < dalS) return;
-            if (grp.ids.has(s.vehicleId) || targaToKey[s.vehicleId.toUpperCase()] === grp.key) busy.add(s.vehicleId);
+            const sc = resolveVid(s.vehicleId);
+            if ((sc && grp.ids.has(sc)) || targaToKey[(s.vehicleId||'').toUpperCase()] === grp.key) busy.add(sc || s.vehicleId);
           });
         }
       });
@@ -9367,8 +9390,9 @@ function calcAvailability(dal, al, rentmeVehicles, prenotazioni, fleet, fermiFlo
       (fermiFlotta || []).forEach(fermo => {
         if (!fermo.vehicleId || !fermo.dal || !fermo.al) return;
         if (fermo.al < dalS || fermo.dal > alS) return; // no overlap
-        if (grp.ids.has(fermo.vehicleId) || targaToKey[(fermo.vehicleId||'').toUpperCase()] === grp.key) {
-          busy.add(fermo.vehicleId);
+        const fc = resolveVid(fermo.vehicleId);
+        if ((fc && grp.ids.has(fc)) || targaToKey[(fermo.vehicleId||'').toUpperCase()] === grp.key) {
+          busy.add(fc || fermo.vehicleId);
         }
       });
       const booked    = busy.size + busyNoId;
@@ -10159,7 +10183,7 @@ function useRentMeSync({ fleet, rentmeVehicles, setRentmeVehicles, setPrenotazio
 // Schermata veloce per il banco: seleziona date, vedi cosa è libero,
 // un tap → apre il form prenotazione prefillato per quella categoria.
 // ═══════════════════════════════════════════════════════════════════
-function BancoRapidoPage({ rentmeVehicles, prenotazioni, fleet, setPage, setPrenotazioniPrefill, listino, pushToast, rentmeSyncStatus, onRentmeSync, rentmeLastSync, fermiFlotta }) {
+function BancoRapidoPage({ rentmeVehicles, prenotazioni, fleet, setPage, setPrenotazioniPrefill, listino, pushToast, rentmeSyncStatus, onRentmeSync, rentmeLastSync, fermiFlotta, targhe }) {
   const today = todayISO();
   const [dal, setDal] = useState(today);
   const [al,  setAl]  = useState(today);
@@ -10167,8 +10191,8 @@ function BancoRapidoPage({ rentmeVehicles, prenotazioni, fleet, setPage, setPren
   const [vehicleModal, setVehicleModal] = useState(null); // null | { cat, vehicles }
 
   const availability = useMemo(
-    () => calcAvailability(dal, al, rentmeVehicles, prenotazioni, fleet, fermiFlotta),
-    [dal, al, rentmeVehicles, prenotazioni, fleet, fermiFlotta]
+    () => calcAvailability(dal, al, rentmeVehicles, prenotazioni, fleet, fermiFlotta, undefined, targhe),
+    [dal, al, rentmeVehicles, prenotazioni, fleet, fermiFlotta, targhe]
   );
 
   // Alert: categorie sotto soglia
@@ -13526,7 +13550,7 @@ function NaviLampedusaWidget({ feed } = {}) {
 
 
 function OggiPage({ prenotazioni, setPrenotazioni, fleet, scadenze, customers, setPage, rentmeVehicles, setPrenotazioniPrefill, pushToast,
-  operator, fermiFlotta, rentmePush, rentmeConnected, manutenzioni, partners }) {
+  operator, fermiFlotta, rentmePush, rentmeConnected, manutenzioni, partners, targhe }) {
   const [now, setNow] = useState(() => new Date());
 
   // Orologio live — aggiorna ogni minuto
@@ -14053,7 +14077,7 @@ function OggiPage({ prenotazioni, setPrenotazioni, fleet, scadenze, customers, s
 
       {/* ── WALK-IN ─────────────────────────────────────────────────── */}
       {(() => {
-        const walkAvail = calcAvailability(walkInDal, walkInAl, rentmeVehicles, prenoList, fleet, fermiFlotta);
+        const walkAvail = calcAvailability(walkInDal, walkInAl, rentmeVehicles, prenoList, fleet, fermiFlotta, undefined, targhe);
         const catColor = (cat) => {
           if (cat.free <= 0) return { bg: '#fdecea', border: '#c0392b', text: '#c0392b', label: 'Esaurito' };
           if (cat.alert)     return { bg: '#fff8e6', border: '#e67e22', text: '#d35400', label: 'Quasi esaurito' };
@@ -14177,6 +14201,7 @@ function OggiPage({ prenotazioni, setPrenotazioni, fleet, scadenze, customers, s
           partners={partners}
           fermiFlotta={fermiFlotta}
           rentmeConnected={rentmeConnected}
+          targhe={targhe}
           onSave={(data) => {
             const { sendToRentme, ...cleanData } = data;
             const rec = {
@@ -16981,7 +17006,7 @@ export default function App() {
     <>
       <Styles />
       <div className={`pratica-app flex${darkMode ? ' dark-mode' : ''}`}>
-        {!kioskMode && <Sidebar page={page} setPage={setPage} onNew={() => openWizard()} online={online && cargosConfig.enabled} agency={agency} rentmeSyncStatus={rentmeSync.status} rentmeAlertCount={rentmeSync.status === 'ok' ? calcAvailability(todayISO(), todayISO(), rentmeVehicles, prenotazioni, fleet, fermiFlotta).filter(c => c.alert).length : 0} rentmeRetryCount={(() => { try { return JSON.parse(localStorage.getItem('rentme_pending_queue') || '[]').length; } catch { return 0; } })()} offlineSyncCount={Object.values(allSyncStatus).filter(s => s?.remoteStatus === 'offline' || s?.remoteStatus === 'error').length} />}
+        {!kioskMode && <Sidebar page={page} setPage={setPage} onNew={() => openWizard()} online={online && cargosConfig.enabled} agency={agency} rentmeSyncStatus={rentmeSync.status} rentmeAlertCount={rentmeSync.status === 'ok' ? calcAvailability(todayISO(), todayISO(), rentmeVehicles, prenotazioni, fleet, fermiFlotta, undefined, targhe).filter(c => c.alert).length : 0} rentmeRetryCount={(() => { try { return JSON.parse(localStorage.getItem('rentme_pending_queue') || '[]').length; } catch { return 0; } })()} offlineSyncCount={Object.values(allSyncStatus).filter(s => s?.remoteStatus === 'offline' || s?.remoteStatus === 'error').length} />}
         <main className="flex-1 min-h-screen" id="main-content">
           <Topbar
             page={page}
@@ -17004,16 +17029,16 @@ export default function App() {
             <ErrorBoundary key={page}>
             <div key={page} className="page-fade">
               {page === 'calendario' && <CalendarioFlottaPage prenotazioni={prenotazioni} fleet={fleet} rentmeVehicles={rentmeVehicles} setPage={setPage} setPrenotazioniPrefill={setPrenotazioniPrefill} fermiFlotta={fermiFlotta} darkMode={darkMode} />}
-              {page === 'oggi'       && <OggiPage prenotazioni={prenotazioni} fleet={fleet} scadenze={scadenze} customers={customers} setPage={setPage} rentmeVehicles={rentmeVehicles} setPrenotazioniPrefill={setPrenotazioniPrefill} pushToast={pushToast} setPrenotazioni={setPrenotazioni} operator={operator} fermiFlotta={fermiFlotta} rentmePush={rentmeSync.pushBooking} rentmeConnected={rentmeSync.status === 'ok'} manutenzioni={manutenzioni} partners={partners} />}
+              {page === 'oggi'       && <OggiPage prenotazioni={prenotazioni} fleet={fleet} scadenze={scadenze} customers={customers} setPage={setPage} rentmeVehicles={rentmeVehicles} setPrenotazioniPrefill={setPrenotazioniPrefill} pushToast={pushToast} setPrenotazioni={setPrenotazioni} operator={operator} fermiFlotta={fermiFlotta} rentmePush={rentmeSync.pushBooking} rentmeConnected={rentmeSync.status === 'ok'} manutenzioni={manutenzioni} partners={partners} targhe={targhe} />}
               {page === 'dashboard'  && <Dashboard onNew={() => openWizard()} setPage={setPage} operator={operator} fleet={fleet} contracts={localContracts} partners={partners} onMarkReturned={markContractReturned} scadenze={scadenze} prenotazioni={prenotazioni} agency={agency} />}
               {page === 'cassa'      && <RegistroCassaPage cassa={cassa} setCassa={setCassa} prenotazioni={prenotazioni} customers={customers} operator={operator} pushToast={pushToast} />}
-              {page === 'banco'      && <BancoRapidoPage rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} fleet={fleet} setPage={setPage} setPrenotazioniPrefill={setPrenotazioniPrefill} listino={listino} pushToast={pushToast} rentmeSyncStatus={rentmeSync.status} onRentmeSync={rentmeSync.sync} rentmeLastSync={rentmeSync.lastSync} fermiFlotta={fermiFlotta} />}
+              {page === 'banco'      && <BancoRapidoPage rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} fleet={fleet} setPage={setPage} setPrenotazioniPrefill={setPrenotazioniPrefill} listino={listino} pushToast={pushToast} rentmeSyncStatus={rentmeSync.status} onRentmeSync={rentmeSync.sync} rentmeLastSync={rentmeSync.lastSync} fermiFlotta={fermiFlotta} targhe={targhe} />}
               {page === 'report'        && <ReportOperativoPage prenotazioni={prenotazioni} contracts={localContracts} customers={customers} fleet={fleet} operators={operators} />}
               {page === 'finance'       && (admin
                 ? <ReportPage prenotazioni={prenotazioni} contracts={localContracts} cassa={cassa} customers={customers} fleet={fleet} operators={operators} pushToast={pushToast} financeMode />
                 : <FinanceGate />)}
               {page === 'preventivi'    && <PreventiviPage setPage={setPage} setPrenotazioniPrefill={setPrenotazioniPrefill} listino={listino} fleet={fleet} rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} pushToast={pushToast} fermiFlotta={fermiFlotta} />}
-              {page === 'prenotazioni' && <PrenotazioniPage prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} setCassa={setCassa} fleet={fleet} rentmeVehicles={rentmeVehicles} customers={customers} partners={partners} operator={operator} onOpenWizard={openWizard} pushToast={pushToast} prefill={prenotazioniPrefill} onClearPrefill={() => setPrenotazioniPrefill(null)} fermiFlotta={fermiFlotta} rentmePush={rentmeSync.pushBooking} rentmeConnected={rentmeSync.status === 'ok'} agency={agency} />}
+              {page === 'prenotazioni' && <PrenotazioniPage prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} setCassa={setCassa} fleet={fleet} rentmeVehicles={rentmeVehicles} customers={customers} partners={partners} operator={operator} onOpenWizard={openWizard} pushToast={pushToast} prefill={prenotazioniPrefill} onClearPrefill={() => setPrenotazioniPrefill(null)} fermiFlotta={fermiFlotta} rentmePush={rentmeSync.pushBooking} rentmeConnected={rentmeSync.status === 'ok'} agency={agency} targhe={targhe} />}
               {page === 'contracts'  && <ContractsList contracts={localContracts} operators={operators} onRetry={retryContract} onMarkReturned={markContractReturned} onSendPec={sendContractPec} pecStatus={pecStatus} online={online} />}
               {page === 'fleet'      && <FleetPage fleet={unifiedFleet} prenotazioni={prenotazioni} admin={admin} onAddVehicle={() => setModal('newVehicle')} onEditVehicle={(v) => setModal({ type: 'editVehicle', vehicle: v })} onDeleteVehicle={requestDeleteVehicle} onImportCSV={() => setShowCsvImport(true)} onResetFleet={() => setModal({ type: 'confirm', title: 'Azzera flotta?', message: <><strong>Tutti i {fleet.length} veicoli</strong> verranno eliminati dalla flotta. Le prenotazioni esistenti restano invariate. Dopo puoi reimportare con un CSV aggiornato. <strong>Azione irreversibile.</strong></>, confirmLabel: 'Azzera flotta', variant: 'danger', onConfirm: () => { setFleet([]); pushToast({ tone: 'info', title: 'Flotta azzerata', message: 'Tutti i veicoli rimossi. Importa un nuovo CSV per ricaricare.' }); } })} onSetFleet={setFleet} scadenze={scadenze} setScadenze={setScadenze} fermiFlotta={fermiFlotta} setFermiFlotta={setFermiFlotta} rentmeVehicles={rentmeVehicles} manutenzioni={manutenzioni} setManutenzioni={setManutenzioni} partners={partners} targhe={targhe} setTarghe={setTarghe} />}
               {page === 'customers'  && <CustomersPage customers={customers} setCustomers={setCustomers} prenotazioni={prenotazioni} admin={admin} onShowQR={(c) => setModal({ type: 'qr', customer: c })} onNewWithCustomer={openWizard} onAddCustomer={() => setModal('newCustomer')} onEditCustomer={(c) => setModal({ type: 'editCustomer', customer: c })} onDeleteCustomer={deleteCustomer} onShowStorico={(c) => setStorioClienteId(c.id)} />}
