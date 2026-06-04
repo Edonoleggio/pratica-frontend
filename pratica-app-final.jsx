@@ -3544,6 +3544,35 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
           <div>
             <label style={lbl}>Mezzo</label>
 
+            {/* STEP 1 — Categoria (sotto-categoria): "che tipo di mezzo". Guida l'anti-overbooking
+                (blocca se esaurita) e filtra i mezzi specifici sotto. Solo per prenotazione generica. */}
+            {!f.vehicleId && f.dal && f.al && categoriaGroups.length > 1 && (
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>
+                  Categoria <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>· che tipo di mezzo (blocca se esaurita)</span>
+                </div>
+                <select style={inp} value={f.vehicleCategoria}
+                  onChange={e => set('vehicleCategoria', e.target.value)}>
+                  <option value="">
+                    Qualsiasi {f.vehicleType} — {categoriaGroups[0]?.tipoFree ?? 0} liberi nel periodo
+                  </option>
+                  {categoriaGroups.map(g => {
+                    const liberi = Math.min(g.free, g.tipoFree);
+                    return (
+                      <option key={g.id} value={g.categoria} disabled={liberi <= 0}>
+                        {g.nome} — {liberi <= 0 ? 'esaurita' : `${liberi} liber${liberi === 1 ? 'o' : 'i'}`} su {g.total}
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+            )}
+
+            {/* STEP 2 — Mezzo specifico (facoltativo): assegna una targa precisa entro la categoria */}
+            <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>
+              Mezzo specifico <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>· facoltativo — assegna una targa</span>
+            </div>
+
             {/* ── Ricerca targa manuale + pulsante OCR ── */}
             <div style={{ display: 'flex', gap: 8, marginBottom: 6, alignItems: 'stretch' }}>
               <div style={{ flex: 1, position: 'relative' }}>
@@ -3600,31 +3629,13 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
             ) : (
               <select style={inp} value={f.vehicleId} onChange={handleVehicleChange}>
                 <option value="">
-                  — Categoria generica —{availableVehicles.length > 0 ? ` (${availableVehicles.length} disponibili)` : ' (nessuno libero)'}
+                  — Nessun mezzo preciso (assegna dopo) —{availableVehicles.length > 0 ? ` · ${availableVehicles.length} liberi` : ' · nessuno libero'}
                 </option>
                 {availableVehicles.map(v => (
                   <option key={v.id} value={v.id}>
                     {makeVehicleLabel(v)}{v.tipo ? ` (${v.tipo})` : ''}
                   </option>
                 ))}
-              </select>
-            )}
-            {/* Sotto-categoria: quando si prenota "generico" (senza targa) si sceglie la
-                sotto-categoria precisa (es. 7 posti) — il blocco anti-overbooking agisce su questa */}
-            {!f.vehicleId && f.dal && f.al && categoriaGroups.length > 1 && (
-              <select style={{ ...inp, marginTop: 6 }} value={f.vehicleCategoria}
-                onChange={e => set('vehicleCategoria', e.target.value)}>
-                <option value="">
-                  Qualsiasi {f.vehicleType} — {categoriaGroups[0]?.tipoFree ?? 0} liberi nel periodo
-                </option>
-                {categoriaGroups.map(g => {
-                  const liberi = Math.min(g.free, g.tipoFree);
-                  return (
-                    <option key={g.id} value={g.categoria} disabled={liberi <= 0}>
-                      {g.nome} — {liberi <= 0 ? 'esaurita' : `${liberi} liber${liberi === 1 ? 'o' : 'i'}`} su {g.total}
-                    </option>
-                  );
-                })}
               </select>
             )}
             {!f.vehicleId && (
