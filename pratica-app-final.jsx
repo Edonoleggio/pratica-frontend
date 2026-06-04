@@ -3277,6 +3277,18 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
     set('clienteTel',     c.telefono|| '');
   }
 
+  // Tipi di mezzo realmente presenti in flotta (canonicalTipo), per il selettore TIPO.
+  // Non dipende dalle date → l'operatore può scegliere il tipo prima di tutto.
+  const tipiDisponibili = useMemo(() => {
+    const order = ['auto', 'scooter', 'quad', 'ebike', 'bici', 'altro'];
+    const set = new Set();
+    (allVehicles || []).forEach(v => { const t = canonicalTipo(v); if (t) set.add(t); });
+    return [...set].sort((a, b) => {
+      const ia = order.indexOf(a), ib = order.indexOf(b);
+      return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+    });
+  }, [allVehicles]);
+
   // Sotto-categorie del TIPO scelto, con disponibilità reale nel periodo.
   // FONTE UNICA = calcAvailability (stessa logica di Banco Rapido/Oggi): niente più
   // conteggio duplicato. excludeId = la prenotazione in modifica (non conta sé stessa).
@@ -3544,12 +3556,29 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
           <div>
             <label style={lbl}>Mezzo</label>
 
+            {/* STEP 0 — Tipo mezzo (Auto/Scooter/Quad/E-bike/Bici): il form partiva sempre da "auto"
+                e non c'era modo di cambiarlo per una prenotazione generica. Cambiando tipo si azzera
+                la categoria e il mezzo specifico. */}
+            {tipiDisponibili.length > 1 && (
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>
+                  Tipo <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>· auto, scooter, quad…</span>
+                </div>
+                <select style={inp} value={canonicalTipo({ tipo: f.vehicleType })}
+                  onChange={e => { set('vehicleType', e.target.value); set('vehicleCategoria', ''); set('vehicleId', ''); set('vehicleTarga', ''); set('vehicleLabel', ''); setVehicleSchedule(null); }}>
+                  {tipiDisponibili.map(t => (
+                    <option key={t} value={t}>{(VEHICLE_TYPES[t]?.label) || (t.charAt(0).toUpperCase() + t.slice(1))}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
             {/* STEP 1 — Categoria (sotto-categoria): "che tipo di mezzo". Guida l'anti-overbooking
                 (blocca se esaurita) e filtra i mezzi specifici sotto. Solo per prenotazione generica. */}
             {!f.vehicleId && f.dal && f.al && categoriaGroups.length > 1 && (
               <div style={{ marginBottom: 12 }}>
                 <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>
-                  Categoria <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>· che tipo di mezzo (blocca se esaurita)</span>
+                  Categoria <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>· sotto-categoria (blocca se esaurita)</span>
                 </div>
                 <select style={inp} value={f.vehicleCategoria}
                   onChange={e => set('vehicleCategoria', e.target.value)}>
