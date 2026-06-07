@@ -17144,6 +17144,7 @@ export default function App() {
               {page === 'cuore' && cuoreNuovo && <CuoreAnteprimaPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} prenotazioni={prenotazioni} scadenze={scadenze} />}
               {page === 'cuore_cal' && cuoreNuovo && <CuoreCalendarioPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} prenotazioni={prenotazioni} scadenze={scadenze} />}
               {page === 'cuore_preno' && cuoreNuovo && <CuorePrenotaPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} pushToast={pushToast} />}
+              {page === 'cuore_flotta' && cuoreNuovo && <CuoreFlottaPage rentmeVehicles={rentmeVehicles} targhe={targhe} setTarghe={setTarghe} fleet={fleet} scadenze={scadenze} admin={admin} />}
               {page === 'fleet'      && <FleetPage fleet={unifiedFleet} prenotazioni={prenotazioni} admin={admin} onAddVehicle={() => setModal('newVehicle')} onEditVehicle={(v) => setModal({ type: 'editVehicle', vehicle: v })} onDeleteVehicle={requestDeleteVehicle} onImportCSV={() => setShowCsvImport(true)} onResetFleet={() => setModal({ type: 'confirm', title: 'Azzera flotta?', message: <><strong>Tutti i {fleet.length} veicoli</strong> verranno eliminati dalla flotta. Le prenotazioni esistenti restano invariate. Dopo puoi reimportare con un CSV aggiornato. <strong>Azione irreversibile.</strong></>, confirmLabel: 'Azzera flotta', variant: 'danger', onConfirm: () => { setFleet([]); pushToast({ tone: 'info', title: 'Flotta azzerata', message: 'Tutti i veicoli rimossi. Importa un nuovo CSV per ricaricare.' }); } })} onSetFleet={setFleet} scadenze={scadenze} setScadenze={setScadenze} fermiFlotta={fermiFlotta} setFermiFlotta={setFermiFlotta} rentmeVehicles={rentmeVehicles} manutenzioni={manutenzioni} setManutenzioni={setManutenzioni} partners={partners} targhe={targhe} setTarghe={setTarghe} />}
               {page === 'customers'  && <CustomersPage customers={customers} setCustomers={setCustomers} prenotazioni={prenotazioni} admin={admin} onShowQR={(c) => setModal({ type: 'qr', customer: c })} onNewWithCustomer={openWizard} onAddCustomer={() => setModal('newCustomer')} onEditCustomer={(c) => setModal({ type: 'editCustomer', customer: c })} onDeleteCustomer={deleteCustomer} onShowStorico={(c) => setStorioClienteId(c.id)} />}
               {page === 'partners'   && <PartnersPage partners={partners} admin={admin} onAddPartner={() => setModal('newPartner')} onEditPartner={(p) => setModal({ type: 'editPartner', partner: p })} onDeletePartner={requestDeletePartner} />}
@@ -18111,6 +18112,91 @@ function CuorePrenotaPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazion
 }
 
 // ═══════════════════════════════════════════════════════════════════
+// 🫀 FLOTTA NUOVA (Fase 4) — il Parco Mezzi (lista unica) con modifica TARGA.
+// Targa = una fonte sola (la tabella). "(manca)" evidenziato. Sistema qui le
+// targhe mancanti (mxu 167, panda 350…). Stato/scadenze read-only per ora.
+// ═══════════════════════════════════════════════════════════════════
+function CuoreFlottaPage({ rentmeVehicles, targhe, setTarghe, fleet, scadenze, admin }) {
+  const parco = useMemo(() => cuoreBuildParco(rentmeVehicles, { targhe, fleet, scadenze }), [rentmeVehicles, targhe, fleet, scadenze]);
+  const [q, setQ] = useState('');
+  const [soloMancanti, setSoloMancanti] = useState(false);
+  const [editNum, setEditNum] = useState(null);
+  const [draft, setDraft] = useState('');
+
+  const visibili = useMemo(() => parco
+    .filter(m => (!soloMancanti || !m.targa))
+    .filter(m => { if (!q) return true; const s = q.toLowerCase(); return [m.numero, m.targa, m.modello, m.marca, m.categoria].some(x => String(x || '').toLowerCase().includes(s)); })
+    .sort((a, b) => (a.tipo + a.categoria).localeCompare(b.tipo + b.categoria) || (parseInt(a.numero) - parseInt(b.numero))),
+    [parco, q, soloMancanti]);
+
+  const mancanti = useMemo(() => parco.filter(m => !m.targa).length, [parco]);
+
+  const apriEdit = (m) => { if (!admin) return; setEditNum(m.numero); setDraft(m.targa || ''); };
+  const salva = (numero) => { setTarghe(prev => ({ ...(prev || {}), [numero]: draft.toUpperCase().trim() })); setEditNum(null); setDraft(''); };
+
+  const th = { textAlign: 'left', padding: '6px 10px', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--ink-2)', borderBottom: '1px solid var(--border)', background: 'var(--paper)' };
+  const td = { padding: '5px 10px', fontSize: 13, borderBottom: '1px solid var(--border)' };
+  const mono = { fontFamily: 'var(--font-mono, monospace)' };
+
+  return (
+    <div style={{ maxWidth: 980, margin: '0 auto' }}>
+      <div className="label" style={{ color: 'var(--sea)' }}>NUOVO CUORE · FLOTTA (anteprima)</div>
+      <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: 22, letterSpacing: '-0.01em', margin: '2px 0 4px' }}>Parco Mezzi — lista unica</h1>
+      <p style={{ fontSize: 13, color: 'var(--ink-2)', marginBottom: 14 }}>
+        {parco.length} mezzi · {mancanti > 0 ? <strong style={{ color: 'var(--accent, #c0392b)' }}>{mancanti} senza targa</strong> : 'tutte le targhe presenti'}.
+        Targa da una <strong>fonte sola</strong> (la tabella). {admin ? 'Clicca una targa per modificarla.' : 'Attiva Admin per modificare.'}
+      </p>
+
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
+        <input value={q} onChange={e => setQ(e.target.value)} placeholder="Cerca numero, targa, modello…" style={{ padding: '7px 10px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 13, minWidth: 240 }} />
+        <label style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+          <input type="checkbox" checked={soloMancanti} onChange={e => setSoloMancanti(e.target.checked)} /> Solo targhe mancanti
+        </label>
+      </div>
+
+      <div className="card-paper" style={{ padding: 0, overflow: 'hidden' }}>
+        <div style={{ maxHeight: '68vh', overflowY: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead><tr><th style={th}>Numero</th><th style={th}>Targa</th><th style={th}>Tipo</th><th style={th}>Categoria</th><th style={th}>cc</th><th style={th}>Modello</th><th style={th}>Stato</th></tr></thead>
+            <tbody>
+              {visibili.map(m => (
+                <tr key={m.numero}>
+                  <td style={{ ...td, ...mono }}>{m.numero}</td>
+                  <td style={{ ...td, ...mono }}>
+                    {editNum === m.numero ? (
+                      <span style={{ display: 'flex', gap: 4 }}>
+                        <input autoFocus value={draft} onChange={e => setDraft(e.target.value)}
+                          onKeyDown={e => { if (e.key === 'Enter') salva(m.numero); if (e.key === 'Escape') { setEditNum(null); setDraft(''); } }}
+                          style={{ padding: '2px 5px', border: '1px solid var(--sea)', borderRadius: 4, width: 100, textTransform: 'uppercase', fontFamily: 'inherit' }} />
+                        <button type="button" onClick={() => salva(m.numero)} style={{ border: 'none', background: 'var(--sea)', color: '#fff', borderRadius: 4, padding: '2px 8px', cursor: 'pointer', fontSize: 11 }}>OK</button>
+                      </span>
+                    ) : (
+                      <span onClick={() => apriEdit(m)} style={{ cursor: admin ? 'pointer' : 'default', color: m.targa ? 'var(--ink)' : 'var(--accent, #c0392b)', fontWeight: m.targa ? 400 : 700, borderBottom: admin ? '1px dashed var(--border)' : 'none' }}>
+                        {m.targa || '(manca)'}
+                      </span>
+                    )}
+                  </td>
+                  <td style={td}>{m.tipo}</td>
+                  <td style={td}>{m.categoria || '—'}</td>
+                  <td style={{ ...td, ...mono }}>{m.cc || '—'}</td>
+                  <td style={td}>{m.modello || '—'}</td>
+                  <td style={{ ...td, color: m.stato === 'disponibile' ? 'var(--ink-2)' : 'var(--accent, #c0392b)', fontWeight: m.stato === 'disponibile' ? 400 : 600 }}>{m.stato}</td>
+                </tr>
+              ))}
+              {visibili.length === 0 && <tr><td colSpan={7} style={{ ...td, textAlign: 'center', color: 'var(--ink-2)', padding: 20 }}>Nessun mezzo.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <p style={{ fontSize: 11, color: 'var(--ink-2)', marginTop: 8 }}>
+        La targa che metti qui è l'<strong>unica</strong>, usata identica ovunque (flotta, calendario, prenotazioni, e — in arrivo — il contratto).
+        Lo stato/manutenzione arriva da RentMe; modifica stato/scadenze in arrivo.
+      </p>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
 // SIDEBAR
 // ═══════════════════════════════════════════════════════════════════
 function Sidebar({ page, setPage, onNew, online, agency, rentmeSyncStatus, rentmeAlertCount, rentmeRetryCount, offlineSyncCount, cuoreNuovo }) {
@@ -18139,6 +18225,7 @@ function Sidebar({ page, setPage, onNew, online, agency, rentmeSyncStatus, rentm
     items.push({ id: 'cuore', label: 'Cuore (anteprima)', icon: Sparkles });
     items.push({ id: 'cuore_cal', label: 'Calendario nuovo', icon: Sparkles });
     items.push({ id: 'cuore_preno', label: 'Prenota (cuore)', icon: Sparkles });
+    items.push({ id: 'cuore_flotta', label: 'Flotta (cuore)', icon: Sparkles });
   }
 
   const sidebarDark = '#16181d';
