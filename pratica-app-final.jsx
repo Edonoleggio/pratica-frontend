@@ -3065,9 +3065,14 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
   // allVehicles ora usa fleet.v.id → si aggiunge anche l'id attuale del veicolo corrispondente.
   const bookedIds = useMemo(() => {
     if (!f.dal || !f.al) return new Set();
-    // Mappa targa→fleet.id per tradurre booking legacy
+    // Mappa targa→fleet.id e codice→fleet.id per tradurre booking di qualunque formato
     const fleetIdByTarga = {};
-    (fleet || []).forEach(fv => { if (fv.targa && fv.id) fleetIdByTarga[fv.targa.toUpperCase().trim()] = fv.id; });
+    const fleetIdByCode  = {};
+    (fleet || []).forEach(fv => {
+      if (fv.targa && fv.id) fleetIdByTarga[fv.targa.toUpperCase().trim()] = fv.id;
+      const c = codeFromRentme(fv.idRentme || fv.rentmeId);
+      if (c && fv.id) fleetIdByCode[c] = fv.id;
+    });
     // Traduttore al CODICE RentMe (stesso di calcAvailability): allVehicles usa il codice
     // come id per i mezzi RentMe → così un booking con vehicleId=targa/vecchio-id esclude
     // comunque il mezzo giusto dal picker (coerente con il conteggio per categoria).
@@ -3078,7 +3083,11 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
       const translated = fleetIdByTarga[vid.toUpperCase()];
       if (translated) ids.add(translated); // aggiunge anche fleet.id se vid era una targa
       const code = resolveCode(vid);
-      if (code) ids.add(code);             // aggiunge il codice RentMe risolto
+      if (code) {
+        ids.add(code);                     // aggiunge il codice RentMe risolto
+        const fid = fleetIdByCode[code];
+        if (fid) ids.add(fid);             // e il fleet.id del codice (booking GIÀ migrato → Mossa 2)
+      }
     };
     const ids = new Set();
     (prenotazioni || [])
@@ -6073,18 +6082,49 @@ function migrateFleet(fl) {
 // • aggiunge fonte='manuale' se assente (ante-v0.38)
 // • normalizza stato='annullata' → 'cancellata' (annullata non è mai stato
 //   in PRENO_STATI ma potrebbe esistere in dati storici ante-v0.43.12)
+// • MOSSA 2 — re-key vehicleId / vehicleSchedule[].vehicleId → CODICE RentMe
+//   (solo se fleet+targhe disponibili). NON distruttiva e IDEMPOTENTE: un id non
+//   risolvibile (orfano) resta com'è; l'id originale è conservato in _vehicleIdOld.
+//   Una volta che vehicleId è già un codice, resolve(codice)=codice → nessun cambio.
 // Nota: generateBookingCode() è deterministicamente random —
 // in caso di doppio caricamento (localStorage poi backend) il codice
 // potrebbe differire, ma al secondo avvio app il backend ha già il
 // valore migrato e restituisce lo stesso → stabile dopo la prima run.
-function migratePrenotazioni(ps) {
+function migratePrenotazioni(ps, fleet, targhe) {
   if (!Array.isArray(ps)) return ps;
+  // Il re-key al codice RentMe parte SOLO se è disponibile la flotta (fleet o targhe).
+  // Senza, si applicano solo le migrazioni storiche (codice/fonte/stato).
+  const resolve = (fleet || targhe) ? buildVehicleKeyResolver(fleet, targhe) : null;
   let changed = false;
   const next = ps.map(p => {
     const patch = {};
     if (!p.codice) patch.codice = generateBookingCode();
     if (!p.fonte)  patch.fonte  = 'manuale';
     if (p.stato === 'annullata') patch.stato = 'cancellata'; // normalizza legacy
+    if (resolve) {
+      // vehicleId principale
+      if (p.vehicleId) {
+        const code = resolve(p.vehicleId);
+        if (code && code !== String(p.vehicleId)) {
+          patch.vehicleId = code;
+          if (p._vehicleIdOld === undefined) patch._vehicleIdOld = p.vehicleId;
+        }
+      }
+      // segmenti vehicleSchedule (combinazioni multi-mezzo)
+      if (Array.isArray(p.vehicleSchedule) && p.vehicleSchedule.length) {
+        let schedChanged = false;
+        const sched = p.vehicleSchedule.map(s => {
+          if (!s || !s.vehicleId) return s;
+          const code = resolve(s.vehicleId);
+          if (code && code !== String(s.vehicleId)) {
+            schedChanged = true;
+            return { ...s, vehicleId: code, _vehicleIdOld: s._vehicleIdOld ?? s.vehicleId };
+          }
+          return s;
+        });
+        if (schedChanged) patch.vehicleSchedule = sched;
+      }
+    }
     if (!Object.keys(patch).length) return p;
     changed = true;
     return { ...p, ...patch };
@@ -15908,9 +15948,16 @@ export default function App() {
   const [operators,    setOperators,    operatorsSync] = usePersistentState('edo:v1:operators', MOCK_OPERATORS,          { ...sharedOpts, migrate: migrateOperators });
   const [cargosConfig, setCargosConfig, cargosSync]    = usePersistentState('edo:v1:cargos',    INITIAL_CARGOS_CONFIG,   { ...sharedOpts, migrate: migrateCargos });
   const [agency,       setAgency,       agencySync]    = usePersistentState('edo:v1:agency',    INITIAL_AGENCY,          { ...sharedOpts, migrate: migrateAgency });
+  const [rentmeVehicles, setRentmeVehicles] = usePersistentState('edo:v1:rentme_vehicles', [], { skipRemote: true });
+  // Tabella targhe (codice RentMe → targa reale), curata dall'utente. Seme = Foglio 3.
+  const [targhe, setTarghe, targheSync] = usePersistentState('edo:v1:targhe', TARGHE_SEED, sharedOpts);
+  // ⚠️ prenotazioni è dichiarato DOPO fleet+targhe perché il suo migrate (Mossa 2)
+  // re-keya vehicleId→codice RentMe usando buildVehicleKeyResolver(fleet, targhe), e
+  // il migrate gira SINCRONO all'init dell'hook → fleet/targhe devono già esistere
+  // (altrimenti TDZ). Stesso motivo per cui scadenze/fermi/manutenzioni sono qui sotto.
   const [prenotazioni, setPrenotazioni, prenoSync]     = usePersistentState('edo:v1:prenotazioni', [], {
     ...sharedOpts,
-    migrate: migratePrenotazioni,
+    migrate: (d) => migratePrenotazioni(d, fleet, targhe),
     // Sanitize per il remote sync:
     // 1. Rimuove campi base64 pesanti (foto, firmaDigitale) — niente immagini sul backend
     // 2. Invia solo prenotazioni degli ultimi 6 mesi + quelle ancora attive/future
@@ -15960,9 +16007,6 @@ export default function App() {
       return localOnly.length ? [...remote, ...localOnly] : remote;
     },
   });
-  const [rentmeVehicles, setRentmeVehicles] = usePersistentState('edo:v1:rentme_vehicles', [], { skipRemote: true });
-  // Tabella targhe (codice RentMe → targa reale), curata dall'utente. Seme = Foglio 3.
-  const [targhe, setTarghe, targheSync] = usePersistentState('edo:v1:targhe', TARGHE_SEED, sharedOpts);
   // Flotta UNIFICATA: se ci sono mezzi RentMe, la Flotta è RentMe ⋈ targhe (fonte unica,
   // sempre allineata); altrimenti fallback al fleet locale (offline / primo avvio).
   const unifiedFleet = useMemo(
@@ -16320,7 +16364,7 @@ export default function App() {
         )) return;
         // Applica le stesse migration di usePersistentState — così la sessione
         // corrente usa dati già puliti senza aspettare il reload.
-        if (data.prenotazioni) setPrenotazioni(migratePrenotazioni(data.prenotazioni));
+        if (data.prenotazioni) setPrenotazioni(migratePrenotazioni(data.prenotazioni, fleet, targhe));
         if (data.fleet)        setFleet(migrateFleet(data.fleet));
         if (data.customers)    setCustomers(data.customers);
         if (data.cassa)        setCassa(data.cassa);
