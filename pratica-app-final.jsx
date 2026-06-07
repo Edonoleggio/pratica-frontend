@@ -14893,7 +14893,32 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
     [fleetList, tipoFilter]
   );
 
-  // Mappa (vehicleId|day) → prenotazione (con supporto vehicleSchedule multi-mezzo)
+  // Le righe-mezzo sono indicizzate per TARGA (fleetList.id = targa, riga sopra). Il
+  // vehicleId di una prenotazione può invece essere targa, codice RentMe o vecchio
+  // fleet.id (specie dopo la migrazione al codice — Mossa 2). rowKeyOf normalizza
+  // QUALUNQUE formato all'id-riga (targa) così le barre compaiono sempre.
+  const rowKeyOf = useMemo(() => {
+    const map = {};
+    (rentmeVehicles || []).forEach(v => {
+      const targa = (v.targa || '').trim().toUpperCase();
+      if (!targa) return;
+      map[targa] = targa;                                   // targa → sé stessa
+      if (v.rentmeCode) map[String(v.rentmeCode)] = targa;  // codice RentMe → targa
+      const c = codeFromRentme(v.idRentme || v.rentmeId);
+      if (c) map[c] = targa;                                // codice da idRentme → targa
+    });
+    (fleet || []).forEach(fv => {                           // vecchio fleet.id → targa
+      const t = (fv.targa || '').trim().toUpperCase();
+      if (fv.id && t) map[String(fv.id)] = t;
+    });
+    return (vid) => {
+      if (!vid) return null;
+      const s = String(vid);
+      return map[s] || map[s.toUpperCase().trim()] || s.toUpperCase().trim();
+    };
+  }, [rentmeVehicles, fleet]);
+
+  // Mappa (rowKey|day) → prenotazione (con supporto vehicleSchedule multi-mezzo)
   const cellMap = useMemo(() => {
     const m = {};
     prenoList.forEach(p => {
@@ -14901,9 +14926,10 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
         // Booking multi-mezzo: ogni segmento appare sulla riga del suo veicolo
         p.vehicleSchedule.forEach((seg, segIdx) => {
           if (!seg.vehicleId) return;
+          const key = rowKeyOf(seg.vehicleId);
           days.forEach(d => {
             if (seg.dal <= d && seg.al >= d) {
-              m[`${seg.vehicleId}|${d}`] = {
+              m[`${key}|${d}`] = {
                 ...p,
                 _segDal:     seg.dal,
                 _segAl:      seg.al,
@@ -14915,13 +14941,14 @@ function CalendarioFlottaPage({ prenotazioni, fleet, rentmeVehicles, setPage, se
         });
       } else {
         if (!p.vehicleId) return;
+        const key = rowKeyOf(p.vehicleId);
         days.forEach(d => {
-          if (p.dal <= d && p.al >= d) m[`${p.vehicleId}|${d}`] = p;
+          if (p.dal <= d && p.al >= d) m[`${key}|${d}`] = p;
         });
       }
     });
     return m;
-  }, [prenoList, days]);
+  }, [prenoList, days, rowKeyOf]);
 
   // Mappa (vehicleId|day) → fermo programmato — visivo, celle grigie striate
   const fermiMap = useMemo(() => {
