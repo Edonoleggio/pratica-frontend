@@ -17143,6 +17143,7 @@ export default function App() {
               {page === 'contracts'  && <ContractsList contracts={localContracts} operators={operators} onRetry={retryContract} onMarkReturned={markContractReturned} onSendPec={sendContractPec} pecStatus={pecStatus} online={online} />}
               {page === 'cuore' && cuoreNuovo && <CuoreAnteprimaPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} prenotazioni={prenotazioni} scadenze={scadenze} />}
               {page === 'cuore_cal' && cuoreNuovo && <CuoreCalendarioPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} prenotazioni={prenotazioni} scadenze={scadenze} />}
+              {page === 'cuore_preno' && cuoreNuovo && <CuorePrenotaPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} pushToast={pushToast} />}
               {page === 'fleet'      && <FleetPage fleet={unifiedFleet} prenotazioni={prenotazioni} admin={admin} onAddVehicle={() => setModal('newVehicle')} onEditVehicle={(v) => setModal({ type: 'editVehicle', vehicle: v })} onDeleteVehicle={requestDeleteVehicle} onImportCSV={() => setShowCsvImport(true)} onResetFleet={() => setModal({ type: 'confirm', title: 'Azzera flotta?', message: <><strong>Tutti i {fleet.length} veicoli</strong> verranno eliminati dalla flotta. Le prenotazioni esistenti restano invariate. Dopo puoi reimportare con un CSV aggiornato. <strong>Azione irreversibile.</strong></>, confirmLabel: 'Azzera flotta', variant: 'danger', onConfirm: () => { setFleet([]); pushToast({ tone: 'info', title: 'Flotta azzerata', message: 'Tutti i veicoli rimossi. Importa un nuovo CSV per ricaricare.' }); } })} onSetFleet={setFleet} scadenze={scadenze} setScadenze={setScadenze} fermiFlotta={fermiFlotta} setFermiFlotta={setFermiFlotta} rentmeVehicles={rentmeVehicles} manutenzioni={manutenzioni} setManutenzioni={setManutenzioni} partners={partners} targhe={targhe} setTarghe={setTarghe} />}
               {page === 'customers'  && <CustomersPage customers={customers} setCustomers={setCustomers} prenotazioni={prenotazioni} admin={admin} onShowQR={(c) => setModal({ type: 'qr', customer: c })} onNewWithCustomer={openWizard} onAddCustomer={() => setModal('newCustomer')} onEditCustomer={(c) => setModal({ type: 'editCustomer', customer: c })} onDeleteCustomer={deleteCustomer} onShowStorico={(c) => setStorioClienteId(c.id)} />}
               {page === 'partners'   && <PartnersPage partners={partners} admin={admin} onAddPartner={() => setModal('newPartner')} onEditPartner={(p) => setModal({ type: 'editPartner', partner: p })} onDeletePartner={requestDeletePartner} />}
@@ -17970,6 +17971,146 @@ function CuoreCalendarioPage({ rentmeVehicles, targhe, fleet, prenotazioni, scad
 }
 
 // ═══════════════════════════════════════════════════════════════════
+// 🫀 NUOVA PRENOTAZIONE (Fase 4) — i DUE BLOCCHI dal vivo sul motore nuovo.
+// Categoria esaurita → bloccato. Mezzo già occupato → bloccato. Scrive il nuovo
+// modello {tipo,categoria,assegnazioni} + rispecchia i campi vecchi per compatibilità.
+// ═══════════════════════════════════════════════════════════════════
+function CuorePrenotaPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazioni, setPrenotazioni, pushToast }) {
+  const parco = useMemo(() => cuoreBuildParco(rentmeVehicles, { targhe, fleet, scadenze }), [rentmeVehicles, targhe, fleet, scadenze]);
+  const prenoNuove = useMemo(() => (prenotazioni || []).map(p => cuoreMigraPreno(p, parco)), [prenotazioni, parco]);
+
+  const oggi = todayISO();
+  const [tipo, setTipo] = useState('');
+  const [categoria, setCategoria] = useState('');
+  const [dal, setDal] = useState(oggi);
+  const [al, setAl] = useState(oggi);
+  const [numero, setNumero] = useState('');      // mezzo preciso, facoltativo
+  const [cognome, setCognome] = useState('');
+  const [nome, setNome] = useState('');
+
+  const tipi = useMemo(() => [...new Set(parco.map(m => m.tipo).filter(Boolean))].sort(), [parco]);
+  const categorieDelTipo = useMemo(() => {
+    if (!tipo) return [];
+    return [...new Set(parco.filter(m => canonicalTipo({ tipo: m.tipo }) === canonicalTipo({ tipo })).map(m => m.categoria).filter(Boolean))].sort();
+  }, [parco, tipo]);
+
+  // disponibilità della categoria scelta (la regola, una sola funzione)
+  const disp = useMemo(() => {
+    if (!tipo || !dal || !al) return null;
+    return cuoreAvailability(parco, prenoNuove, { tipo, categoria, dal, al });
+  }, [parco, prenoNuove, tipo, categoria, dal, al]);
+
+  const categoriaPiena = disp && disp.liberi <= 0;
+  const mezziScegliibili = disp ? disp.mezziLiberi : [];
+  const numeroOccupato = numero && disp && !disp.mezziLiberi.some(m => String(m.numero) === String(numero));
+
+  // reset a cascata
+  const cambiaTipo = (t) => { setTipo(t); setCategoria(''); setNumero(''); };
+  const cambiaCategoria = (c) => { setCategoria(c); setNumero(''); };
+
+  const puoConfermare = tipo && dal && al && al >= dal && cognome.trim() && !categoriaPiena && !numeroOccupato;
+
+  function conferma() {
+    if (!puoConfermare) return;
+    const mezzo = numero ? parco.find(m => String(m.numero) === String(numero)) : null;
+    const id = 'b' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    const nuova = {
+      id,
+      codice: (typeof generateBookingCode === 'function' ? generateBookingCode() : id),
+      stato: 'confermata',
+      fonte: 'manuale',
+      clienteCognome: cognome.trim(),
+      clienteNome: nome.trim(),
+      dal, al,
+      // ── modello NUOVO ──
+      tipo, categoria,
+      assegnazioni: mezzo ? [{ numero: String(mezzo.numero), dal, al }] : [],
+      // ── rispecchiamento VECCHIO (compatibilità transizione) ──
+      vehicleType: tipo,
+      vehicleCategoria: categoria,
+      vehicleId: mezzo ? String(mezzo.numero) : null,
+      vehicleTarga: mezzo ? (mezzo.targa || '') : '',
+      vehicleLabel: mezzo ? (mezzo.modello || mezzo.numero) : '',
+    };
+    setPrenotazioni(prev => [...(prev || []), nuova]);
+    pushToast && pushToast({ tone: 'success', title: 'Prenotazione creata (cuore)', message: `${cognome} · ${tipo} ${categoria || ''} · ${dal}→${al}${mezzo ? ' · n.' + mezzo.numero : ' · da assegnare'}` });
+    setCognome(''); setNome(''); setNumero('');
+  }
+
+  const inp = { padding: '7px 9px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 13, width: '100%' };
+  const lbl = { fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--ink-2)', marginBottom: 3, display: 'block' };
+
+  return (
+    <div style={{ maxWidth: 640, margin: '0 auto' }}>
+      <div className="label" style={{ color: 'var(--sea)' }}>NUOVO CUORE · NUOVA PRENOTAZIONE (anteprima)</div>
+      <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: 22, letterSpacing: '-0.01em', margin: '2px 0 4px' }}>Nuova prenotazione</h1>
+      <p style={{ fontSize: 13, color: 'var(--ink-2)', marginBottom: 16 }}>
+        I <strong>due blocchi</strong> in azione: categoria esaurita → non si prenota; mezzo già occupato → non si assegna.
+        Scrive una prenotazione vera (compatibile col resto). Parco: {parco.length} mezzi.
+      </p>
+
+      <div className="card-paper" style={{ padding: 16, display: 'grid', gap: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div><label style={lbl}>Tipo</label>
+            <select style={inp} value={tipo} onChange={e => cambiaTipo(e.target.value)}>
+              <option value="">— scegli —</option>
+              {tipi.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </div>
+          <div><label style={lbl}>Categoria</label>
+            <select style={inp} value={categoria} onChange={e => cambiaCategoria(e.target.value)} disabled={!tipo}>
+              <option value="">— qualsiasi {tipo} —</option>
+              {categorieDelTipo.map(c => {
+                const a = cuoreAvailability(parco, prenoNuove, { tipo, categoria: c, dal, al });
+                return <option key={c} value={c}>{c} — {a.liberi}/{a.totale} liberi{a.liberi <= 0 ? ' (esaurita)' : ''}</option>;
+              })}
+            </select>
+          </div>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div><label style={lbl}>Dal</label><input type="date" style={inp} value={dal} onChange={e => setDal(e.target.value)} /></div>
+          <div><label style={lbl}>Al</label><input type="date" style={inp} value={al} onChange={e => setAl(e.target.value)} /></div>
+        </div>
+
+        {/* banner disponibilità */}
+        {disp && (
+          <div style={{ padding: '10px 12px', borderRadius: 8, fontSize: 13, fontWeight: 600,
+            background: categoriaPiena ? 'rgba(192,57,50,0.10)' : 'rgba(31,93,131,0.08)',
+            color: categoriaPiena ? 'var(--accent, #c0392b)' : 'var(--sea)',
+            border: `1px solid ${categoriaPiena ? 'rgba(192,57,50,0.3)' : 'rgba(31,93,131,0.25)'}` }}>
+            {categoriaPiena
+              ? `⛔ ${tipo} ${categoria || ''} ESAURITA per queste date (${disp.occupati}/${disp.totale} occupati) — non si può prenotare`
+              : `✓ ${disp.liberi} ${tipo} ${categoria || ''} liberi su ${disp.totale} per queste date`}
+          </div>
+        )}
+
+        <div><label style={lbl}>Mezzo specifico (facoltativo — altrimenti si assegna dopo)</label>
+          <select style={inp} value={numero} onChange={e => setNumero(e.target.value)} disabled={!disp || categoriaPiena}>
+            <option value="">— nessun mezzo preciso (da assegnare) —</option>
+            {mezziScegliibili.map(m => <option key={m.numero} value={m.numero}>{m.modello || ''} · {m.targa || '(targa manca)'} · n.{m.numero}</option>)}
+          </select>
+          {numeroOccupato && <div style={{ color: 'var(--accent, #c0392b)', fontSize: 12, marginTop: 3 }}>⛔ Questo mezzo è già occupato in queste date</div>}
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div><label style={lbl}>Cognome cliente</label><input style={inp} value={cognome} onChange={e => setCognome(e.target.value)} placeholder="Rossi" /></div>
+          <div><label style={lbl}>Nome</label><input style={inp} value={nome} onChange={e => setNome(e.target.value)} placeholder="Mario" /></div>
+        </div>
+
+        <button type="button" onClick={conferma} disabled={!puoConfermare}
+          style={{ padding: '10px 16px', borderRadius: 8, border: 'none', fontWeight: 700, fontSize: 14,
+            cursor: puoConfermare ? 'pointer' : 'not-allowed',
+            background: puoConfermare ? 'var(--sea)' : 'var(--surface-2)',
+            color: puoConfermare ? '#fff' : 'var(--ink-2)' }}>
+          {categoriaPiena ? 'Categoria esaurita' : 'Conferma prenotazione'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
 // SIDEBAR
 // ═══════════════════════════════════════════════════════════════════
 function Sidebar({ page, setPage, onNew, online, agency, rentmeSyncStatus, rentmeAlertCount, rentmeRetryCount, offlineSyncCount, cuoreNuovo }) {
@@ -17997,6 +18138,7 @@ function Sidebar({ page, setPage, onNew, online, agency, rentmeSyncStatus, rentm
   if (cuoreNuovo) {
     items.push({ id: 'cuore', label: 'Cuore (anteprima)', icon: Sparkles });
     items.push({ id: 'cuore_cal', label: 'Calendario nuovo', icon: Sparkles });
+    items.push({ id: 'cuore_preno', label: 'Prenota (cuore)', icon: Sparkles });
   }
 
   const sidebarDark = '#16181d';
