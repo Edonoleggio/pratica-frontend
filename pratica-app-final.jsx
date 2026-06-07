@@ -13591,15 +13591,21 @@ function OggiPage({ prenotazioni, setPrenotazioni, fleet, scadenze, customers, s
     if (stato) docAlerts.push({ preno: p, cliente: c, scad, stato });
   });
 
-  // Lookup targa→fleet.id per retrocompatibilità (p.vehicleId legacy = targa)
+  // Lookup per normalizzare il vehicleId di una prenotazione all'id usato da fleetList:
+  // targa→fleet.id (prenotazioni legacy con vehicleId=targa) e codice RentMe→fleet.id
+  // (pronto per la Mossa 2, quando le prenotazioni passeranno al codice RentMe).
   const fleetIdByTarga_oggi = {};
+  const fleetIdByCode_oggi = {};
   (fleetList || []).forEach(fv => {
     if (fv.targa) fleetIdByTarga_oggi[(fv.targa||'').toUpperCase().trim()] = fv.id;
+    const code = codeFromRentme(fv.idRentme || fv.rentmeId);
+    if (code && fv.id) fleetIdByCode_oggi[code] = fv.id;
   });
   function resolveVehicleId_oggi(vid) {
     if (!vid) return null;
-    const upper = vid.toUpperCase().trim();
-    return fleetIdByTarga_oggi[upper] || vid;
+    const s = String(vid);
+    const upper = s.toUpperCase().trim();
+    return fleetIdByTarga_oggi[upper] || fleetIdByCode_oggi[s] || vid;
   }
 
   // Veicoli occupati oggi (dal <= today <= al, stato attivo; inclusi segmenti vehicleSchedule)
@@ -13615,7 +13621,7 @@ function OggiPage({ prenotazioni, setPrenotazioni, fleet, scadenze, customers, s
     });
   // Fermi programmati: veicoli in manutenzione non sono "liberi"
   (fermiFlotta || []).forEach(f => {
-    if (f.vehicleId && f.dal <= today && f.al >= today) occupatiIds.add(f.vehicleId);
+    if (f.vehicleId && f.dal <= today && f.al >= today) occupatiIds.add(resolveVehicleId_oggi(f.vehicleId));
   });
   const liberi = fleetList.filter(v => v.status !== 'fuori_uso' && !occupatiIds.has(v.id));
   const liberiCount = liberi.length;
