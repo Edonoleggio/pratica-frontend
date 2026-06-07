@@ -6654,58 +6654,8 @@ function PreventiviPage({ setPage, setPrenotazioniPrefill, listino: listinoProps
 
   // Stessa logica di BancoRapido: raccoglie i veicoli di una categoria con stato libero/occupato
   function getVehiclesForCat(cat) {
-    const ct = (cat.tipo || '').toLowerCase();
-    const tipoMatch = t => {
-      const tl = (t || '').toLowerCase();
-      return tl === ct || (tl === 'moto' && ct === 'scooter') || (tl === 'scooter' && ct === 'moto');
-    };
-    // Filtro categoria: mostra solo i veicoli della sotto-categoria corretta
-    const catMatch = v => {
-      if (!cat.categoria) return true;
-      let vcat = getVehicleCategoria(v) || '';
-      const isAuto = (v.tipo || '').toLowerCase() === 'auto';
-      if (isAuto) vcat = normalizeAutoCategoria(vcat);
-      const targetCat = isAuto ? normalizeAutoCategoria(cat.categoria) : cat.categoria;
-      return vcat === targetCat;
-    };
-    const fleetVehicles = (fleet || [])
-      .filter(v => v.stato !== 'venduto' && v.stato !== 'fuori_uso' && tipoMatch(v.tipo) && catMatch(v))
-      .map(v => ({
-        ...v,
-        label: (v.marca && v.modello) ? `${v.marca} ${v.modello}` : (v.nome || v.targa || v.id),
-        targa: resolveVehicleDisplay(v).targa || v.targa || '',
-      }));
-    const rmVehicles = (rentmeVehicles || [])
-      .filter(v => tipoMatch(v.tipo) && catMatch(v))
-      .map(v => ({
-        ...v,
-        label: v.nome || v.modello || v.marca || '',
-        targa: resolveVehicleDisplay(v).targa || v.targa || '',
-      }));
-    const seen = new Set();
-    const merged = [];
-    for (const v of [...fleetVehicles, ...rmVehicles]) {
-      const id = v.id || v.targa;
-      if (!id || seen.has(id)) continue;
-      seen.add(id);
-      merged.push(v);
-    }
-    const occupati = new Set();
-    if (dal && al) {
-      (prenotazioni || [])
-        .filter(p => p.dal <= al && p.al >= dal && p.stato !== 'annullata' && p.stato !== 'cancellata' && p.stato !== 'completata')
-        .forEach(p => {
-          if (p.vehicleId) occupati.add(p.vehicleId);
-          (p.vehicleSchedule || []).forEach(s => {
-            if (s.vehicleId && s.dal <= al && s.al >= dal) occupati.add(s.vehicleId);
-          });
-        });
-      // Fermi programmati: manutenzione blocca il veicolo
-      (fermiFlotta || []).forEach(f => {
-        if (f.vehicleId && f.dal <= al && f.al >= dal) occupati.add(f.vehicleId);
-      });
-    }
-    return merged.map(v => ({ ...v, libero: !occupati.has(v.id) }));
+    // FONTE UNICA: helper condiviso con il Banco Rapido (buildCatPickerVehicles).
+    return buildCatPickerVehicles(cat, { rentmeVehicles, fleet, targhe, prenotazioni, fermiFlotta, dal, al });
   }
 
   function handleVehicleBook(cat, v, totale) {
@@ -9476,6 +9426,92 @@ function buildUnifiedFleet(rentmeVehicles, targhe) {
   });
 }
 
+// ── Picker mezzi per categoria — FONTE UNICA (Banco Rapido + Preventivi) ──
+// Un SOLO costruttore di lista per i due picker "Prenota": elimina le due copie
+// gemelle che ricostruivano la lista a mano (fleet + rentmeVehicles). La sorgente è
+// la stessa flotta unificata della pagina Flotta — buildUnifiedFleet (RentMe = verità
+// sui mezzi + targhe reali) — con fallback al fleet locale solo se RentMe non c'è.
+// L'`id` resta quello "legacy" (fleet.id quando esiste, altrimenti la targa) per NON
+// cambiare il vehicleId salvato sulle prenotazioni: la migrazione al codice RentMe è
+// la Mossa 2. L'insieme "occupati" è risolto al codice RentMe con lo stesso traduttore
+// di calcAvailability (buildVehicleKeyResolver) → il picker e il conteggio per categoria
+// concordano sempre (niente mezzo "libero" nel picker ma "occupato" nel conteggio).
+function buildCatPickerVehicles(cat, { rentmeVehicles, fleet, targhe, prenotazioni, fermiFlotta, dal, al }) {
+  const ctCanon = canonicalTipo({ tipo: cat?.tipo || '' });
+  const tipoMatch = v => { const tc = canonicalTipo(v); return !ctCanon || tc === ctCanon; };
+  const catMatch = v => {
+    if (!cat?.categoria) return true;
+    const isAuto = canonicalTipo(v) === 'auto';
+    let vcat = getVehicleCategoria(v) || '';
+    if (isAuto) vcat = normalizeAutoCategoria(vcat);
+    const target = isAuto ? normalizeAutoCategoria(cat.categoria) : cat.categoria;
+    return vcat === target;
+  };
+
+  // Mappa codice RentMe → fleet.id (via idRentme, robusta al drift delle targhe) per
+  // ricostruire l'id "legacy" compatibile col vehicleId salvato sulle prenotazioni.
+  const fleetIdByCode = {};
+  (fleet || []).forEach(fv => {
+    const code = codeFromRentme(fv.idRentme || fv.rentmeId);
+    if (code && fv.id) fleetIdByCode[code] = fv.id;
+  });
+
+  const useUnified = rentmeVehicles && rentmeVehicles.length > 0;
+  const source = useUnified ? buildUnifiedFleet(rentmeVehicles, targhe) : (fleet || []);
+
+  const pool = source
+    .filter(v => v.stato !== 'venduto' && v.stato !== 'fuori_uso' && tipoMatch(v) && catMatch(v))
+    .map(v => {
+      // Targa: dalla tabella targhe (fonte di verità, come FleetPage) quando unificato;
+      // solo nel fallback fleet locale usa resolveVehicleDisplay.
+      const targa = (useUnified ? (v.targa || '') : (resolveVehicleDisplay(v).targa || v.targa || '')).toUpperCase().trim();
+      // id legacy: fleet.id se il mezzo è in flotta locale, altrimenti targa, altrimenti id unificato (codice)
+      const code = String(v.rentmeCode || v.id || '');
+      const id = useUnified ? (fleetIdByCode[code] || targa || v.id) : v.id;
+      return {
+        ...v,
+        id,
+        targa,
+        label: (v.marca && v.modello) ? `${v.marca} ${v.modello}` : (v.modello || v.nome || v.targa || v.id),
+      };
+    });
+
+  // Dedup per id (fleet/rentme già unificati → l'id legacy distingue i mezzi)
+  const seen = new Set();
+  const merged = [];
+  for (const v of pool) {
+    const key = v.id || v.targa;
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    merged.push(v);
+  }
+
+  // Occupati nel periodo, risolti al CODICE RentMe (coerente con calcAvailability)
+  const resolve = buildVehicleKeyResolver(fleet, targhe);
+  const occ = new Set();
+  const addOcc = vid => {
+    if (!vid) return;
+    occ.add(String(vid).toUpperCase());
+    const c = resolve(vid);
+    if (c) occ.add(String(c).toUpperCase());
+  };
+  if (dal && al) {
+    (prenotazioni || [])
+      .filter(p => p.dal <= al && p.al >= dal && p.stato !== 'annullata' && p.stato !== 'cancellata' && p.stato !== 'completata')
+      .forEach(p => {
+        if (p.vehicleId) addOcc(p.vehicleId);
+        (p.vehicleSchedule || []).forEach(s => { if (s.vehicleId && s.dal <= al && s.al >= dal) addOcc(s.vehicleId); });
+      });
+    (fermiFlotta || []).forEach(f => { if (f.vehicleId && f.dal <= al && f.al >= dal) addOcc(f.vehicleId); });
+  }
+  const isFree = v => {
+    const cand = [v.id, v.targa, resolve(v.id), resolve(v.targa)]
+      .filter(Boolean).map(x => String(x).toUpperCase());
+    return !cand.some(c => occ.has(c));
+  };
+  return merged.map(v => ({ ...v, libero: isFree(v) }));
+}
+
 // ── Migrazione chiavi alla "Flotta unificata" (codice RentMe) ────────
 // scadenze (oggetto keyed by id) e manutenzioni/fermi (array con vehicleId) erano
 // indicizzati sul vecchio id fleet / targa. Nel modello unificato la chiave canonica
@@ -10178,64 +10214,8 @@ function BancoRapidoPage({ rentmeVehicles, prenotazioni, fleet, setPage, setPren
 
   // Calcola veicoli liberi per una categoria nelle date selezionate
   function getVehiclesForCat(cat) {
-    const ct = (cat.tipo || '').toLowerCase();
-    const tipoMatch = t => {
-      const tl = (t || '').toLowerCase();
-      return tl === ct || (tl === 'moto' && ct === 'scooter') || (tl === 'scooter' && ct === 'moto');
-    };
-    // Filtro categoria: mostra solo i veicoli della sotto-categoria corretta
-    const catMatch = v => {
-      if (!cat.categoria) return true;
-      let vcat = getVehicleCategoria(v) || '';
-      const isAuto = (v.tipo || '').toLowerCase() === 'auto';
-      if (isAuto) vcat = normalizeAutoCategoria(vcat);
-      const targetCat = isAuto ? normalizeAutoCategoria(cat.categoria) : cat.categoria;
-      return vcat === targetCat;
-    };
-
-    // Fleet locale: filtra per tipo + categoria, arricchisci label e targa
-    const fleetVehicles = (fleet || [])
-      .filter(v => v.stato !== 'venduto' && v.stato !== 'fuori_uso' && tipoMatch(v.tipo) && catMatch(v))
-      .map(v => ({
-        ...v,
-        label: (v.marca && v.modello) ? `${v.marca} ${v.modello}` : (v.nome || v.targa || v.id),
-        targa: resolveVehicleDisplay(v).targa || v.targa || '',
-      }));
-
-    // RentMe: filtra per tipo + categoria
-    const rmVehicles = (rentmeVehicles || [])
-      .filter(v => tipoMatch(v.tipo) && catMatch(v))
-      .map(v => ({
-        ...v,
-        label: v.nome || v.modello || v.marca || '',
-        targa: resolveVehicleDisplay(v).targa || v.targa || '',
-      }));
-
-    // Dedup by id — fleet ha precedenza
-    const seen = new Set();
-    const merged = [];
-    for (const v of [...fleetVehicles, ...rmVehicles]) {
-      const id = v.id || v.targa;
-      if (!id || seen.has(id)) continue;
-      seen.add(id);
-      merged.push(v);
-    }
-
-    // Mark occupati nelle date selezionate (inclusi segmenti vehicleSchedule multi-mezzo)
-    const occupati = new Set();
-    (prenotazioni || [])
-      .filter(p => p.dal <= al && p.al >= dal && p.stato !== 'annullata' && p.stato !== 'cancellata' && p.stato !== 'completata')
-      .forEach(p => {
-        if (p.vehicleId) occupati.add(p.vehicleId);
-        (p.vehicleSchedule || []).forEach(s => {
-          if (s.vehicleId && s.dal <= al && s.al >= dal) occupati.add(s.vehicleId);
-        });
-      });
-    // Fermi programmati: manutenzione blocca il veicolo
-    (fermiFlotta || []).forEach(f => {
-      if (f.vehicleId && f.dal <= al && f.al >= dal) occupati.add(f.vehicleId);
-    });
-    return merged.map(v => ({ ...v, libero: !occupati.has(v.id) }));
+    // FONTE UNICA: helper condiviso con i Preventivi (buildCatPickerVehicles).
+    return buildCatPickerVehicles(cat, { rentmeVehicles, fleet, targhe, prenotazioni, fermiFlotta, dal, al });
   }
 
   const handleSelect = (cat) => {
