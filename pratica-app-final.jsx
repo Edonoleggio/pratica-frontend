@@ -17142,6 +17142,7 @@ export default function App() {
               {page === 'prenotazioni' && <PrenotazioniPage prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} setCassa={setCassa} fleet={fleet} rentmeVehicles={rentmeVehicles} customers={customers} partners={partners} operator={operator} onOpenWizard={openWizard} pushToast={pushToast} prefill={prenotazioniPrefill} onClearPrefill={() => setPrenotazioniPrefill(null)} fermiFlotta={fermiFlotta} rentmePush={rentmeSync.pushBooking} rentmeConnected={rentmeSync.status === 'ok'} agency={agency} targhe={targhe} />}
               {page === 'contracts'  && <ContractsList contracts={localContracts} operators={operators} onRetry={retryContract} onMarkReturned={markContractReturned} onSendPec={sendContractPec} pecStatus={pecStatus} online={online} />}
               {page === 'cuore' && cuoreNuovo && <CuoreAnteprimaPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} prenotazioni={prenotazioni} scadenze={scadenze} />}
+              {page === 'cuore_cal' && cuoreNuovo && <CuoreCalendarioPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} prenotazioni={prenotazioni} scadenze={scadenze} />}
               {page === 'fleet'      && <FleetPage fleet={unifiedFleet} prenotazioni={prenotazioni} admin={admin} onAddVehicle={() => setModal('newVehicle')} onEditVehicle={(v) => setModal({ type: 'editVehicle', vehicle: v })} onDeleteVehicle={requestDeleteVehicle} onImportCSV={() => setShowCsvImport(true)} onResetFleet={() => setModal({ type: 'confirm', title: 'Azzera flotta?', message: <><strong>Tutti i {fleet.length} veicoli</strong> verranno eliminati dalla flotta. Le prenotazioni esistenti restano invariate. Dopo puoi reimportare con un CSV aggiornato. <strong>Azione irreversibile.</strong></>, confirmLabel: 'Azzera flotta', variant: 'danger', onConfirm: () => { setFleet([]); pushToast({ tone: 'info', title: 'Flotta azzerata', message: 'Tutti i veicoli rimossi. Importa un nuovo CSV per ricaricare.' }); } })} onSetFleet={setFleet} scadenze={scadenze} setScadenze={setScadenze} fermiFlotta={fermiFlotta} setFermiFlotta={setFermiFlotta} rentmeVehicles={rentmeVehicles} manutenzioni={manutenzioni} setManutenzioni={setManutenzioni} partners={partners} targhe={targhe} setTarghe={setTarghe} />}
               {page === 'customers'  && <CustomersPage customers={customers} setCustomers={setCustomers} prenotazioni={prenotazioni} admin={admin} onShowQR={(c) => setModal({ type: 'qr', customer: c })} onNewWithCustomer={openWizard} onAddCustomer={() => setModal('newCustomer')} onEditCustomer={(c) => setModal({ type: 'editCustomer', customer: c })} onDeleteCustomer={deleteCustomer} onShowStorico={(c) => setStorioClienteId(c.id)} />}
               {page === 'partners'   && <PartnersPage partners={partners} admin={admin} onAddPartner={() => setModal('newPartner')} onEditPartner={(p) => setModal({ type: 'editPartner', partner: p })} onDeletePartner={requestDeletePartner} />}
@@ -17795,6 +17796,180 @@ function CuoreAnteprimaPage({ rentmeVehicles, targhe, fleet, prenotazioni, scade
 }
 
 // ═══════════════════════════════════════════════════════════════════
+// 🫀 CALENDARIO NUOVO (Fase 4, dietro interruttore). Mese intero · barre per
+// NUMERO mezzo (non spariscono) · targa SEMPRE dalla tabella ("(manca)" se assente)
+// · fascia "da assegnare" per categoria · colonne a larghezza piena (no scroll
+// orizzontale su schermi larghi) · navigazione mese-per-mese.
+// ═══════════════════════════════════════════════════════════════════
+const CUORE_STATO_COLORE = { confermata: '#2e6e3e', in_corso: '#1f5d83', prorogata: '#7a5cc0', bozza: '#9a8c6a' };
+function CuoreCalendarioPage({ rentmeVehicles, targhe, fleet, prenotazioni, scadenze }) {
+  const parco = useMemo(() => cuoreBuildParco(rentmeVehicles, { targhe, fleet, scadenze }), [rentmeVehicles, targhe, fleet, scadenze]);
+  const prenoNuove = useMemo(
+    () => (prenotazioni || []).map(p => cuoreMigraPreno(p, parco)).filter(p => p && !CUORE_PRENO_FUORI.has(String(p.stato || ''))),
+    [prenotazioni, parco]
+  );
+
+  const oggi = todayISO();
+  const [ym, setYm] = useState(() => oggi.slice(0, 7)); // 'YYYY-MM'
+  const [y, mo] = ym.split('-').map(Number);
+  const giorniMese = new Date(y, mo, 0).getDate();              // ultimo giorno del mese
+  const meseInizio = `${ym}-01`;
+  const meseFine   = `${ym}-${String(giorniMese).padStart(2, '0')}`;
+  const days = useMemo(() => Array.from({ length: giorniMese }, (_, i) => `${ym}-${String(i + 1).padStart(2, '0')}`), [ym, giorniMese]);
+  const meseLabel = new Date(y, mo - 1, 1).toLocaleDateString('it-IT', { month: 'long', year: 'numeric' });
+  const cambiaMese = (delta) => {
+    const d = new Date(y, mo - 1 + delta, 1);
+    setYm(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+  };
+
+  const [tipoFiltro, setTipoFiltro] = useState('');
+  const tipi = useMemo(() => [...new Set(parco.map(m => m.tipo).filter(Boolean))].sort(), [parco]);
+
+  const mezziVisibili = useMemo(() => parco
+    .filter(m => !tipoFiltro || m.tipo === tipoFiltro)
+    .sort((a, b) => (a.tipo + a.categoria).localeCompare(b.tipo + b.categoria) || (parseInt(a.numero) - parseInt(b.numero))),
+    [parco, tipoFiltro]);
+
+  // Gruppi per categoria (tipo|categoria), in ordine
+  const gruppi = useMemo(() => {
+    const map = new Map();
+    mezziVisibili.forEach(m => { const k = `${m.tipo}|${m.categoria}`; if (!map.has(k)) map.set(k, { tipo: m.tipo, categoria: m.categoria, mezzi: [] }); map.get(k).mezzi.push(m); });
+    return [...map.values()];
+  }, [mezziVisibili]);
+
+  // overlap con il mese + posizione barra (left%/width%) su un periodo
+  const inMese = (dal, al) => dal && al && dal <= meseFine && al >= meseInizio;
+  const idxOf = (iso) => parseInt(iso.slice(8, 10), 10) - 1;
+  const barStyle = (dal, al) => {
+    const sIso = dal < meseInizio ? meseInizio : dal;
+    const eIso = al > meseFine ? meseFine : al;
+    const s = idxOf(sIso), e = idxOf(eIso);
+    return { left: `${(s / giorniMese) * 100}%`, width: `${((e - s + 1) / giorniMese) * 100}%` };
+  };
+
+  // Barre per ogni mezzo (segmenti assegnati al suo numero) e per la fascia "da assegnare" (prenotazioni senza mezzo, per categoria)
+  const barrePerNumero = useMemo(() => {
+    const m = {};
+    prenoNuove.forEach(p => {
+      const segs = cuoreSegmenti(p);
+      if (!segs.length) return;
+      segs.forEach(s => { if (inMese(s.dal, s.al)) { (m[String(s.numero)] ||= []).push({ p, dal: s.dal, al: s.al }); } });
+    });
+    return m;
+  }, [prenoNuove, ym]);
+
+  const daAssegnarePerCat = useMemo(() => {
+    const m = {};
+    prenoNuove.forEach(p => {
+      if (cuoreSegmenti(p).length) return; // ha già un mezzo
+      if (!inMese(p.dal, p.al)) return;
+      const k = `${canonicalTipo({ tipo: p.tipo })}|${String(p.categoria || '').toUpperCase()}`;
+      (m[k] ||= []).push(p);
+    });
+    return m;
+  }, [prenoNuove, ym]);
+
+  const LABEL_W = 160;
+  const cliente = (p) => `${p.clienteCognome || ''} ${p.clienteNome || ''}`.trim() || p.cliente || '—';
+
+  // celle di sfondo (bordi, weekend, oggi)
+  const TrackBg = () => (
+    <div style={{ position: 'absolute', inset: 0, display: 'flex' }}>
+      {days.map((d, i) => {
+        const dow = new Date(d + 'T12:00:00').getDay();
+        const weekend = dow === 0 || dow === 6;
+        return <div key={i} style={{ flex: 1, borderRight: '1px solid var(--border)', background: d === oggi ? 'rgba(31,93,131,0.10)' : weekend ? 'var(--surface-2)' : 'transparent' }} />;
+      })}
+    </div>
+  );
+
+  return (
+    <div>
+      <div className="label" style={{ color: 'var(--sea)' }}>NUOVO CUORE · CALENDARIO (anteprima)</div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
+        <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: 22, letterSpacing: '-0.01em', margin: '2px 0', textTransform: 'capitalize' }}>{meseLabel}</h1>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <select value={tipoFiltro} onChange={e => setTipoFiltro(e.target.value)} style={{ padding: '5px 8px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 13 }}>
+            <option value="">Tutti i tipi</option>
+            {tipi.map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
+          <button type="button" onClick={() => cambiaMese(-1)} style={{ padding: '5px 12px', border: '1px solid var(--border)', borderRadius: 6, background: 'transparent', cursor: 'pointer' }}>‹</button>
+          <button type="button" onClick={() => setYm(oggi.slice(0, 7))} style={{ padding: '5px 12px', border: '1px solid var(--border)', borderRadius: 6, background: 'transparent', cursor: 'pointer', fontSize: 12 }}>Oggi</button>
+          <button type="button" onClick={() => cambiaMese(1)} style={{ padding: '5px 12px', border: '1px solid var(--border)', borderRadius: 6, background: 'transparent', cursor: 'pointer' }}>›</button>
+        </div>
+      </div>
+
+      <div className="card-paper" style={{ padding: 0, overflow: 'hidden' }}>
+        {/* testata giorni (sopra il corpo che scrolla — niente position:sticky, vietato su Safari in overflow) */}
+        <div style={{ display: 'flex', background: '#16181d', color: '#d4cdc1' }}>
+          <div style={{ width: LABEL_W, flexShrink: 0, padding: '6px 10px', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em', borderRight: '1px solid #2c2e35' }}>Mezzo</div>
+          <div style={{ flex: 1, display: 'flex' }}>
+            {days.map((d, i) => {
+              const dd = new Date(d + 'T12:00:00');
+              const dow = dd.getDay();
+              return (
+                <div key={i} style={{ flex: 1, textAlign: 'center', padding: '4px 0', fontSize: 10, borderRight: '1px solid #2c2e35', background: d === oggi ? 'rgba(31,93,131,0.5)' : 'transparent' }}>
+                  <div style={{ fontFamily: 'var(--font-mono, monospace)', fontWeight: 700, color: '#f5f2ec' }}>{i + 1}</div>
+                  <div style={{ color: (dow === 0 || dow === 6) ? '#b06a5a' : '#8e887e' }}>{'DLMMGVS'[dow]}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* corpo: gruppi categoria → fascia "da assegnare" + righe mezzo */}
+        <div style={{ maxHeight: '64vh', overflowY: 'auto' }}>
+          {gruppi.map((g, gi) => {
+            const k = `${g.tipo}|${String(g.categoria || '').toUpperCase()}`;
+            const daAss = daAssegnarePerCat[k] || [];
+            return (
+              <div key={gi}>
+                {/* intestazione categoria + fascia da assegnare */}
+                <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', background: 'var(--surface-2)' }}>
+                  <div style={{ width: LABEL_W, flexShrink: 0, padding: '4px 10px', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.03em', color: 'var(--ink-2)' }}>
+                    {g.tipo} · {g.categoria || '—'}{daAss.length ? <span style={{ color: 'var(--accent, #c0392b)' }}> · {daAss.length} da assegnare</span> : ''}
+                  </div>
+                  <div style={{ flex: 1, position: 'relative', minHeight: daAss.length ? 26 : 0 }}>
+                    {daAss.length > 0 && <TrackBg />}
+                    {daAss.map((p, i) => (
+                      <div key={p.id} title={`${cliente(p)} · da assegnare`} style={{ position: 'absolute', top: 3, height: 20, ...barStyle(p.dal, p.al), background: 'repeating-linear-gradient(45deg,#c0392b,#c0392b 4px,#a93226 4px,#a93226 8px)', opacity: 0.85, borderRadius: 4, color: '#fff', fontSize: 10, padding: '2px 5px', overflow: 'hidden', whiteSpace: 'nowrap' }}>{cliente(p)}</div>
+                    ))}
+                  </div>
+                </div>
+                {/* righe mezzo */}
+                {g.mezzi.map(m => {
+                  const barre = barrePerNumero[String(m.numero)] || [];
+                  return (
+                    <div key={m.numero} style={{ display: 'flex', borderBottom: '1px solid var(--border)', minHeight: 30 }}>
+                      <div style={{ width: LABEL_W, flexShrink: 0, padding: '4px 10px', borderRight: '1px solid var(--border)', fontSize: 12 }}>
+                        <div style={{ fontWeight: 600 }}>{m.modello || m.numero}</div>
+                        <div style={{ fontFamily: 'var(--font-mono, monospace)', fontSize: 10, color: m.targa ? 'var(--ink-2)' : 'var(--accent, #c0392b)' }}>{m.targa || '(manca)'} · n.{m.numero}</div>
+                      </div>
+                      <div style={{ flex: 1, position: 'relative', minHeight: 30 }}>
+                        <TrackBg />
+                        {barre.map((b, i) => (
+                          <div key={i} title={`${cliente(b.p)} · ${b.dal} → ${b.al}`} style={{ position: 'absolute', top: 4, height: 22, ...barStyle(b.dal, b.al), background: CUORE_STATO_COLORE[b.p.stato] || '#777', borderRadius: 4, color: '#fff', fontSize: 11, padding: '3px 6px', overflow: 'hidden', whiteSpace: 'nowrap', boxShadow: '0 1px 2px rgba(0,0,0,0.2)' }}>{cliente(b.p)}</div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
+          {gruppi.length === 0 && <div style={{ padding: 24, textAlign: 'center', color: 'var(--ink-2)' }}>Nessun mezzo per questo filtro.</div>}
+        </div>
+      </div>
+      <p style={{ fontSize: 11, color: 'var(--ink-2)', marginTop: 8 }}>
+        Anteprima del calendario nuovo: mese intero, barre agganciate al <strong>numero</strong> del mezzo (non spariscono),
+        targa dalla <strong>tabella</strong> ("(manca)" se non inserita), fascia <strong>"da assegnare"</strong> per categoria.
+        Su smartphone diventerà una vista <strong>agenda</strong> (in arrivo).
+      </p>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
 // SIDEBAR
 // ═══════════════════════════════════════════════════════════════════
 function Sidebar({ page, setPage, onNew, online, agency, rentmeSyncStatus, rentmeAlertCount, rentmeRetryCount, offlineSyncCount, cuoreNuovo }) {
@@ -17819,7 +17994,10 @@ function Sidebar({ page, setPage, onNew, online, agency, rentmeSyncStatus, rentm
       badgeColor: rentmeRetryCount > 0 ? '#e67e22' : '#c0392b' },
   ];
   // 🫀 Voce visibile solo con l'interruttore "nuovo cuore" acceso (anteprima).
-  if (cuoreNuovo) items.push({ id: 'cuore', label: 'Cuore (anteprima)', icon: Sparkles });
+  if (cuoreNuovo) {
+    items.push({ id: 'cuore', label: 'Cuore (anteprima)', icon: Sparkles });
+    items.push({ id: 'cuore_cal', label: 'Calendario nuovo', icon: Sparkles });
+  }
 
   const sidebarDark = '#16181d';
   const sidebarBorder = 'rgba(255,255,255,0.07)';
