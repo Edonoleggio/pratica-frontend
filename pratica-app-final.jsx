@@ -9418,6 +9418,109 @@ function buildUnifiedFleet(rentmeVehicles, targhe) {
   });
 }
 
+// ════════════════════════════════════════════════════════════════════
+// 🫀 CUORE NUOVO (Fase 4 — dietro interruttore `cuore_nuovo`, default SPENTO)
+// Motore unificato portato dal prototipo COWORK/cuore-prototipo (55 test verdi).
+// Una identità (numero) · una lista (Parco) · una regola di disponibilità · zero
+// traduttori. NON tocca nulla finché l'interruttore non è acceso.
+// ════════════════════════════════════════════════════════════════════
+const CUORE_PRENO_FUORI = new Set(['annullata', 'cancellata', 'completata']);
+const CUORE_MEZZO_FUORI = new Set(['manutenzione', 'fuori_uso', 'venduto']);
+function cuoreOverlaps(aDal, aAl, bDal, bAl) {
+  return !!(aDal && aAl && bDal && bAl) && aDal <= bAl && aAl >= bDal;
+}
+function cuoreNumero(idRentme, rentmeCode) {
+  if (rentmeCode != null && String(rentmeCode).trim() !== '') return String(rentmeCode).trim();
+  const m = String(idRentme || '').trim().match(/(\d+)\s*$/);
+  return m ? m[1] : null;
+}
+// Parco Mezzi: lista unica (RentMe = esistenza/tipo/cc/manutenzione; Pratica = targa/stato/scadenze).
+function cuoreBuildParco(rentmeVehicles, { targhe = {}, fleet = [], scadenze = {} } = {}) {
+  const fleetByNum = {};
+  (fleet || []).forEach(fv => { const n = cuoreNumero(fv.idRentme || fv.rentmeId, fv.rentmeCode); if (n) fleetByNum[n] = fv; });
+  return (rentmeVehicles || []).map(v => {
+    const numero = cuoreNumero(v.idRentme, v.rentmeCode);
+    if (!numero) return null;
+    const fv = fleetByNum[numero];
+    const statoRentme = v.riparazione ? 'manutenzione' : 'disponibile';
+    const statoPratica = (fv && (fv.stato === 'fuori_uso' || fv.stato === 'venduto')) ? fv.stato : null;
+    return {
+      numero,
+      targa: (targhe[numero] || '').toUpperCase(),
+      tipo: canonicalTipo({ tipo: v.tipo, modello: v.modello || v.nome }),
+      categoria: getVehicleCategoria({ tipo: v.tipo, idRentme: v.idRentme, cc: v.cilindrata, modello: v.modello, nome: v.nome, slug: v.slug, targa: (targhe[numero] || '') }) || '',
+      cc: v.cilindrata || v.cc || '', marca: v.marca || '', modello: v.modello || v.nome || '',
+      stato: statoPratica || statoRentme,
+      scadenze: scadenze[numero] || {},
+      rentme: true,
+    };
+  }).filter(Boolean);
+}
+// Segmenti mezzo di una prenotazione (assegnazioni / numero singolo / niente).
+function cuoreSegmenti(p) {
+  if (Array.isArray(p.assegnazioni) && p.assegnazioni.length) {
+    return p.assegnazioni.filter(s => s && s.numero != null && s.numero !== '')
+      .map(s => ({ numero: String(s.numero), dal: s.dal || p.dal, al: s.al || p.al }));
+  }
+  if (p.numero != null && p.numero !== '') return [{ numero: String(p.numero), dal: p.dal, al: p.al }];
+  return [];
+}
+function cuoreMezzoInCat(m, tipo, categoria) {
+  if (canonicalTipo({ tipo: m.tipo, modello: m.modello }) !== canonicalTipo({ tipo })) return false;
+  if (!categoria) return true;
+  return String(m.categoria || '').toUpperCase() === String(categoria).toUpperCase();
+}
+function cuorePrenoInCat(p, tipo, categoria) {
+  if (canonicalTipo({ tipo: p.tipo }) !== canonicalTipo({ tipo })) return false;
+  if (!categoria) return true;
+  return String(p.categoria || '').toUpperCase() === String(categoria).toUpperCase();
+}
+// LA REGOLA DI DISPONIBILITÀ (la stella polare). Una sola funzione.
+function cuoreAvailability(parco, prenotazioni, q) {
+  const { tipo, categoria, dal, al, excludeId } = q || {};
+  const mezziTotali = (parco || []).filter(m =>
+    !CUORE_MEZZO_FUORI.has(String(m.stato || 'disponibile')) && cuoreMezzoInCat(m, tipo, categoria));
+  const totale = mezziTotali.length;
+  const attive = (prenotazioni || []).filter(p =>
+    p && p.id !== excludeId && !CUORE_PRENO_FUORI.has(String(p.stato || '')) && cuoreOverlaps(p.dal, p.al, dal, al));
+  const parcoByNum = new Map((parco || []).map(m => [String(m.numero), m]));
+  // Una prenotazione occupa un posto della categoria del MEZZO ASSEGNATO (se assegnata),
+  // altrimenti della categoria RICHIESTA (prenotazione "categoria sola").
+  const occupati = attive.filter(p => {
+    const segs = cuoreSegmenti(p).filter(s => cuoreOverlaps(s.dal, s.al, dal, al));
+    if (segs.length) return segs.some(s => { const m = parcoByNum.get(String(s.numero)); return m && cuoreMezzoInCat(m, tipo, categoria); });
+    return cuorePrenoInCat(p, tipo, categoria);
+  }).length;
+  const liberi = Math.max(0, totale - occupati);
+  const numOcc = new Set();
+  attive.forEach(p => cuoreSegmenti(p).forEach(s => { if (cuoreOverlaps(s.dal, s.al, dal, al)) numOcc.add(String(s.numero)); }));
+  const mezziLiberi = mezziTotali.filter(m => !numOcc.has(String(m.numero)));
+  const mezziOccupati = mezziTotali.filter(m => numOcc.has(String(m.numero)));
+  return { totale, occupati, liberi, mezziTotali, mezziLiberi, mezziOccupati };
+}
+// Risolve un vehicleId (numero/targa/legacy) al NUMERO del Parco.
+function cuoreRisolviNumero(vid, parco) {
+  if (vid == null || vid === '') return null;
+  const s = String(vid), up = s.toUpperCase().trim();
+  if ((parco || []).some(m => String(m.numero) === s)) return s;
+  const t = (parco || []).find(m => (m.targa || '').toUpperCase() === up);
+  return t ? String(t.numero) : s;
+}
+// Migra una prenotazione vecchia → nuovo modello {tipo, categoria, assegnazioni}.
+function cuoreMigraPreno(p, parco) {
+  if (!p || Array.isArray(p.assegnazioni)) return p;
+  const tipo = canonicalTipo({ tipo: p.vehicleType || p.tipo }) || p.vehicleType || p.tipo || '';
+  const categoria = p.vehicleCategoria || p.categoria || '';
+  let assegnazioni;
+  if (Array.isArray(p.vehicleSchedule) && p.vehicleSchedule.length) {
+    assegnazioni = p.vehicleSchedule.filter(s => s && s.vehicleId)
+      .map(s => ({ numero: cuoreRisolviNumero(s.vehicleId, parco), dal: s.dal || p.dal, al: s.al || p.al }));
+  } else if (p.vehicleId != null && p.vehicleId !== '') {
+    assegnazioni = [{ numero: cuoreRisolviNumero(p.vehicleId, parco), dal: p.dal, al: p.al }];
+  } else assegnazioni = [];
+  return { ...p, tipo, categoria, assegnazioni };
+}
+
 // ── Picker mezzi per categoria — FONTE UNICA (Banco Rapido + Preventivi) ──
 // Un SOLO costruttore di lista per i due picker "Prenota": elimina le due copie
 // gemelle che ricostruivano la lista a mano (fleet + rentmeVehicles). La sorgente è
@@ -16018,6 +16121,9 @@ export default function App() {
   // enabled: false → Pratica gira in autonomia, zero chiamate a RentMe.
   // Questa è la singola spunta che separa "oggi" da "domani".
   const [rentmeConfig, setRentmeConfig] = usePersistentState('edo:v1:rentme_config', { enabled: true, autoIntervalMins: 5 }, { skipRemote: true });
+  // 🫀 Interruttore "nuovo cuore" (Fase 4): per-dispositivo (skipRemote), default SPENTO.
+  // Acceso → compare la voce "Cuore (anteprima)". Non cambia NIENTE altro finché spento.
+  const [cuoreNuovo, setCuoreNuovo] = usePersistentState('edo:v1:cuore_nuovo', false, { skipRemote: true });
   // Registro cassa: tutti i movimenti economici dell'agenzia.
   // skipRemote: false → sincronizzato su tutti i dispositivi (critico per contabilità).
   const [cassa, setCassa, cassaSync] = usePersistentState('edo:v1:cassa', [], sharedOpts);
@@ -17001,7 +17107,7 @@ export default function App() {
     <>
       <Styles />
       <div className={`pratica-app flex${darkMode ? ' dark-mode' : ''}`}>
-        {!kioskMode && <Sidebar page={page} setPage={setPage} onNew={() => openWizard()} online={online && cargosConfig.enabled} agency={agency} rentmeSyncStatus={rentmeSync.status} rentmeAlertCount={rentmeSync.status === 'ok' ? calcAvailability(todayISO(), todayISO(), rentmeVehicles, prenotazioni, fleet, fermiFlotta, undefined, targhe).filter(c => c.alert).length : 0} rentmeRetryCount={(() => { try { return JSON.parse(localStorage.getItem('rentme_pending_queue') || '[]').length; } catch { return 0; } })()} offlineSyncCount={Object.values(allSyncStatus).filter(s => s?.remoteStatus === 'offline' || s?.remoteStatus === 'error').length} />}
+        {!kioskMode && <Sidebar page={page} setPage={setPage} onNew={() => openWizard()} online={online && cargosConfig.enabled} agency={agency} rentmeSyncStatus={rentmeSync.status} rentmeAlertCount={rentmeSync.status === 'ok' ? calcAvailability(todayISO(), todayISO(), rentmeVehicles, prenotazioni, fleet, fermiFlotta, undefined, targhe).filter(c => c.alert).length : 0} rentmeRetryCount={(() => { try { return JSON.parse(localStorage.getItem('rentme_pending_queue') || '[]').length; } catch { return 0; } })()} offlineSyncCount={Object.values(allSyncStatus).filter(s => s?.remoteStatus === 'offline' || s?.remoteStatus === 'error').length} cuoreNuovo={cuoreNuovo} />}
         <main className="flex-1 min-h-screen" id="main-content">
           <Topbar
             page={page}
@@ -17035,6 +17141,7 @@ export default function App() {
               {page === 'preventivi'    && <PreventiviPage setPage={setPage} setPrenotazioniPrefill={setPrenotazioniPrefill} listino={listino} fleet={fleet} rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} pushToast={pushToast} fermiFlotta={fermiFlotta} targhe={targhe} />}
               {page === 'prenotazioni' && <PrenotazioniPage prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} setCassa={setCassa} fleet={fleet} rentmeVehicles={rentmeVehicles} customers={customers} partners={partners} operator={operator} onOpenWizard={openWizard} pushToast={pushToast} prefill={prenotazioniPrefill} onClearPrefill={() => setPrenotazioniPrefill(null)} fermiFlotta={fermiFlotta} rentmePush={rentmeSync.pushBooking} rentmeConnected={rentmeSync.status === 'ok'} agency={agency} targhe={targhe} />}
               {page === 'contracts'  && <ContractsList contracts={localContracts} operators={operators} onRetry={retryContract} onMarkReturned={markContractReturned} onSendPec={sendContractPec} pecStatus={pecStatus} online={online} />}
+              {page === 'cuore' && cuoreNuovo && <CuoreAnteprimaPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} prenotazioni={prenotazioni} scadenze={scadenze} />}
               {page === 'fleet'      && <FleetPage fleet={unifiedFleet} prenotazioni={prenotazioni} admin={admin} onAddVehicle={() => setModal('newVehicle')} onEditVehicle={(v) => setModal({ type: 'editVehicle', vehicle: v })} onDeleteVehicle={requestDeleteVehicle} onImportCSV={() => setShowCsvImport(true)} onResetFleet={() => setModal({ type: 'confirm', title: 'Azzera flotta?', message: <><strong>Tutti i {fleet.length} veicoli</strong> verranno eliminati dalla flotta. Le prenotazioni esistenti restano invariate. Dopo puoi reimportare con un CSV aggiornato. <strong>Azione irreversibile.</strong></>, confirmLabel: 'Azzera flotta', variant: 'danger', onConfirm: () => { setFleet([]); pushToast({ tone: 'info', title: 'Flotta azzerata', message: 'Tutti i veicoli rimossi. Importa un nuovo CSV per ricaricare.' }); } })} onSetFleet={setFleet} scadenze={scadenze} setScadenze={setScadenze} fermiFlotta={fermiFlotta} setFermiFlotta={setFermiFlotta} rentmeVehicles={rentmeVehicles} manutenzioni={manutenzioni} setManutenzioni={setManutenzioni} partners={partners} targhe={targhe} setTarghe={setTarghe} />}
               {page === 'customers'  && <CustomersPage customers={customers} setCustomers={setCustomers} prenotazioni={prenotazioni} admin={admin} onShowQR={(c) => setModal({ type: 'qr', customer: c })} onNewWithCustomer={openWizard} onAddCustomer={() => setModal('newCustomer')} onEditCustomer={(c) => setModal({ type: 'editCustomer', customer: c })} onDeleteCustomer={deleteCustomer} onShowStorico={(c) => setStorioClienteId(c.id)} />}
               {page === 'partners'   && <PartnersPage partners={partners} admin={admin} onAddPartner={() => setModal('newPartner')} onEditPartner={(p) => setModal({ type: 'editPartner', partner: p })} onDeletePartner={requestDeletePartner} />}
@@ -17047,7 +17154,7 @@ export default function App() {
                   <StagioniEditor stagioni={stagioni} onSave={(s)=>{setStagioni(s); pushToast && pushToast({tone:'success',title:'Stagioni aggiornate',message:'Configurazione stagionale salvata'});}} />
                 </div>
               </div>}
-              {page === 'settings'   && <SettingsPage operator={operator} operators={operators} admin={admin} cargosConfig={cargosConfig} backendStatus={backendStatus} lastCheck={lastCheck} apiBaseUrl={apiBaseUrl} syncStatus={allSyncStatus} agency={agency} customers={customers} contracts={localContracts} onSyncAll={syncAll} onExportBackup={exportBackup} onImportBackup={importBackup} pushToast={pushToast} onAddOperator={() => setModal('newOperator')} onEditOperator={(o) => setModal({ type: 'editOperator', operator: o })} onDeleteOperator={requestDeleteOperator} onEditCargos={() => setModal('cargosConfig')} onEditApiBase={() => setModal('apiBase')} onEditAgency={() => setModal('agency')} onResetCustomers={requestResetCustomers} onResetContracts={requestResetContracts} onResetEverything={requestResetEverything} onImportFleetFromRentMe={requestImportFleetFromRentMe} rentmeConfig={rentmeConfig} setRentmeConfig={setRentmeConfig} rentmeSync={rentmeSync} rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} appUsers={appUsers} setAppUsers={setAppUsers} onLogout={handleLogout} driveClientId={driveClientId} setDriveClientId={setDriveClientId} driveLastBackup={driveLastBackup} onDriveBackup={driveBackup} driveAutoEnabled={driveAutoEnabled} setDriveAutoEnabled={setDriveAutoEnabled} renderLastBackup={renderLastBackup} onRenderBackup={backupToRender} backupToken={backupToken} setBackupToken={setBackupToken} pecStatus={pecStatus} onPecVerify={verifyPecConnection} onImportStorico={({ prenotazioni: newP, clienti: newC }) => {
+              {page === 'settings'   && <SettingsPage operator={operator} operators={operators} admin={admin} cargosConfig={cargosConfig} backendStatus={backendStatus} lastCheck={lastCheck} apiBaseUrl={apiBaseUrl} syncStatus={allSyncStatus} agency={agency} customers={customers} contracts={localContracts} onSyncAll={syncAll} onExportBackup={exportBackup} onImportBackup={importBackup} pushToast={pushToast} onAddOperator={() => setModal('newOperator')} onEditOperator={(o) => setModal({ type: 'editOperator', operator: o })} onDeleteOperator={requestDeleteOperator} onEditCargos={() => setModal('cargosConfig')} onEditApiBase={() => setModal('apiBase')} onEditAgency={() => setModal('agency')} onResetCustomers={requestResetCustomers} onResetContracts={requestResetContracts} onResetEverything={requestResetEverything} onImportFleetFromRentMe={requestImportFleetFromRentMe} rentmeConfig={rentmeConfig} setRentmeConfig={setRentmeConfig} rentmeSync={rentmeSync} rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} appUsers={appUsers} setAppUsers={setAppUsers} onLogout={handleLogout} driveClientId={driveClientId} setDriveClientId={setDriveClientId} driveLastBackup={driveLastBackup} onDriveBackup={driveBackup} driveAutoEnabled={driveAutoEnabled} setDriveAutoEnabled={setDriveAutoEnabled} renderLastBackup={renderLastBackup} onRenderBackup={backupToRender} backupToken={backupToken} setBackupToken={setBackupToken} pecStatus={pecStatus} onPecVerify={verifyPecConnection} cuoreNuovo={cuoreNuovo} setCuoreNuovo={setCuoreNuovo} onImportStorico={({ prenotazioni: newP, clienti: newC }) => {
                 setPrenotazioni(prev => {
                   const existKeys = new Set(prev.map(p => p.id));
                   return [...prev, ...newP.filter(p => !existKeys.has(p.id))];
@@ -17594,9 +17701,103 @@ function Styles() {
 }
 
 // ═══════════════════════════════════════════════════════════════════
+// 🫀 CUORE — ANTEPRIMA (Fase 4, dietro interruttore). Sola lettura.
+// Mostra il Parco Mezzi nuovo + la disponibilità calcolata dal motore nuovo
+// sui DATI REALI dell'app, senza toccare nulla. Serve a verificare prima di
+// collegare le schermate vere.
+// ═══════════════════════════════════════════════════════════════════
+function CuoreAnteprimaPage({ rentmeVehicles, targhe, fleet, prenotazioni, scadenze }) {
+  const parco = useMemo(
+    () => cuoreBuildParco(rentmeVehicles, { targhe, fleet, scadenze }),
+    [rentmeVehicles, targhe, fleet, scadenze]
+  );
+  const prenoNuove = useMemo(
+    () => (prenotazioni || []).map(p => cuoreMigraPreno(p, parco)),
+    [prenotazioni, parco]
+  );
+  const categorie = useMemo(() => {
+    const seen = new Map();
+    parco.forEach(m => { const k = `${m.tipo}|${m.categoria}`; if (!seen.has(k)) seen.set(k, { tipo: m.tipo, categoria: m.categoria }); });
+    return Array.from(seen.values()).sort((a, b) => (a.tipo + a.categoria).localeCompare(b.tipo + b.categoria));
+  }, [parco]);
+
+  const [dal, setDal] = useState(todayISO());
+  const [al, setAl]   = useState(todayISO());
+
+  const rows = useMemo(() => categorie.map(c => {
+    const a = cuoreAvailability(parco, prenoNuove, { tipo: c.tipo, categoria: c.categoria, dal, al });
+    return { ...c, totale: a.totale, occupati: a.occupati, liberi: a.liberi, mezziLiberi: a.mezziLiberi };
+  }), [categorie, parco, prenoNuove, dal, al]);
+
+  const th = { textAlign: 'left', padding: '6px 10px', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--ink-2)', borderBottom: '1px solid var(--border)' };
+  const td = { padding: '6px 10px', fontSize: 13, borderBottom: '1px solid var(--border)' };
+  const mono = { fontFamily: 'var(--font-mono, monospace)' };
+
+  return (
+    <div style={{ maxWidth: 1000, margin: '0 auto' }}>
+      <div className="label" style={{ color: 'var(--sea)' }}>NUOVO CUORE · ANTEPRIMA (sola lettura)</div>
+      <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: 22, letterSpacing: '-0.01em', margin: '2px 0 4px' }}>
+        Cuore — Parco Mezzi e disponibilità
+      </h1>
+      <p style={{ fontSize: 13, color: 'var(--ink-2)', marginBottom: 16 }}>
+        Calcolato dal <strong>motore nuovo</strong> (una lista, una regola, zero traduttori) sui tuoi dati reali.
+        Non cambia niente nell'app: serve a verificare. Parco: <strong>{parco.length} mezzi</strong> ·
+        prenotazioni considerate: <strong>{prenoNuove.length}</strong>.
+      </p>
+
+      <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', marginBottom: 16, flexWrap: 'wrap' }}>
+        <label style={{ fontSize: 12, color: 'var(--ink-2)' }}>Dal<br />
+          <input type="date" value={dal} onChange={e => setDal(e.target.value)} style={{ padding: 6, border: '1px solid var(--border)', borderRadius: 6 }} />
+        </label>
+        <label style={{ fontSize: 12, color: 'var(--ink-2)' }}>Al<br />
+          <input type="date" value={al} onChange={e => setAl(e.target.value)} style={{ padding: 6, border: '1px solid var(--border)', borderRadius: 6 }} />
+        </label>
+      </div>
+
+      <div className="card-paper" style={{ padding: 0, overflow: 'hidden', marginBottom: 24 }}>
+        <div style={{ padding: '10px 12px', fontWeight: 600, fontSize: 13, borderBottom: '1px solid var(--border)' }}>Disponibilità per categoria ({dal} → {al})</div>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead><tr><th style={th}>Tipo</th><th style={th}>Categoria</th><th style={{ ...th, textAlign: 'right' }}>Totale</th><th style={{ ...th, textAlign: 'right' }}>Occupati</th><th style={{ ...th, textAlign: 'right' }}>Liberi</th><th style={th}>Mezzi liberi</th></tr></thead>
+          <tbody>
+            {rows.map((r, i) => (
+              <tr key={i}>
+                <td style={td}>{r.tipo}</td>
+                <td style={td}>{r.categoria || <em style={{ color: 'var(--ink-2)' }}>(tutte)</em>}</td>
+                <td style={{ ...td, ...mono, textAlign: 'right' }}>{r.totale}</td>
+                <td style={{ ...td, ...mono, textAlign: 'right' }}>{r.occupati}</td>
+                <td style={{ ...td, ...mono, textAlign: 'right', fontWeight: 700, color: r.liberi === 0 ? 'var(--accent, #c0392b)' : 'var(--sea)' }}>{r.liberi}</td>
+                <td style={{ ...td, ...mono, fontSize: 11, color: 'var(--ink-2)' }}>{r.mezziLiberi.map(m => m.numero).join(' ') || '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="card-paper" style={{ padding: 0, overflow: 'hidden' }}>
+        <div style={{ padding: '10px 12px', fontWeight: 600, fontSize: 13, borderBottom: '1px solid var(--border)' }}>Parco Mezzi (lista unica)</div>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead><tr><th style={th}>Numero</th><th style={th}>Targa</th><th style={th}>Tipo</th><th style={th}>Categoria</th><th style={th}>Stato</th></tr></thead>
+          <tbody>
+            {parco.slice().sort((a, b) => (a.tipo + a.categoria).localeCompare(b.tipo + b.categoria) || (parseInt(a.numero) - parseInt(b.numero))).map(m => (
+              <tr key={m.numero}>
+                <td style={{ ...td, ...mono }}>{m.numero}</td>
+                <td style={{ ...td, ...mono }}>{m.targa || <span style={{ color: 'var(--accent, #c0392b)' }}>(manca)</span>}</td>
+                <td style={td}>{m.tipo}</td>
+                <td style={td}>{m.categoria || '—'}</td>
+                <td style={{ ...td, color: m.stato === 'disponibile' ? 'var(--ink)' : 'var(--accent, #c0392b)' }}>{m.stato}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
 // SIDEBAR
 // ═══════════════════════════════════════════════════════════════════
-function Sidebar({ page, setPage, onNew, online, agency, rentmeSyncStatus, rentmeAlertCount, rentmeRetryCount, offlineSyncCount }) {
+function Sidebar({ page, setPage, onNew, online, agency, rentmeSyncStatus, rentmeAlertCount, rentmeRetryCount, offlineSyncCount, cuoreNuovo }) {
   const items = [
     { id: 'dashboard',    label: 'Dashboard',    icon: LayoutDashboard },
     { id: 'oggi',         label: 'Oggi',         icon: Compass },
@@ -17617,6 +17818,8 @@ function Sidebar({ page, setPage, onNew, online, agency, rentmeSyncStatus, rentm
       badge: rentmeRetryCount > 0 ? rentmeRetryCount : (offlineSyncCount > 0 ? '!' : null),
       badgeColor: rentmeRetryCount > 0 ? '#e67e22' : '#c0392b' },
   ];
+  // 🫀 Voce visibile solo con l'interruttore "nuovo cuore" acceso (anteprima).
+  if (cuoreNuovo) items.push({ id: 'cuore', label: 'Cuore (anteprima)', icon: Sparkles });
 
   const sidebarDark = '#16181d';
   const sidebarBorder = 'rgba(255,255,255,0.07)';
@@ -20194,7 +20397,7 @@ function SecuritySection({ appUsers, setAppUsers, onLogout, pushToast }) {
   );
 }
 
-function SettingsPage({ operator, operators, cargosConfig, admin, backendStatus, lastCheck, apiBaseUrl, syncStatus, agency, onSyncAll, onExportBackup, onImportBackup, pushToast, onAddOperator, onEditOperator, onDeleteOperator, onEditCargos, onEditApiBase, onEditAgency, onResetCustomers, onResetContracts, onResetEverything, onImportFleetFromRentMe, customers, contracts, rentmeConfig, setRentmeConfig, rentmeSync, rentmeVehicles, prenotazioni, onImportStorico, appUsers, setAppUsers, onLogout, driveClientId, setDriveClientId, driveLastBackup, onDriveBackup, driveAutoEnabled, setDriveAutoEnabled, renderLastBackup, onRenderBackup, backupToken, setBackupToken, pecStatus, onPecVerify }) {
+function SettingsPage({ operator, operators, cargosConfig, admin, backendStatus, lastCheck, apiBaseUrl, syncStatus, agency, onSyncAll, onExportBackup, onImportBackup, pushToast, onAddOperator, onEditOperator, onDeleteOperator, onEditCargos, onEditApiBase, onEditAgency, onResetCustomers, onResetContracts, onResetEverything, onImportFleetFromRentMe, customers, contracts, rentmeConfig, setRentmeConfig, rentmeSync, rentmeVehicles, prenotazioni, onImportStorico, appUsers, setAppUsers, onLogout, driveClientId, setDriveClientId, driveLastBackup, onDriveBackup, driveAutoEnabled, setDriveAutoEnabled, renderLastBackup, onRenderBackup, backupToken, setBackupToken, pecStatus, onPecVerify, cuoreNuovo, setCuoreNuovo }) {
   const importInputRef = useRef();
   const [showCargosSecrets, setShowCargosSecrets] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -20732,6 +20935,30 @@ function SettingsPage({ operator, operators, cargosConfig, admin, backendStatus,
               <div className="mono mt-1" style={{ color: 'var(--muted)' }}>chiavi: edo:v1:operators, edo:v1:cargos</div>
             </div>
           </div>
+        </section>
+      )}
+
+      {/* ── 🫀 Nuovo cuore (anteprima) ────────────────────────────── */}
+      {admin && (
+        <section className="card-paper p-6">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-3">
+              <Sparkles className="w-5 h-5" style={{ color: cuoreNuovo ? 'var(--sea)' : 'var(--muted)' }} aria-hidden="true" />
+              <div>
+                <h3 className="serif text-lg font-medium">Nuovo cuore (anteprima)</h3>
+                <div className="text-xs" style={{ color: 'var(--muted)' }}>Motore unificato mezzi · disponibilità. Solo anteprima: non cambia nulla.</div>
+              </div>
+            </div>
+            <button type="button" role="switch" aria-checked={cuoreNuovo}
+              onClick={() => setCuoreNuovo(v => !v)}
+              style={{ position: 'relative', width: 46, height: 26, borderRadius: 13, border: 'none', cursor: 'pointer', background: cuoreNuovo ? 'var(--sea)' : '#aaa' }}>
+              <span style={{ position: 'absolute', top: 3, left: cuoreNuovo ? 23 : 3, width: 20, height: 20, borderRadius: '50%', background: '#fff', transition: 'left .15s' }} />
+            </button>
+          </div>
+          <p className="text-xs" style={{ color: 'var(--ink-2)' }}>
+            Acceso → compare la voce <strong>“Cuore (anteprima)”</strong> nel menu: mostra il Parco Mezzi e la
+            disponibilità calcolati dal motore nuovo sui tuoi dati reali. Per-dispositivo, default spento.
+          </p>
         </section>
       )}
 
