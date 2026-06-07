@@ -3097,34 +3097,11 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
   // IMPORTANTE: usa fleet.v.id come vehicleId quando il veicolo RentMe ha un corrispondente in flotta.
   // Questo garantisce che il vehicleId salvato nelle prenotazioni corrisponda a quello usato
   // da calcAvailability (che traccia per fleet v.id, non per targa) → conteggio occupati corretto.
-  const allVehicles = useMemo(() => {
-    if (rentmeVehicles && rentmeVehicles.length > 0) {
-      // Indice targa→fleet per lookup O(1)
-      const fleetByTarga = {};
-      (fleet || []).forEach(fv => {
-        if (fv.targa) fleetByTarga[fv.targa.toUpperCase().trim()] = fv;
-      });
-      const fromRentMe = rentmeVehicles
-        .filter(v => v.targa)
-        .map(v => {
-          const targa    = (v.targa || '').trim().toUpperCase();
-          const fleetV   = fleetByTarga[targa]; // veicolo locale corrispondente (se presente)
-          return {
-            id:      fleetV?.id || targa,        // fleet.v.id se disponibile → vehicleId consistente con calcAvailability
-            tipo:    v.tipo || fleetV?.tipo || 'auto',  // RentMe = verità sul tipo (i quad-50 non vanno classificati "auto" da una flotta locale stantia)
-            marca:   v.marca || fleetV?.marca || '',
-            modello: v.modello || v.nome || fleetV?.modello || '',
-            targa,
-            stato:   fleetV?.stato || 'available',
-            _source: 'rentme',
-          };
-        });
-      const rmTargas = new Set(fromRentMe.map(v => v.targa));
-      const extraFleet = (fleet || []).filter(v => v.stato === 'available' && !rmTargas.has((v.targa||'').toUpperCase()));
-      return [...fromRentMe, ...extraFleet];
-    }
-    return (fleet || []).filter(v => v.stato === 'available');
-  }, [fleet, rentmeVehicles]);
+  // FONTE UNICA: pool mezzi dalla flotta unificata (RentMe verità + targhe reali).
+  const allVehicles = useMemo(
+    () => buildUnifiedAvailableVehicles(rentmeVehicles, fleet, targhe),
+    [fleet, rentmeVehicles, targhe]
+  );
 
   const availableVehicles = useMemo(() => {
     const TIPO_ORD = { scooter: 0, moto: 1, auto: 2, quad: 3, ebike: 4, bici: 5 };
@@ -5002,6 +4979,7 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rent
           fleet={fleet}
           rentmeVehicles={rentmeVehicles}
           fermiFlotta={fermiFlotta}
+          targhe={targhe}
           onConfirm={applySostituzione}
           onClose={() => setSostituzionePreno(null)}
         />
@@ -5014,6 +4992,7 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rent
           rentmeVehicles={rentmeVehicles}
           fermiFlotta={fermiFlotta}
           partners={partners}
+          targhe={targhe}
           onConfirm={handleConsegna}
           onClose={() => setConsegnaPreno(null)}
         />
@@ -5086,7 +5065,7 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rent
 // Chiude la prenotazione corrente alla data guasto, crea la nuova
 // sullo stesso cliente con mezzo sostitutivo. Collega via groupId.
 // ═══════════════════════════════════════════════════════════════════
-function SostituzioneModal({ preno, prenotazioni, fleet, rentmeVehicles, onConfirm, onClose, fermiFlotta }) {
+function SostituzioneModal({ preno, prenotazioni, fleet, rentmeVehicles, onConfirm, onClose, fermiFlotta, targhe }) {
   const today = todayISO();
   const [dataGuasto,  setDataGuasto]  = useState(today);
   const [motivazione, setMotivazione] = useState('guasto');
@@ -5097,50 +5076,37 @@ function SostituzioneModal({ preno, prenotazioni, fleet, rentmeVehicles, onConfi
   const candidati = useMemo(() => {
     if (!dataGuasto) return [];
     const tipo = preno.vehicleType || preno.tipo || '';
-    // Costruisce pool veicoli
-    const pool = rentmeVehicles && rentmeVehicles.length > 0
-      ? rentmeVehicles.filter(v => v.targa).map(v => ({
-          id:      (v.targa || '').trim().toUpperCase(),
-          tipo:    v.tipo || '',
-          modello: v.nome || '',
-          targa:   (v.targa || '').trim().toUpperCase(),
-        }))
-      : (fleet || []).filter(v => v.stato === 'available');
+    const tipoCanon = canonicalTipo({ tipo });
+    const resolve = buildVehicleKeyResolver(fleet, targhe);
 
-    // Stesso tipo, non il mezzo corrente
+    // FONTE UNICA: pool dalla flotta unificata (RentMe verità + targhe reali).
+    const pool = buildUnifiedAvailableVehicles(rentmeVehicles, fleet, targhe);
+
+    // Stesso tipo (canonicalTipo: moto≡scooter, quad* → quad — regola #3), escluso il
+    // mezzo corrente (riconosciuto qualunque sia il formato del suo id).
     const stessoTipo = pool.filter(v =>
-      v.id !== preno.vehicleId &&
-      (!tipo || v.tipo === tipo)
+      !matchVehicleUnified(preno.vehicleId, v, resolve) &&
+      (!tipoCanon || canonicalTipo(v) === tipoCanon)
     );
 
-    // Liberi nel periodo dataGuasto → preno.al
-    const occupati = new Set();
-    (prenotazioni || [])
-      .filter(p =>
+    // Occupato nel periodo dataGuasto → preno.al (prenotazioni + segmenti + fermi),
+    // confronto robusto al formato id via matchVehicleUnified.
+    const isOccupato = v =>
+      (prenotazioni || []).some(p =>
         p.id !== preno.id &&
         p.stato !== 'annullata' && p.stato !== 'cancellata' && p.stato !== 'completata' &&
-        p.dal <= preno.al && p.al >= dataGuasto
-      )
-      .forEach(p => {
-        if (p.vehicleId) occupati.add(p.vehicleId);
-        (p.vehicleSchedule || []).forEach(s => {
-          if (s.vehicleId && s.dal <= preno.al && s.al >= dataGuasto) occupati.add(s.vehicleId);
-        });
-      });
-    // Fermi programmati — aggiungiamo sia fleet UUID che targa (pool può usare entrambi)
-    const fleetIdToTarga = {};
-    (fleet || []).forEach(fv => { if (fv.id && fv.targa) fleetIdToTarga[fv.id] = (fv.targa||'').trim().toUpperCase(); });
-    (fermiFlotta || []).forEach(f => {
-      if (!f.vehicleId || !f.dal || !f.al) return;
-      if (f.dal <= preno.al && f.al >= dataGuasto) {
-        occupati.add(f.vehicleId);
-        const targa = fleetIdToTarga[f.vehicleId];
-        if (targa) occupati.add(targa);
-      }
-    });
+        p.dal <= preno.al && p.al >= dataGuasto &&
+        (matchVehicleUnified(p.vehicleId, v, resolve) ||
+         (p.vehicleSchedule || []).some(s => matchVehicleUnified(s.vehicleId, v, resolve) && s.dal <= preno.al && s.al >= dataGuasto))
+      ) ||
+      (fermiFlotta || []).some(f =>
+        f.vehicleId && f.dal && f.al &&
+        f.dal <= preno.al && f.al >= dataGuasto &&
+        matchVehicleUnified(f.vehicleId, v, resolve)
+      );
 
-    return stessoTipo.filter(v => !occupati.has(v.id));
-  }, [dataGuasto, preno, prenotazioni, fleet, rentmeVehicles, fermiFlotta]);
+    return stessoTipo.filter(v => !isOccupato(v));
+  }, [dataGuasto, preno, prenotazioni, fleet, rentmeVehicles, fermiFlotta, targhe]);
 
   const inp = {
     padding: '7px 10px', border: '1px solid var(--border)', borderRadius: 5,
@@ -5287,31 +5253,17 @@ function SostituzioneModal({ preno, prenotazioni, fleet, rentmeVehicles, onConfi
 // L'operatore sceglie il mezzo esatto (con griglia smart), registra
 // km partenza e livello carburante, poi imposta stato → in_corso.
 // ═══════════════════════════════════════════════════════════════════
-function ConsegnaModal({ preno, prenotazioni, fleet, rentmeVehicles, onConfirm, onClose, fermiFlotta, partners }) {
+function ConsegnaModal({ preno, prenotazioni, fleet, rentmeVehicles, onConfirm, onClose, fermiFlotta, partners, targhe }) {
   const today = todayISO();
 
-  // Costruisce lista mezzi disponibili (stessa logica di PrenoForm con fix id=fleet.v.id)
-  const allVehicles = useMemo(() => {
-    if (rentmeVehicles && rentmeVehicles.length > 0) {
-      const fleetByTarga = {};
-      (fleet || []).forEach(fv => { if (fv.targa) fleetByTarga[fv.targa.toUpperCase().trim()] = fv; });
-      const fromRentMe = rentmeVehicles.filter(v => v.targa).map(v => {
-        const targa  = (v.targa || '').trim().toUpperCase();
-        const fleetV = fleetByTarga[targa];
-        return {
-          id:      fleetV?.id || targa, // usa fleet.v.id se disponibile → vehicleId consistente
-          tipo:    fleetV?.tipo || v.tipo || 'auto',
-          modello: fleetV?.modello || v.nome || '',
-          targa,
-          stato:   fleetV?.stato || 'available',
-          _source: 'rentme',
-        };
-      });
-      const rmTargas = new Set(fromRentMe.map(v => v.targa));
-      return [...fromRentMe, ...(fleet || []).filter(v => v.stato === 'available' && !rmTargas.has((v.targa||'').toUpperCase()))];
-    }
-    return (fleet || []).filter(v => v.stato === 'available');
-  }, [fleet, rentmeVehicles]);
+  // FONTE UNICA: pool mezzi dalla flotta unificata (stessa di PrenoForm/FleetPage).
+  const allVehicles = useMemo(
+    () => buildUnifiedAvailableVehicles(rentmeVehicles, fleet, targhe),
+    [fleet, rentmeVehicles, targhe]
+  );
+  // Traduttore al codice RentMe per riconoscere le prenotazioni qualunque sia il
+  // formato del loro vehicleId (codice / targa / vecchio id).
+  const resolveVid = useMemo(() => buildVehicleKeyResolver(fleet, targhe), [fleet, targhe]);
 
   // Calcola quanti giorni liberi ha ogni mezzo a partire dal dal del noleggio
   const vehicleFitScore = useMemo(() => {
@@ -5328,12 +5280,12 @@ function ConsegnaModal({ preno, prenotazioni, fleet, rentmeVehicles, onConfirm, 
       // Trova occupazioni di questo veicolo nel periodo (prenotazioni + fermi programmati)
       const occupato = (prenotazioni || []).some(p =>
         p.id !== preno.id && p.stato !== 'annullata' && p.stato !== 'cancellata' && p.stato !== 'completata' &&
-        (matchVehicle(p.vehicleId, v.id, v.targa) ||
-         (p.vehicleSchedule||[]).some(s => matchVehicle(s.vehicleId, v.id, v.targa) && s.dal <= alDate && s.al >= dalDate)) &&
+        (matchVehicleUnified(p.vehicleId, v, resolveVid) ||
+         (p.vehicleSchedule||[]).some(s => matchVehicleUnified(s.vehicleId, v, resolveVid) && s.dal <= alDate && s.al >= dalDate)) &&
         p.dal <= alDate && p.al >= dalDate
       ) || (fermiFlotta || []).some(f =>
         f.vehicleId && f.dal && f.al &&
-        matchVehicle(f.vehicleId, v.id, v.targa) &&
+        matchVehicleUnified(f.vehicleId, v, resolveVid) &&
         f.dal <= alDate && f.al >= dalDate
       );
       if (occupato) { scores[v.id] = -1; return; }
@@ -5344,10 +5296,10 @@ function ConsegnaModal({ preno, prenotazioni, fleet, rentmeVehicles, onConfirm, 
       while (cursor <= alDate) {
         const busy = (prenotazioni || []).some(p =>
           p.id !== preno.id && p.stato !== 'annullata' && p.stato !== 'cancellata' && p.stato !== 'completata' &&
-          matchVehicle(p.vehicleId, v.id, v.targa) && p.dal <= cursor && p.al >= cursor
+          matchVehicleUnified(p.vehicleId, v, resolveVid) && p.dal <= cursor && p.al >= cursor
         ) || (fermiFlotta || []).some(f =>
           f.vehicleId && f.dal && f.al &&
-          matchVehicle(f.vehicleId, v.id, v.targa) && f.dal <= cursor && f.al >= cursor
+          matchVehicleUnified(f.vehicleId, v, resolveVid) && f.dal <= cursor && f.al >= cursor
         );
         if (busy) break;
         freeCount++;
@@ -5358,7 +5310,7 @@ function ConsegnaModal({ preno, prenotazioni, fleet, rentmeVehicles, onConfirm, 
       scores[v.id] = freeCount;
     });
     return scores;
-  }, [allVehicles, prenotazioni, preno, fermiFlotta]);
+  }, [allVehicles, prenotazioni, preno, fermiFlotta, resolveVid]);
 
   // Tipologie disponibili (filtra per tipo del noleggio)
   const tipo = preno.vehicleType || preno.tipo || '';
@@ -9510,6 +9462,41 @@ function buildCatPickerVehicles(cat, { rentmeVehicles, fleet, targhe, prenotazio
     return !cand.some(c => occ.has(c));
   };
   return merged.map(v => ({ ...v, libero: isFree(v) }));
+}
+
+// ── Pool mezzi disponibili — FONTE UNICA (PrenoForm, Consegna, Sostituzione) ──
+// Lista piatta dei mezzi (senza filtro categoria, senza occupazione) costruita dalla
+// stessa flotta unificata della pagina Flotta. Sostituisce le 3 copie che ricostruivano
+// fromRentMe/extraFleet a mano. id MANTENUTO legacy (fleet.id via idRentme→code, fallback
+// targa/codice) per non cambiare il vehicleId salvato. Solo mezzi CON targa (parità con la
+// lista storica: un mezzo senza targa — es. panda 350 nuovo — resta prenotabile per categoria
+// via calcAvailability, ma non compare nel picker del mezzo specifico, come oggi).
+function buildUnifiedAvailableVehicles(rentmeVehicles, fleet, targhe) {
+  const useUnified = rentmeVehicles && rentmeVehicles.length > 0;
+  if (!useUnified) return (fleet || []).filter(v => v.stato === 'available');
+  const fleetIdByCode = {};
+  (fleet || []).forEach(fv => {
+    const code = codeFromRentme(fv.idRentme || fv.rentmeId);
+    if (code && fv.id) fleetIdByCode[code] = fv.id;
+  });
+  return buildUnifiedFleet(rentmeVehicles, targhe)
+    .filter(v => v.targa && v.stato !== 'venduto' && v.stato !== 'fuori_uso')
+    .map(v => {
+      const code = String(v.rentmeCode || v.id || '');
+      return { ...v, id: fleetIdByCode[code] || v.targa || v.id };
+    });
+}
+
+// matchVehicleUnified: come matchVehicle (confronto su fleet.id + targa) ma in più
+// confronta passando dal CODICE RentMe (resolve) → riconosce una prenotazione qualunque
+// sia il formato del suo vehicleId (codice / targa reale / vecchio id fleet). Rende
+// l'occupazione indipendente dallo schema di id usato dalla lista.
+function matchVehicleUnified(bookingVid, v, resolve) {
+  if (matchVehicle(bookingVid, v.id, v.targa)) return true;
+  if (!resolve || !bookingVid) return false;
+  const bc = resolve(bookingVid);
+  if (!bc) return false;
+  return bc === resolve(v.id) || bc === resolve(v.targa);
 }
 
 // ── Migrazione chiavi alla "Flotta unificata" (codice RentMe) ────────
