@@ -17142,7 +17142,7 @@ export default function App() {
               {page === 'prenotazioni' && <PrenotazioniPage prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} setCassa={setCassa} fleet={fleet} rentmeVehicles={rentmeVehicles} customers={customers} partners={partners} operator={operator} onOpenWizard={openWizard} pushToast={pushToast} prefill={prenotazioniPrefill} onClearPrefill={() => setPrenotazioniPrefill(null)} fermiFlotta={fermiFlotta} rentmePush={rentmeSync.pushBooking} rentmeConnected={rentmeSync.status === 'ok'} agency={agency} targhe={targhe} />}
               {page === 'contracts'  && <ContractsList contracts={localContracts} operators={operators} onRetry={retryContract} onMarkReturned={markContractReturned} onSendPec={sendContractPec} pecStatus={pecStatus} online={online} />}
               {page === 'cuore' && cuoreNuovo && <CuoreAnteprimaPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} prenotazioni={prenotazioni} scadenze={scadenze} />}
-              {page === 'cuore_cal' && cuoreNuovo && <CuoreCalendarioPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} prenotazioni={prenotazioni} scadenze={scadenze} />}
+              {page === 'cuore_cal' && cuoreNuovo && <CuoreCalendarioPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} prenotazioni={prenotazioni} scadenze={scadenze} setPrenotazioni={setPrenotazioni} pushToast={pushToast} />}
               {page === 'cuore_preno' && cuoreNuovo && <CuorePrenotaPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} pushToast={pushToast} />}
               {page === 'cuore_flotta' && cuoreNuovo && <CuoreFlottaPage rentmeVehicles={rentmeVehicles} targhe={targhe} setTarghe={setTarghe} fleet={fleet} scadenze={scadenze} admin={admin} />}
               {page === 'fleet'      && <FleetPage fleet={unifiedFleet} prenotazioni={prenotazioni} admin={admin} onAddVehicle={() => setModal('newVehicle')} onEditVehicle={(v) => setModal({ type: 'editVehicle', vehicle: v })} onDeleteVehicle={requestDeleteVehicle} onImportCSV={() => setShowCsvImport(true)} onResetFleet={() => setModal({ type: 'confirm', title: 'Azzera flotta?', message: <><strong>Tutti i {fleet.length} veicoli</strong> verranno eliminati dalla flotta. Le prenotazioni esistenti restano invariate. Dopo puoi reimportare con un CSV aggiornato. <strong>Azione irreversibile.</strong></>, confirmLabel: 'Azzera flotta', variant: 'danger', onConfirm: () => { setFleet([]); pushToast({ tone: 'info', title: 'Flotta azzerata', message: 'Tutti i veicoli rimossi. Importa un nuovo CSV per ricaricare.' }); } })} onSetFleet={setFleet} scadenze={scadenze} setScadenze={setScadenze} fermiFlotta={fermiFlotta} setFermiFlotta={setFermiFlotta} rentmeVehicles={rentmeVehicles} manutenzioni={manutenzioni} setManutenzioni={setManutenzioni} partners={partners} targhe={targhe} setTarghe={setTarghe} />}
@@ -17804,8 +17804,9 @@ function CuoreAnteprimaPage({ rentmeVehicles, targhe, fleet, prenotazioni, scade
 // orizzontale su schermi larghi) · navigazione mese-per-mese.
 // ═══════════════════════════════════════════════════════════════════
 const CUORE_STATO_COLORE = { confermata: '#2e6e3e', in_corso: '#1f5d83', prorogata: '#7a5cc0', bozza: '#9a8c6a' };
-function CuoreCalendarioPage({ rentmeVehicles, targhe, fleet, prenotazioni, scadenze }) {
+function CuoreCalendarioPage({ rentmeVehicles, targhe, fleet, prenotazioni, scadenze, setPrenotazioni, pushToast }) {
   const parco = useMemo(() => cuoreBuildParco(rentmeVehicles, { targhe, fleet, scadenze }), [rentmeVehicles, targhe, fleet, scadenze]);
+  const [assegna, setAssegna] = useState(null); // prenotazione da assegnare
   const prenoNuove = useMemo(
     () => (prenotazioni || []).map(p => cuoreMigraPreno(p, parco)).filter(p => p && !CUORE_PRENO_FUORI.has(String(p.stato || ''))),
     [prenotazioni, parco]
@@ -17934,7 +17935,7 @@ function CuoreCalendarioPage({ rentmeVehicles, targhe, fleet, prenotazioni, scad
                   <div style={{ flex: 1, position: 'relative', minHeight: daAss.length ? 26 : 0 }}>
                     {daAss.length > 0 && <TrackBg />}
                     {daAss.map((p, i) => (
-                      <div key={p.id} title={`${cliente(p)} · da assegnare`} style={{ position: 'absolute', top: 3, height: 20, ...barStyle(p.dal, p.al), background: 'repeating-linear-gradient(45deg,#c0392b,#c0392b 4px,#a93226 4px,#a93226 8px)', opacity: 0.85, borderRadius: 4, color: '#fff', fontSize: 10, padding: '2px 5px', overflow: 'hidden', whiteSpace: 'nowrap' }}>{cliente(p)}</div>
+                      <div key={p.id} onClick={() => setPrenotazioni && setAssegna(p)} title={`${cliente(p)} · clicca per assegnare un mezzo`} style={{ position: 'absolute', top: 3, height: 20, ...barStyle(p.dal, p.al), background: 'repeating-linear-gradient(45deg,#c0392b,#c0392b 4px,#a93226 4px,#a93226 8px)', opacity: 0.85, borderRadius: 4, color: '#fff', fontSize: 10, padding: '2px 5px', overflow: 'hidden', whiteSpace: 'nowrap', cursor: setPrenotazioni ? 'pointer' : 'default' }}>{cliente(p)}</div>
                     ))}
                   </div>
                 </div>
@@ -17967,6 +17968,37 @@ function CuoreCalendarioPage({ rentmeVehicles, targhe, fleet, prenotazioni, scad
         targa dalla <strong>tabella</strong> ("(manca)" se non inserita), fascia <strong>"da assegnare"</strong> per categoria.
         Su smartphone diventerà una vista <strong>agenda</strong> (in arrivo).
       </p>
+
+      {assegna && (() => {
+        const liberi = cuoreAvailability(parco, prenoNuove, { tipo: assegna.tipo, categoria: assegna.categoria, dal: assegna.dal, al: assegna.al, excludeId: assegna.id }).mezziLiberi;
+        const conferma = (numero) => {
+          const mezzo = parco.find(m => String(m.numero) === String(numero));
+          if (!mezzo) return;
+          setPrenotazioni(prev => (prev || []).map(x => x.id === assegna.id ? { ...x, assegnazioni: [{ numero: String(mezzo.numero), dal: assegna.dal, al: assegna.al }], vehicleId: String(mezzo.numero), vehicleTarga: mezzo.targa || '', vehicleLabel: mezzo.modello || mezzo.numero } : x));
+          pushToast && pushToast({ tone: 'success', title: 'Mezzo assegnato', message: `${cliente(assegna)} → ${mezzo.modello || ''} ${mezzo.targa || 'n.' + mezzo.numero}` });
+          setAssegna(null);
+        };
+        return (
+          <div onClick={() => setAssegna(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
+            <div onClick={e => e.stopPropagation()} className="card-paper" style={{ padding: 20, width: 400, maxWidth: '90vw' }}>
+              <h3 style={{ fontFamily: 'var(--font-serif)', fontSize: 18, marginBottom: 4 }}>Assegna un mezzo</h3>
+              <p style={{ fontSize: 13, color: 'var(--ink-2)', marginBottom: 12 }}>{cliente(assegna)} · {assegna.tipo} {assegna.categoria} · {assegna.dal} → {assegna.al}</p>
+              {liberi.length === 0 ? (
+                <div style={{ padding: '10px 12px', borderRadius: 8, background: 'rgba(192,57,50,0.1)', color: 'var(--accent, #c0392b)', fontSize: 13, fontWeight: 600 }}>⛔ Nessun mezzo libero per queste date</div>
+              ) : (
+                <div style={{ display: 'grid', gap: 6, maxHeight: '40vh', overflowY: 'auto' }}>
+                  {liberi.map(m => (
+                    <button key={m.numero} type="button" onClick={() => conferma(m.numero)} style={{ textAlign: 'left', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 6, background: 'transparent', cursor: 'pointer', fontSize: 13 }}>
+                      <strong>{m.modello || ('n.' + m.numero)}</strong> · {m.targa || '(targa manca)'} · n.{m.numero}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <button type="button" onClick={() => setAssegna(null)} style={{ marginTop: 12, padding: '7px 14px', border: '1px solid var(--border)', borderRadius: 6, background: 'transparent', cursor: 'pointer', fontSize: 13 }}>Annulla</button>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
