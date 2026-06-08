@@ -9418,6 +9418,109 @@ function buildUnifiedFleet(rentmeVehicles, targhe) {
   });
 }
 
+// ════════════════════════════════════════════════════════════════════
+// 🫀 CUORE NUOVO (Fase 4 — dietro interruttore `cuore_nuovo`, default SPENTO)
+// Motore unificato portato dal prototipo COWORK/cuore-prototipo (55 test verdi).
+// Una identità (numero) · una lista (Parco) · una regola di disponibilità · zero
+// traduttori. NON tocca nulla finché l'interruttore non è acceso.
+// ════════════════════════════════════════════════════════════════════
+const CUORE_PRENO_FUORI = new Set(['annullata', 'cancellata', 'completata']);
+const CUORE_MEZZO_FUORI = new Set(['manutenzione', 'fuori_uso', 'venduto']);
+function cuoreOverlaps(aDal, aAl, bDal, bAl) {
+  return !!(aDal && aAl && bDal && bAl) && aDal <= bAl && aAl >= bDal;
+}
+function cuoreNumero(idRentme, rentmeCode) {
+  if (rentmeCode != null && String(rentmeCode).trim() !== '') return String(rentmeCode).trim();
+  const m = String(idRentme || '').trim().match(/(\d+)\s*$/);
+  return m ? m[1] : null;
+}
+// Parco Mezzi: lista unica (RentMe = esistenza/tipo/cc/manutenzione; Pratica = targa/stato/scadenze).
+function cuoreBuildParco(rentmeVehicles, { targhe = {}, fleet = [], scadenze = {} } = {}) {
+  const fleetByNum = {};
+  (fleet || []).forEach(fv => { const n = cuoreNumero(fv.idRentme || fv.rentmeId, fv.rentmeCode); if (n) fleetByNum[n] = fv; });
+  return (rentmeVehicles || []).map(v => {
+    const numero = cuoreNumero(v.idRentme, v.rentmeCode);
+    if (!numero) return null;
+    const fv = fleetByNum[numero];
+    const statoRentme = v.riparazione ? 'manutenzione' : 'disponibile';
+    const statoPratica = (fv && (fv.stato === 'fuori_uso' || fv.stato === 'venduto')) ? fv.stato : null;
+    return {
+      numero,
+      targa: (targhe[numero] || '').toUpperCase(),
+      tipo: canonicalTipo({ tipo: v.tipo, modello: v.modello || v.nome }),
+      categoria: getVehicleCategoria({ tipo: v.tipo, idRentme: v.idRentme, cc: v.cilindrata, modello: v.modello, nome: v.nome, slug: v.slug, targa: (targhe[numero] || '') }) || '',
+      cc: v.cilindrata || v.cc || '', marca: v.marca || '', modello: v.modello || v.nome || '',
+      stato: statoPratica || statoRentme,
+      scadenze: scadenze[numero] || {},
+      rentme: true,
+    };
+  }).filter(Boolean);
+}
+// Segmenti mezzo di una prenotazione (assegnazioni / numero singolo / niente).
+function cuoreSegmenti(p) {
+  if (Array.isArray(p.assegnazioni) && p.assegnazioni.length) {
+    return p.assegnazioni.filter(s => s && s.numero != null && s.numero !== '')
+      .map(s => ({ numero: String(s.numero), dal: s.dal || p.dal, al: s.al || p.al }));
+  }
+  if (p.numero != null && p.numero !== '') return [{ numero: String(p.numero), dal: p.dal, al: p.al }];
+  return [];
+}
+function cuoreMezzoInCat(m, tipo, categoria) {
+  if (canonicalTipo({ tipo: m.tipo, modello: m.modello }) !== canonicalTipo({ tipo })) return false;
+  if (!categoria) return true;
+  return String(m.categoria || '').toUpperCase() === String(categoria).toUpperCase();
+}
+function cuorePrenoInCat(p, tipo, categoria) {
+  if (canonicalTipo({ tipo: p.tipo }) !== canonicalTipo({ tipo })) return false;
+  if (!categoria) return true;
+  return String(p.categoria || '').toUpperCase() === String(categoria).toUpperCase();
+}
+// LA REGOLA DI DISPONIBILITÀ (la stella polare). Una sola funzione.
+function cuoreAvailability(parco, prenotazioni, q) {
+  const { tipo, categoria, dal, al, excludeId } = q || {};
+  const mezziTotali = (parco || []).filter(m =>
+    !CUORE_MEZZO_FUORI.has(String(m.stato || 'disponibile')) && cuoreMezzoInCat(m, tipo, categoria));
+  const totale = mezziTotali.length;
+  const attive = (prenotazioni || []).filter(p =>
+    p && p.id !== excludeId && !CUORE_PRENO_FUORI.has(String(p.stato || '')) && cuoreOverlaps(p.dal, p.al, dal, al));
+  const parcoByNum = new Map((parco || []).map(m => [String(m.numero), m]));
+  // Una prenotazione occupa un posto della categoria del MEZZO ASSEGNATO (se assegnata),
+  // altrimenti della categoria RICHIESTA (prenotazione "categoria sola").
+  const occupati = attive.filter(p => {
+    const segs = cuoreSegmenti(p).filter(s => cuoreOverlaps(s.dal, s.al, dal, al));
+    if (segs.length) return segs.some(s => { const m = parcoByNum.get(String(s.numero)); return m && cuoreMezzoInCat(m, tipo, categoria); });
+    return cuorePrenoInCat(p, tipo, categoria);
+  }).length;
+  const liberi = Math.max(0, totale - occupati);
+  const numOcc = new Set();
+  attive.forEach(p => cuoreSegmenti(p).forEach(s => { if (cuoreOverlaps(s.dal, s.al, dal, al)) numOcc.add(String(s.numero)); }));
+  const mezziLiberi = mezziTotali.filter(m => !numOcc.has(String(m.numero)));
+  const mezziOccupati = mezziTotali.filter(m => numOcc.has(String(m.numero)));
+  return { totale, occupati, liberi, mezziTotali, mezziLiberi, mezziOccupati };
+}
+// Risolve un vehicleId (numero/targa/legacy) al NUMERO del Parco.
+function cuoreRisolviNumero(vid, parco) {
+  if (vid == null || vid === '') return null;
+  const s = String(vid), up = s.toUpperCase().trim();
+  if ((parco || []).some(m => String(m.numero) === s)) return s;
+  const t = (parco || []).find(m => (m.targa || '').toUpperCase() === up);
+  return t ? String(t.numero) : s;
+}
+// Migra una prenotazione vecchia → nuovo modello {tipo, categoria, assegnazioni}.
+function cuoreMigraPreno(p, parco) {
+  if (!p || Array.isArray(p.assegnazioni)) return p;
+  const tipo = canonicalTipo({ tipo: p.vehicleType || p.tipo }) || p.vehicleType || p.tipo || '';
+  const categoria = p.vehicleCategoria || p.categoria || '';
+  let assegnazioni;
+  if (Array.isArray(p.vehicleSchedule) && p.vehicleSchedule.length) {
+    assegnazioni = p.vehicleSchedule.filter(s => s && s.vehicleId)
+      .map(s => ({ numero: cuoreRisolviNumero(s.vehicleId, parco), dal: s.dal || p.dal, al: s.al || p.al }));
+  } else if (p.vehicleId != null && p.vehicleId !== '') {
+    assegnazioni = [{ numero: cuoreRisolviNumero(p.vehicleId, parco), dal: p.dal, al: p.al }];
+  } else assegnazioni = [];
+  return { ...p, tipo, categoria, assegnazioni };
+}
+
 // ── Picker mezzi per categoria — FONTE UNICA (Banco Rapido + Preventivi) ──
 // Un SOLO costruttore di lista per i due picker "Prenota": elimina le due copie
 // gemelle che ricostruivano la lista a mano (fleet + rentmeVehicles). La sorgente è
@@ -16018,6 +16121,9 @@ export default function App() {
   // enabled: false → Pratica gira in autonomia, zero chiamate a RentMe.
   // Questa è la singola spunta che separa "oggi" da "domani".
   const [rentmeConfig, setRentmeConfig] = usePersistentState('edo:v1:rentme_config', { enabled: true, autoIntervalMins: 5 }, { skipRemote: true });
+  // 🫀 Interruttore "nuovo cuore" (Fase 4): per-dispositivo (skipRemote), default SPENTO.
+  // Acceso → compare la voce "Cuore (anteprima)". Non cambia NIENTE altro finché spento.
+  const [cuoreNuovo, setCuoreNuovo] = usePersistentState('edo:v1:cuore_nuovo', false, { skipRemote: true });
   // Registro cassa: tutti i movimenti economici dell'agenzia.
   // skipRemote: false → sincronizzato su tutti i dispositivi (critico per contabilità).
   const [cassa, setCassa, cassaSync] = usePersistentState('edo:v1:cassa', [], sharedOpts);
@@ -17001,7 +17107,7 @@ export default function App() {
     <>
       <Styles />
       <div className={`pratica-app flex${darkMode ? ' dark-mode' : ''}`}>
-        {!kioskMode && <Sidebar page={page} setPage={setPage} onNew={() => openWizard()} online={online && cargosConfig.enabled} agency={agency} rentmeSyncStatus={rentmeSync.status} rentmeAlertCount={rentmeSync.status === 'ok' ? calcAvailability(todayISO(), todayISO(), rentmeVehicles, prenotazioni, fleet, fermiFlotta, undefined, targhe).filter(c => c.alert).length : 0} rentmeRetryCount={(() => { try { return JSON.parse(localStorage.getItem('rentme_pending_queue') || '[]').length; } catch { return 0; } })()} offlineSyncCount={Object.values(allSyncStatus).filter(s => s?.remoteStatus === 'offline' || s?.remoteStatus === 'error').length} />}
+        {!kioskMode && <Sidebar page={page} setPage={setPage} onNew={() => openWizard()} online={online && cargosConfig.enabled} agency={agency} rentmeSyncStatus={rentmeSync.status} rentmeAlertCount={rentmeSync.status === 'ok' ? calcAvailability(todayISO(), todayISO(), rentmeVehicles, prenotazioni, fleet, fermiFlotta, undefined, targhe).filter(c => c.alert).length : 0} rentmeRetryCount={(() => { try { return JSON.parse(localStorage.getItem('rentme_pending_queue') || '[]').length; } catch { return 0; } })()} offlineSyncCount={Object.values(allSyncStatus).filter(s => s?.remoteStatus === 'offline' || s?.remoteStatus === 'error').length} cuoreNuovo={cuoreNuovo} />}
         <main className="flex-1 min-h-screen" id="main-content">
           <Topbar
             page={page}
@@ -17035,6 +17141,10 @@ export default function App() {
               {page === 'preventivi'    && <PreventiviPage setPage={setPage} setPrenotazioniPrefill={setPrenotazioniPrefill} listino={listino} fleet={fleet} rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} pushToast={pushToast} fermiFlotta={fermiFlotta} targhe={targhe} />}
               {page === 'prenotazioni' && <PrenotazioniPage prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} setCassa={setCassa} fleet={fleet} rentmeVehicles={rentmeVehicles} customers={customers} partners={partners} operator={operator} onOpenWizard={openWizard} pushToast={pushToast} prefill={prenotazioniPrefill} onClearPrefill={() => setPrenotazioniPrefill(null)} fermiFlotta={fermiFlotta} rentmePush={rentmeSync.pushBooking} rentmeConnected={rentmeSync.status === 'ok'} agency={agency} targhe={targhe} />}
               {page === 'contracts'  && <ContractsList contracts={localContracts} operators={operators} onRetry={retryContract} onMarkReturned={markContractReturned} onSendPec={sendContractPec} pecStatus={pecStatus} online={online} />}
+              {page === 'cuore' && cuoreNuovo && <CuoreAnteprimaPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} prenotazioni={prenotazioni} scadenze={scadenze} />}
+              {page === 'cuore_cal' && cuoreNuovo && <CuoreCalendarioPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} prenotazioni={prenotazioni} scadenze={scadenze} setPrenotazioni={setPrenotazioni} pushToast={pushToast} />}
+              {page === 'cuore_preno' && cuoreNuovo && <CuorePrenotaPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} pushToast={pushToast} />}
+              {page === 'cuore_flotta' && cuoreNuovo && <CuoreFlottaPage rentmeVehicles={rentmeVehicles} targhe={targhe} setTarghe={setTarghe} fleet={fleet} scadenze={scadenze} admin={admin} />}
               {page === 'fleet'      && <FleetPage fleet={unifiedFleet} prenotazioni={prenotazioni} admin={admin} onAddVehicle={() => setModal('newVehicle')} onEditVehicle={(v) => setModal({ type: 'editVehicle', vehicle: v })} onDeleteVehicle={requestDeleteVehicle} onImportCSV={() => setShowCsvImport(true)} onResetFleet={() => setModal({ type: 'confirm', title: 'Azzera flotta?', message: <><strong>Tutti i {fleet.length} veicoli</strong> verranno eliminati dalla flotta. Le prenotazioni esistenti restano invariate. Dopo puoi reimportare con un CSV aggiornato. <strong>Azione irreversibile.</strong></>, confirmLabel: 'Azzera flotta', variant: 'danger', onConfirm: () => { setFleet([]); pushToast({ tone: 'info', title: 'Flotta azzerata', message: 'Tutti i veicoli rimossi. Importa un nuovo CSV per ricaricare.' }); } })} onSetFleet={setFleet} scadenze={scadenze} setScadenze={setScadenze} fermiFlotta={fermiFlotta} setFermiFlotta={setFermiFlotta} rentmeVehicles={rentmeVehicles} manutenzioni={manutenzioni} setManutenzioni={setManutenzioni} partners={partners} targhe={targhe} setTarghe={setTarghe} />}
               {page === 'customers'  && <CustomersPage customers={customers} setCustomers={setCustomers} prenotazioni={prenotazioni} admin={admin} onShowQR={(c) => setModal({ type: 'qr', customer: c })} onNewWithCustomer={openWizard} onAddCustomer={() => setModal('newCustomer')} onEditCustomer={(c) => setModal({ type: 'editCustomer', customer: c })} onDeleteCustomer={deleteCustomer} onShowStorico={(c) => setStorioClienteId(c.id)} />}
               {page === 'partners'   && <PartnersPage partners={partners} admin={admin} onAddPartner={() => setModal('newPartner')} onEditPartner={(p) => setModal({ type: 'editPartner', partner: p })} onDeletePartner={requestDeletePartner} />}
@@ -17047,7 +17157,7 @@ export default function App() {
                   <StagioniEditor stagioni={stagioni} onSave={(s)=>{setStagioni(s); pushToast && pushToast({tone:'success',title:'Stagioni aggiornate',message:'Configurazione stagionale salvata'});}} />
                 </div>
               </div>}
-              {page === 'settings'   && <SettingsPage operator={operator} operators={operators} admin={admin} cargosConfig={cargosConfig} backendStatus={backendStatus} lastCheck={lastCheck} apiBaseUrl={apiBaseUrl} syncStatus={allSyncStatus} agency={agency} customers={customers} contracts={localContracts} onSyncAll={syncAll} onExportBackup={exportBackup} onImportBackup={importBackup} pushToast={pushToast} onAddOperator={() => setModal('newOperator')} onEditOperator={(o) => setModal({ type: 'editOperator', operator: o })} onDeleteOperator={requestDeleteOperator} onEditCargos={() => setModal('cargosConfig')} onEditApiBase={() => setModal('apiBase')} onEditAgency={() => setModal('agency')} onResetCustomers={requestResetCustomers} onResetContracts={requestResetContracts} onResetEverything={requestResetEverything} onImportFleetFromRentMe={requestImportFleetFromRentMe} rentmeConfig={rentmeConfig} setRentmeConfig={setRentmeConfig} rentmeSync={rentmeSync} rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} appUsers={appUsers} setAppUsers={setAppUsers} onLogout={handleLogout} driveClientId={driveClientId} setDriveClientId={setDriveClientId} driveLastBackup={driveLastBackup} onDriveBackup={driveBackup} driveAutoEnabled={driveAutoEnabled} setDriveAutoEnabled={setDriveAutoEnabled} renderLastBackup={renderLastBackup} onRenderBackup={backupToRender} backupToken={backupToken} setBackupToken={setBackupToken} pecStatus={pecStatus} onPecVerify={verifyPecConnection} onImportStorico={({ prenotazioni: newP, clienti: newC }) => {
+              {page === 'settings'   && <SettingsPage operator={operator} operators={operators} admin={admin} cargosConfig={cargosConfig} backendStatus={backendStatus} lastCheck={lastCheck} apiBaseUrl={apiBaseUrl} syncStatus={allSyncStatus} agency={agency} customers={customers} contracts={localContracts} onSyncAll={syncAll} onExportBackup={exportBackup} onImportBackup={importBackup} pushToast={pushToast} onAddOperator={() => setModal('newOperator')} onEditOperator={(o) => setModal({ type: 'editOperator', operator: o })} onDeleteOperator={requestDeleteOperator} onEditCargos={() => setModal('cargosConfig')} onEditApiBase={() => setModal('apiBase')} onEditAgency={() => setModal('agency')} onResetCustomers={requestResetCustomers} onResetContracts={requestResetContracts} onResetEverything={requestResetEverything} onImportFleetFromRentMe={requestImportFleetFromRentMe} rentmeConfig={rentmeConfig} setRentmeConfig={setRentmeConfig} rentmeSync={rentmeSync} rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} appUsers={appUsers} setAppUsers={setAppUsers} onLogout={handleLogout} driveClientId={driveClientId} setDriveClientId={setDriveClientId} driveLastBackup={driveLastBackup} onDriveBackup={driveBackup} driveAutoEnabled={driveAutoEnabled} setDriveAutoEnabled={setDriveAutoEnabled} renderLastBackup={renderLastBackup} onRenderBackup={backupToRender} backupToken={backupToken} setBackupToken={setBackupToken} pecStatus={pecStatus} onPecVerify={verifyPecConnection} cuoreNuovo={cuoreNuovo} setCuoreNuovo={setCuoreNuovo} onImportStorico={({ prenotazioni: newP, clienti: newC }) => {
                 setPrenotazioni(prev => {
                   const existKeys = new Set(prev.map(p => p.id));
                   return [...prev, ...newP.filter(p => !existKeys.has(p.id))];
@@ -17594,9 +17704,598 @@ function Styles() {
 }
 
 // ═══════════════════════════════════════════════════════════════════
+// 🫀 CUORE — ANTEPRIMA (Fase 4, dietro interruttore). Sola lettura.
+// Mostra il Parco Mezzi nuovo + la disponibilità calcolata dal motore nuovo
+// sui DATI REALI dell'app, senza toccare nulla. Serve a verificare prima di
+// collegare le schermate vere.
+// ═══════════════════════════════════════════════════════════════════
+function CuoreAnteprimaPage({ rentmeVehicles, targhe, fleet, prenotazioni, scadenze }) {
+  const parco = useMemo(
+    () => cuoreBuildParco(rentmeVehicles, { targhe, fleet, scadenze }),
+    [rentmeVehicles, targhe, fleet, scadenze]
+  );
+  const prenoNuove = useMemo(
+    () => (prenotazioni || []).map(p => cuoreMigraPreno(p, parco)),
+    [prenotazioni, parco]
+  );
+  const categorie = useMemo(() => {
+    const seen = new Map();
+    parco.forEach(m => { const k = `${m.tipo}|${m.categoria}`; if (!seen.has(k)) seen.set(k, { tipo: m.tipo, categoria: m.categoria }); });
+    return Array.from(seen.values()).sort((a, b) => (a.tipo + a.categoria).localeCompare(b.tipo + b.categoria));
+  }, [parco]);
+
+  const [dal, setDal] = useState(todayISO());
+  const [al, setAl]   = useState(todayISO());
+
+  const rows = useMemo(() => categorie.map(c => {
+    const a = cuoreAvailability(parco, prenoNuove, { tipo: c.tipo, categoria: c.categoria, dal, al });
+    return { ...c, totale: a.totale, occupati: a.occupati, liberi: a.liberi, mezziLiberi: a.mezziLiberi };
+  }), [categorie, parco, prenoNuove, dal, al]);
+
+  const th = { textAlign: 'left', padding: '6px 10px', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--ink-2)', borderBottom: '1px solid var(--border)' };
+  const td = { padding: '6px 10px', fontSize: 13, borderBottom: '1px solid var(--border)' };
+  const mono = { fontFamily: 'var(--font-mono, monospace)' };
+
+  return (
+    <div style={{ maxWidth: 1000, margin: '0 auto' }}>
+      <div className="label" style={{ color: 'var(--sea)' }}>NUOVO CUORE · ANTEPRIMA (sola lettura)</div>
+      <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: 22, letterSpacing: '-0.01em', margin: '2px 0 4px' }}>
+        Cuore — Parco Mezzi e disponibilità
+      </h1>
+      <p style={{ fontSize: 13, color: 'var(--ink-2)', marginBottom: 16 }}>
+        Calcolato dal <strong>motore nuovo</strong> (una lista, una regola, zero traduttori) sui tuoi dati reali.
+        Non cambia niente nell'app: serve a verificare. Parco: <strong>{parco.length} mezzi</strong> ·
+        prenotazioni considerate: <strong>{prenoNuove.length}</strong>.
+      </p>
+
+      <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', marginBottom: 16, flexWrap: 'wrap' }}>
+        <label style={{ fontSize: 12, color: 'var(--ink-2)' }}>Dal<br />
+          <input type="date" value={dal} onChange={e => setDal(e.target.value)} style={{ padding: 6, border: '1px solid var(--border)', borderRadius: 6 }} />
+        </label>
+        <label style={{ fontSize: 12, color: 'var(--ink-2)' }}>Al<br />
+          <input type="date" value={al} onChange={e => setAl(e.target.value)} style={{ padding: 6, border: '1px solid var(--border)', borderRadius: 6 }} />
+        </label>
+      </div>
+
+      <div className="card-paper" style={{ padding: 0, overflow: 'hidden', marginBottom: 24 }}>
+        <div style={{ padding: '10px 12px', fontWeight: 600, fontSize: 13, borderBottom: '1px solid var(--border)' }}>Disponibilità per categoria ({dal} → {al})</div>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead><tr><th style={th}>Tipo</th><th style={th}>Categoria</th><th style={{ ...th, textAlign: 'right' }}>Totale</th><th style={{ ...th, textAlign: 'right' }}>Occupati</th><th style={{ ...th, textAlign: 'right' }}>Liberi</th><th style={th}>Mezzi liberi</th></tr></thead>
+          <tbody>
+            {rows.map((r, i) => (
+              <tr key={i}>
+                <td style={td}>{r.tipo}</td>
+                <td style={td}>{r.categoria || <em style={{ color: 'var(--ink-2)' }}>(tutte)</em>}</td>
+                <td style={{ ...td, ...mono, textAlign: 'right' }}>{r.totale}</td>
+                <td style={{ ...td, ...mono, textAlign: 'right' }}>{r.occupati}</td>
+                <td style={{ ...td, ...mono, textAlign: 'right', fontWeight: 700, color: r.liberi === 0 ? 'var(--accent, #c0392b)' : 'var(--sea)' }}>{r.liberi}</td>
+                <td style={{ ...td, ...mono, fontSize: 11, color: 'var(--ink-2)' }}>{r.mezziLiberi.map(m => m.numero).join(' ') || '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="card-paper" style={{ padding: 0, overflow: 'hidden' }}>
+        <div style={{ padding: '10px 12px', fontWeight: 600, fontSize: 13, borderBottom: '1px solid var(--border)' }}>Parco Mezzi (lista unica)</div>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead><tr><th style={th}>Numero</th><th style={th}>Targa</th><th style={th}>Tipo</th><th style={th}>Categoria</th><th style={th}>Stato</th></tr></thead>
+          <tbody>
+            {parco.slice().sort((a, b) => (a.tipo + a.categoria).localeCompare(b.tipo + b.categoria) || (parseInt(a.numero) - parseInt(b.numero))).map(m => (
+              <tr key={m.numero}>
+                <td style={{ ...td, ...mono }}>{m.numero}</td>
+                <td style={{ ...td, ...mono }}>{m.targa || <span style={{ color: 'var(--accent, #c0392b)' }}>(manca)</span>}</td>
+                <td style={td}>{m.tipo}</td>
+                <td style={td}>{m.categoria || '—'}</td>
+                <td style={{ ...td, color: m.stato === 'disponibile' ? 'var(--ink)' : 'var(--accent, #c0392b)' }}>{m.stato}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 🫀 CALENDARIO NUOVO (Fase 4, dietro interruttore). Mese intero · barre per
+// NUMERO mezzo (non spariscono) · targa SEMPRE dalla tabella ("(manca)" se assente)
+// · fascia "da assegnare" per categoria · colonne a larghezza piena (no scroll
+// orizzontale su schermi larghi) · navigazione mese-per-mese.
+// ═══════════════════════════════════════════════════════════════════
+const CUORE_STATO_COLORE = { confermata: '#2e6e3e', in_corso: '#1f5d83', prorogata: '#7a5cc0', bozza: '#9a8c6a' };
+function CuoreCalendarioPage({ rentmeVehicles, targhe, fleet, prenotazioni, scadenze, setPrenotazioni, pushToast }) {
+  const parco = useMemo(() => cuoreBuildParco(rentmeVehicles, { targhe, fleet, scadenze }), [rentmeVehicles, targhe, fleet, scadenze]);
+  const [assegna, setAssegna] = useState(null); // prenotazione da assegnare
+  const prenoNuove = useMemo(
+    () => (prenotazioni || []).map(p => cuoreMigraPreno(p, parco)).filter(p => p && !CUORE_PRENO_FUORI.has(String(p.stato || ''))),
+    [prenotazioni, parco]
+  );
+
+  const oggi = todayISO();
+  const [ym, setYm] = useState(() => oggi.slice(0, 7)); // 'YYYY-MM'
+  const [y, mo] = ym.split('-').map(Number);
+  const giorniMese = new Date(y, mo, 0).getDate();              // ultimo giorno del mese
+  const meseInizio = `${ym}-01`;
+  const meseFine   = `${ym}-${String(giorniMese).padStart(2, '0')}`;
+  const days = useMemo(() => Array.from({ length: giorniMese }, (_, i) => `${ym}-${String(i + 1).padStart(2, '0')}`), [ym, giorniMese]);
+  const meseLabel = new Date(y, mo - 1, 1).toLocaleDateString('it-IT', { month: 'long', year: 'numeric' });
+  const cambiaMese = (delta) => {
+    const d = new Date(y, mo - 1 + delta, 1);
+    setYm(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+  };
+
+  const [tipoFiltro, setTipoFiltro] = useState('');
+  const tipi = useMemo(() => [...new Set(parco.map(m => m.tipo).filter(Boolean))].sort(), [parco]);
+
+  const mezziVisibili = useMemo(() => parco
+    .filter(m => !tipoFiltro || m.tipo === tipoFiltro)
+    .sort((a, b) => (a.tipo + a.categoria).localeCompare(b.tipo + b.categoria) || (parseInt(a.numero) - parseInt(b.numero))),
+    [parco, tipoFiltro]);
+
+  // Gruppi per categoria (tipo|categoria), in ordine
+  const gruppi = useMemo(() => {
+    const map = new Map();
+    mezziVisibili.forEach(m => { const k = `${m.tipo}|${m.categoria}`; if (!map.has(k)) map.set(k, { tipo: m.tipo, categoria: m.categoria, mezzi: [] }); map.get(k).mezzi.push(m); });
+    return [...map.values()];
+  }, [mezziVisibili]);
+
+  // overlap con il mese + posizione barra (left%/width%) su un periodo
+  const inMese = (dal, al) => dal && al && dal <= meseFine && al >= meseInizio;
+  const idxOf = (iso) => parseInt(iso.slice(8, 10), 10) - 1;
+  const barStyle = (dal, al) => {
+    const sIso = dal < meseInizio ? meseInizio : dal;
+    const eIso = al > meseFine ? meseFine : al;
+    const s = idxOf(sIso), e = idxOf(eIso);
+    return { left: `${(s / giorniMese) * 100}%`, width: `${((e - s + 1) / giorniMese) * 100}%` };
+  };
+
+  // Barre per ogni mezzo (segmenti assegnati al suo numero) e per la fascia "da assegnare" (prenotazioni senza mezzo, per categoria)
+  const barrePerNumero = useMemo(() => {
+    const m = {};
+    prenoNuove.forEach(p => {
+      const segs = cuoreSegmenti(p);
+      if (!segs.length) return;
+      segs.forEach(s => { if (inMese(s.dal, s.al)) { (m[String(s.numero)] ||= []).push({ p, dal: s.dal, al: s.al }); } });
+    });
+    return m;
+  }, [prenoNuove, ym]);
+
+  const daAssegnarePerCat = useMemo(() => {
+    const m = {};
+    prenoNuove.forEach(p => {
+      if (cuoreSegmenti(p).length) return; // ha già un mezzo
+      if (!inMese(p.dal, p.al)) return;
+      const k = `${canonicalTipo({ tipo: p.tipo })}|${String(p.categoria || '').toUpperCase()}`;
+      (m[k] ||= []).push(p);
+    });
+    return m;
+  }, [prenoNuove, ym]);
+
+  const LABEL_W = 160;
+  const cliente = (p) => `${p.clienteCognome || ''} ${p.clienteNome || ''}`.trim() || p.cliente || '—';
+
+  // celle di sfondo (bordi, weekend, oggi)
+  const TrackBg = () => (
+    <div style={{ position: 'absolute', inset: 0, display: 'flex' }}>
+      {days.map((d, i) => {
+        const dow = new Date(d + 'T12:00:00').getDay();
+        const weekend = dow === 0 || dow === 6;
+        return <div key={i} style={{ flex: 1, borderRight: '1px solid var(--border)', background: d === oggi ? 'rgba(31,93,131,0.10)' : weekend ? 'var(--surface-2)' : 'transparent' }} />;
+      })}
+    </div>
+  );
+
+  // ── Responsive: su smartphone (stretto) → vista AGENDA invece della griglia ──
+  const [isNarrow, setIsNarrow] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 700px)').matches);
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 700px)');
+    const onR = () => setIsNarrow(mq.matches);
+    mq.addEventListener('change', onR);
+    return () => mq.removeEventListener('change', onR);
+  }, []);
+  const mezzoDi = (p) => {
+    const segs = cuoreSegmenti(p);
+    if (!segs.length) return `${p.categoria || p.tipo} · da assegnare`;
+    const m = parco.find(x => String(x.numero) === String(segs[0].numero));
+    return m ? `${m.modello || ''} ${m.targa || ('n.' + m.numero)}`.trim() : `n.${segs[0].numero}`;
+  };
+  const agenda = useMemo(() => {
+    const byDay = {};
+    prenoNuove.forEach(p => {
+      if (p.dal >= meseInizio && p.dal <= meseFine) (byDay[p.dal] ||= { ritiri: [], rientri: [] }).ritiri.push(p);
+      if (p.al >= meseInizio && p.al <= meseFine) (byDay[p.al] ||= { ritiri: [], rientri: [] }).rientri.push(p);
+    });
+    return Object.keys(byDay).sort().map(d => ({ giorno: d, ...byDay[d] }));
+  }, [prenoNuove, meseInizio, meseFine]);
+  const HeaderControlli = (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
+      <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: 22, letterSpacing: '-0.01em', margin: '2px 0', textTransform: 'capitalize' }}>{meseLabel}</h1>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <button type="button" onClick={() => cambiaMese(-1)} style={{ padding: '5px 12px', border: '1px solid var(--border)', borderRadius: 6, background: 'transparent', cursor: 'pointer' }}>‹</button>
+        <button type="button" onClick={() => setYm(oggi.slice(0, 7))} style={{ padding: '5px 12px', border: '1px solid var(--border)', borderRadius: 6, background: 'transparent', cursor: 'pointer', fontSize: 12 }}>Oggi</button>
+        <button type="button" onClick={() => cambiaMese(1)} style={{ padding: '5px 12px', border: '1px solid var(--border)', borderRadius: 6, background: 'transparent', cursor: 'pointer' }}>›</button>
+      </div>
+    </div>
+  );
+
+  if (isNarrow) {
+    const dataLabel = (d) => new Date(d + 'T12:00:00').toLocaleDateString('it-IT', { weekday: 'short', day: 'numeric', month: 'short' });
+    return (
+      <div>
+        <div className="label" style={{ color: 'var(--sea)' }}>NUOVO CUORE · AGENDA (anteprima telefono)</div>
+        {HeaderControlli}
+        {agenda.length === 0 && <div className="card-paper" style={{ padding: 20, textAlign: 'center', color: 'var(--ink-2)' }}>Nessun movimento questo mese.</div>}
+        <div style={{ display: 'grid', gap: 10 }}>
+          {agenda.map(g => (
+            <div key={g.giorno} className="card-paper" style={{ padding: 12, borderLeft: `3px solid ${g.giorno === oggi ? 'var(--sea)' : 'transparent'}` }}>
+              <div style={{ fontWeight: 700, fontSize: 13, textTransform: 'capitalize', marginBottom: 6 }}>{dataLabel(g.giorno)}{g.giorno === oggi ? ' · oggi' : ''}</div>
+              {g.ritiri.map(p => (
+                <div key={'r' + p.id} style={{ display: 'flex', gap: 8, fontSize: 13, padding: '3px 0' }}>
+                  <span style={{ color: '#2e6e3e', fontWeight: 700, whiteSpace: 'nowrap' }}>↑ Ritira</span>
+                  <span><strong>{cliente(p)}</strong> · {mezzoDi(p)}</span>
+                </div>
+              ))}
+              {g.rientri.map(p => (
+                <div key={'i' + p.id} style={{ display: 'flex', gap: 8, fontSize: 13, padding: '3px 0' }}>
+                  <span style={{ color: '#1f5d83', fontWeight: 700, whiteSpace: 'nowrap' }}>↓ Rientra</span>
+                  <span><strong>{cliente(p)}</strong> · {mezzoDi(p)}</span>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+        <p style={{ fontSize: 11, color: 'var(--ink-2)', marginTop: 10 }}>Su schermo grande questa pagina mostra il calendario a mese intero.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div className="label" style={{ color: 'var(--sea)' }}>NUOVO CUORE · CALENDARIO (anteprima)</div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
+        <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: 22, letterSpacing: '-0.01em', margin: '2px 0', textTransform: 'capitalize' }}>{meseLabel}</h1>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <select value={tipoFiltro} onChange={e => setTipoFiltro(e.target.value)} style={{ padding: '5px 8px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 13 }}>
+            <option value="">Tutti i tipi</option>
+            {tipi.map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
+          <button type="button" onClick={() => cambiaMese(-1)} style={{ padding: '5px 12px', border: '1px solid var(--border)', borderRadius: 6, background: 'transparent', cursor: 'pointer' }}>‹</button>
+          <button type="button" onClick={() => setYm(oggi.slice(0, 7))} style={{ padding: '5px 12px', border: '1px solid var(--border)', borderRadius: 6, background: 'transparent', cursor: 'pointer', fontSize: 12 }}>Oggi</button>
+          <button type="button" onClick={() => cambiaMese(1)} style={{ padding: '5px 12px', border: '1px solid var(--border)', borderRadius: 6, background: 'transparent', cursor: 'pointer' }}>›</button>
+        </div>
+      </div>
+
+      <div className="card-paper" style={{ padding: 0, overflow: 'hidden' }}>
+        {/* testata giorni (sopra il corpo che scrolla — niente position:sticky, vietato su Safari in overflow) */}
+        <div style={{ display: 'flex', background: '#16181d', color: '#d4cdc1' }}>
+          <div style={{ width: LABEL_W, flexShrink: 0, padding: '6px 10px', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em', borderRight: '1px solid #2c2e35' }}>Mezzo</div>
+          <div style={{ flex: 1, display: 'flex' }}>
+            {days.map((d, i) => {
+              const dd = new Date(d + 'T12:00:00');
+              const dow = dd.getDay();
+              return (
+                <div key={i} style={{ flex: 1, textAlign: 'center', padding: '4px 0', fontSize: 10, borderRight: '1px solid #2c2e35', background: d === oggi ? 'rgba(31,93,131,0.5)' : 'transparent' }}>
+                  <div style={{ fontFamily: 'var(--font-mono, monospace)', fontWeight: 700, color: '#f5f2ec' }}>{i + 1}</div>
+                  <div style={{ color: (dow === 0 || dow === 6) ? '#b06a5a' : '#8e887e' }}>{'DLMMGVS'[dow]}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* corpo: gruppi categoria → fascia "da assegnare" + righe mezzo */}
+        <div style={{ maxHeight: '64vh', overflowY: 'auto' }}>
+          {gruppi.map((g, gi) => {
+            const k = `${g.tipo}|${String(g.categoria || '').toUpperCase()}`;
+            const daAss = daAssegnarePerCat[k] || [];
+            return (
+              <div key={gi}>
+                {/* intestazione categoria + fascia da assegnare */}
+                <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', background: 'var(--surface-2)' }}>
+                  <div style={{ width: LABEL_W, flexShrink: 0, padding: '4px 10px', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.03em', color: 'var(--ink-2)' }}>
+                    {g.tipo} · {g.categoria || '—'}{daAss.length ? <span style={{ color: 'var(--accent, #c0392b)' }}> · {daAss.length} da assegnare</span> : ''}
+                  </div>
+                  <div style={{ flex: 1, position: 'relative', minHeight: daAss.length ? 26 : 0 }}>
+                    {daAss.length > 0 && <TrackBg />}
+                    {daAss.map((p, i) => (
+                      <div key={p.id} onClick={() => setPrenotazioni && setAssegna(p)} title={`${cliente(p)} · clicca per assegnare un mezzo`} style={{ position: 'absolute', top: 3, height: 20, ...barStyle(p.dal, p.al), background: 'repeating-linear-gradient(45deg,#c0392b,#c0392b 4px,#a93226 4px,#a93226 8px)', opacity: 0.85, borderRadius: 4, color: '#fff', fontSize: 10, padding: '2px 5px', overflow: 'hidden', whiteSpace: 'nowrap', cursor: setPrenotazioni ? 'pointer' : 'default' }}>{cliente(p)}</div>
+                    ))}
+                  </div>
+                </div>
+                {/* righe mezzo */}
+                {g.mezzi.map(m => {
+                  const barre = barrePerNumero[String(m.numero)] || [];
+                  return (
+                    <div key={m.numero} style={{ display: 'flex', borderBottom: '1px solid var(--border)', minHeight: 30 }}>
+                      <div style={{ width: LABEL_W, flexShrink: 0, padding: '4px 10px', borderRight: '1px solid var(--border)', fontSize: 12 }}>
+                        <div style={{ fontWeight: 600 }}>{m.modello || m.numero}</div>
+                        <div style={{ fontFamily: 'var(--font-mono, monospace)', fontSize: 10, color: m.targa ? 'var(--ink-2)' : 'var(--accent, #c0392b)' }}>{m.targa || '(manca)'} · n.{m.numero}</div>
+                      </div>
+                      <div style={{ flex: 1, position: 'relative', minHeight: 30 }}>
+                        <TrackBg />
+                        {barre.map((b, i) => (
+                          <div key={i} title={`${cliente(b.p)} · ${b.dal} → ${b.al}`} style={{ position: 'absolute', top: 4, height: 22, ...barStyle(b.dal, b.al), background: CUORE_STATO_COLORE[b.p.stato] || '#777', borderRadius: 4, color: '#fff', fontSize: 11, padding: '3px 6px', overflow: 'hidden', whiteSpace: 'nowrap', boxShadow: '0 1px 2px rgba(0,0,0,0.2)' }}>{cliente(b.p)}</div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
+          {gruppi.length === 0 && <div style={{ padding: 24, textAlign: 'center', color: 'var(--ink-2)' }}>Nessun mezzo per questo filtro.</div>}
+        </div>
+      </div>
+      <p style={{ fontSize: 11, color: 'var(--ink-2)', marginTop: 8 }}>
+        Anteprima del calendario nuovo: mese intero, barre agganciate al <strong>numero</strong> del mezzo (non spariscono),
+        targa dalla <strong>tabella</strong> ("(manca)" se non inserita), fascia <strong>"da assegnare"</strong> per categoria.
+        Su smartphone diventerà una vista <strong>agenda</strong> (in arrivo).
+      </p>
+
+      {assegna && (() => {
+        const liberi = cuoreAvailability(parco, prenoNuove, { tipo: assegna.tipo, categoria: assegna.categoria, dal: assegna.dal, al: assegna.al, excludeId: assegna.id }).mezziLiberi;
+        const conferma = (numero) => {
+          const mezzo = parco.find(m => String(m.numero) === String(numero));
+          if (!mezzo) return;
+          setPrenotazioni(prev => (prev || []).map(x => x.id === assegna.id ? { ...x, assegnazioni: [{ numero: String(mezzo.numero), dal: assegna.dal, al: assegna.al }], vehicleId: String(mezzo.numero), vehicleTarga: mezzo.targa || '', vehicleLabel: mezzo.modello || mezzo.numero } : x));
+          pushToast && pushToast({ tone: 'success', title: 'Mezzo assegnato', message: `${cliente(assegna)} → ${mezzo.modello || ''} ${mezzo.targa || 'n.' + mezzo.numero}` });
+          setAssegna(null);
+        };
+        return (
+          <div onClick={() => setAssegna(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
+            <div onClick={e => e.stopPropagation()} className="card-paper" style={{ padding: 20, width: 400, maxWidth: '90vw' }}>
+              <h3 style={{ fontFamily: 'var(--font-serif)', fontSize: 18, marginBottom: 4 }}>Assegna un mezzo</h3>
+              <p style={{ fontSize: 13, color: 'var(--ink-2)', marginBottom: 12 }}>{cliente(assegna)} · {assegna.tipo} {assegna.categoria} · {assegna.dal} → {assegna.al}</p>
+              {liberi.length === 0 ? (
+                <div style={{ padding: '10px 12px', borderRadius: 8, background: 'rgba(192,57,50,0.1)', color: 'var(--accent, #c0392b)', fontSize: 13, fontWeight: 600 }}>⛔ Nessun mezzo libero per queste date</div>
+              ) : (
+                <div style={{ display: 'grid', gap: 6, maxHeight: '40vh', overflowY: 'auto' }}>
+                  {liberi.map(m => (
+                    <button key={m.numero} type="button" onClick={() => conferma(m.numero)} style={{ textAlign: 'left', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 6, background: 'transparent', cursor: 'pointer', fontSize: 13 }}>
+                      <strong>{m.modello || ('n.' + m.numero)}</strong> · {m.targa || '(targa manca)'} · n.{m.numero}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <button type="button" onClick={() => setAssegna(null)} style={{ marginTop: 12, padding: '7px 14px', border: '1px solid var(--border)', borderRadius: 6, background: 'transparent', cursor: 'pointer', fontSize: 13 }}>Annulla</button>
+            </div>
+          </div>
+        );
+      })()}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 🫀 NUOVA PRENOTAZIONE (Fase 4) — i DUE BLOCCHI dal vivo sul motore nuovo.
+// Categoria esaurita → bloccato. Mezzo già occupato → bloccato. Scrive il nuovo
+// modello {tipo,categoria,assegnazioni} + rispecchia i campi vecchi per compatibilità.
+// ═══════════════════════════════════════════════════════════════════
+function CuorePrenotaPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazioni, setPrenotazioni, pushToast }) {
+  const parco = useMemo(() => cuoreBuildParco(rentmeVehicles, { targhe, fleet, scadenze }), [rentmeVehicles, targhe, fleet, scadenze]);
+  const prenoNuove = useMemo(() => (prenotazioni || []).map(p => cuoreMigraPreno(p, parco)), [prenotazioni, parco]);
+
+  const oggi = todayISO();
+  const [tipo, setTipo] = useState('');
+  const [categoria, setCategoria] = useState('');
+  const [dal, setDal] = useState(oggi);
+  const [al, setAl] = useState(oggi);
+  const [numero, setNumero] = useState('');      // mezzo preciso, facoltativo
+  const [cognome, setCognome] = useState('');
+  const [nome, setNome] = useState('');
+
+  const tipi = useMemo(() => [...new Set(parco.map(m => m.tipo).filter(Boolean))].sort(), [parco]);
+  const categorieDelTipo = useMemo(() => {
+    if (!tipo) return [];
+    return [...new Set(parco.filter(m => canonicalTipo({ tipo: m.tipo }) === canonicalTipo({ tipo })).map(m => m.categoria).filter(Boolean))].sort();
+  }, [parco, tipo]);
+
+  // disponibilità della categoria scelta (la regola, una sola funzione)
+  const disp = useMemo(() => {
+    if (!tipo || !dal || !al) return null;
+    return cuoreAvailability(parco, prenoNuove, { tipo, categoria, dal, al });
+  }, [parco, prenoNuove, tipo, categoria, dal, al]);
+
+  const categoriaPiena = disp && disp.liberi <= 0;
+  const mezziScegliibili = disp ? disp.mezziLiberi : [];
+  const numeroOccupato = numero && disp && !disp.mezziLiberi.some(m => String(m.numero) === String(numero));
+
+  // reset a cascata
+  const cambiaTipo = (t) => { setTipo(t); setCategoria(''); setNumero(''); };
+  const cambiaCategoria = (c) => { setCategoria(c); setNumero(''); };
+
+  const puoConfermare = tipo && dal && al && al >= dal && cognome.trim() && !categoriaPiena && !numeroOccupato;
+
+  function conferma() {
+    if (!puoConfermare) return;
+    const mezzo = numero ? parco.find(m => String(m.numero) === String(numero)) : null;
+    const id = 'b' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    const nuova = {
+      id,
+      codice: (typeof generateBookingCode === 'function' ? generateBookingCode() : id),
+      stato: 'confermata',
+      fonte: 'manuale',
+      clienteCognome: cognome.trim(),
+      clienteNome: nome.trim(),
+      dal, al,
+      // ── modello NUOVO ──
+      tipo, categoria,
+      assegnazioni: mezzo ? [{ numero: String(mezzo.numero), dal, al }] : [],
+      // ── rispecchiamento VECCHIO (compatibilità transizione) ──
+      vehicleType: tipo,
+      vehicleCategoria: categoria,
+      vehicleId: mezzo ? String(mezzo.numero) : null,
+      vehicleTarga: mezzo ? (mezzo.targa || '') : '',
+      vehicleLabel: mezzo ? (mezzo.modello || mezzo.numero) : '',
+    };
+    setPrenotazioni(prev => [...(prev || []), nuova]);
+    pushToast && pushToast({ tone: 'success', title: 'Prenotazione creata (cuore)', message: `${cognome} · ${tipo} ${categoria || ''} · ${dal}→${al}${mezzo ? ' · n.' + mezzo.numero : ' · da assegnare'}` });
+    setCognome(''); setNome(''); setNumero('');
+  }
+
+  const inp = { padding: '7px 9px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 13, width: '100%' };
+  const lbl = { fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--ink-2)', marginBottom: 3, display: 'block' };
+
+  return (
+    <div style={{ maxWidth: 640, margin: '0 auto' }}>
+      <div className="label" style={{ color: 'var(--sea)' }}>NUOVO CUORE · NUOVA PRENOTAZIONE (anteprima)</div>
+      <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: 22, letterSpacing: '-0.01em', margin: '2px 0 4px' }}>Nuova prenotazione</h1>
+      <p style={{ fontSize: 13, color: 'var(--ink-2)', marginBottom: 16 }}>
+        I <strong>due blocchi</strong> in azione: categoria esaurita → non si prenota; mezzo già occupato → non si assegna.
+        Scrive una prenotazione vera (compatibile col resto). Parco: {parco.length} mezzi.
+      </p>
+
+      <div className="card-paper" style={{ padding: 16, display: 'grid', gap: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div><label style={lbl}>Tipo</label>
+            <select style={inp} value={tipo} onChange={e => cambiaTipo(e.target.value)}>
+              <option value="">— scegli —</option>
+              {tipi.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </div>
+          <div><label style={lbl}>Categoria</label>
+            <select style={inp} value={categoria} onChange={e => cambiaCategoria(e.target.value)} disabled={!tipo}>
+              <option value="">— qualsiasi {tipo} —</option>
+              {categorieDelTipo.map(c => {
+                const a = cuoreAvailability(parco, prenoNuove, { tipo, categoria: c, dal, al });
+                return <option key={c} value={c}>{c} — {a.liberi}/{a.totale} liberi{a.liberi <= 0 ? ' (esaurita)' : ''}</option>;
+              })}
+            </select>
+          </div>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div><label style={lbl}>Dal</label><input type="date" style={inp} value={dal} onChange={e => setDal(e.target.value)} /></div>
+          <div><label style={lbl}>Al</label><input type="date" style={inp} value={al} onChange={e => setAl(e.target.value)} /></div>
+        </div>
+
+        {/* banner disponibilità */}
+        {disp && (
+          <div style={{ padding: '10px 12px', borderRadius: 8, fontSize: 13, fontWeight: 600,
+            background: categoriaPiena ? 'rgba(192,57,50,0.10)' : 'rgba(31,93,131,0.08)',
+            color: categoriaPiena ? 'var(--accent, #c0392b)' : 'var(--sea)',
+            border: `1px solid ${categoriaPiena ? 'rgba(192,57,50,0.3)' : 'rgba(31,93,131,0.25)'}` }}>
+            {categoriaPiena
+              ? `⛔ ${tipo} ${categoria || ''} ESAURITA per queste date (${disp.occupati}/${disp.totale} occupati) — non si può prenotare`
+              : `✓ ${disp.liberi} ${tipo} ${categoria || ''} liberi su ${disp.totale} per queste date`}
+          </div>
+        )}
+
+        <div><label style={lbl}>Mezzo specifico (facoltativo — altrimenti si assegna dopo)</label>
+          <select style={inp} value={numero} onChange={e => setNumero(e.target.value)} disabled={!disp || categoriaPiena}>
+            <option value="">— nessun mezzo preciso (da assegnare) —</option>
+            {mezziScegliibili.map(m => <option key={m.numero} value={m.numero}>{m.modello || ''} · {m.targa || '(targa manca)'} · n.{m.numero}</option>)}
+          </select>
+          {numeroOccupato && <div style={{ color: 'var(--accent, #c0392b)', fontSize: 12, marginTop: 3 }}>⛔ Questo mezzo è già occupato in queste date</div>}
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div><label style={lbl}>Cognome cliente</label><input style={inp} value={cognome} onChange={e => setCognome(e.target.value)} placeholder="Rossi" /></div>
+          <div><label style={lbl}>Nome</label><input style={inp} value={nome} onChange={e => setNome(e.target.value)} placeholder="Mario" /></div>
+        </div>
+
+        <button type="button" onClick={conferma} disabled={!puoConfermare}
+          style={{ padding: '10px 16px', borderRadius: 8, border: 'none', fontWeight: 700, fontSize: 14,
+            cursor: puoConfermare ? 'pointer' : 'not-allowed',
+            background: puoConfermare ? 'var(--sea)' : 'var(--surface-2)',
+            color: puoConfermare ? '#fff' : 'var(--ink-2)' }}>
+          {categoriaPiena ? 'Categoria esaurita' : 'Conferma prenotazione'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 🫀 FLOTTA NUOVA (Fase 4) — il Parco Mezzi (lista unica) con modifica TARGA.
+// Targa = una fonte sola (la tabella). "(manca)" evidenziato. Sistema qui le
+// targhe mancanti (mxu 167, panda 350…). Stato/scadenze read-only per ora.
+// ═══════════════════════════════════════════════════════════════════
+function CuoreFlottaPage({ rentmeVehicles, targhe, setTarghe, fleet, scadenze, admin }) {
+  const parco = useMemo(() => cuoreBuildParco(rentmeVehicles, { targhe, fleet, scadenze }), [rentmeVehicles, targhe, fleet, scadenze]);
+  const [q, setQ] = useState('');
+  const [soloMancanti, setSoloMancanti] = useState(false);
+  const [editNum, setEditNum] = useState(null);
+  const [draft, setDraft] = useState('');
+
+  const visibili = useMemo(() => parco
+    .filter(m => (!soloMancanti || !m.targa))
+    .filter(m => { if (!q) return true; const s = q.toLowerCase(); return [m.numero, m.targa, m.modello, m.marca, m.categoria].some(x => String(x || '').toLowerCase().includes(s)); })
+    .sort((a, b) => (a.tipo + a.categoria).localeCompare(b.tipo + b.categoria) || (parseInt(a.numero) - parseInt(b.numero))),
+    [parco, q, soloMancanti]);
+
+  const mancanti = useMemo(() => parco.filter(m => !m.targa).length, [parco]);
+
+  const apriEdit = (m) => { if (!admin) return; setEditNum(m.numero); setDraft(m.targa || ''); };
+  const salva = (numero) => { setTarghe(prev => ({ ...(prev || {}), [numero]: draft.toUpperCase().trim() })); setEditNum(null); setDraft(''); };
+
+  const th = { textAlign: 'left', padding: '6px 10px', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--ink-2)', borderBottom: '1px solid var(--border)', background: 'var(--paper)' };
+  const td = { padding: '5px 10px', fontSize: 13, borderBottom: '1px solid var(--border)' };
+  const mono = { fontFamily: 'var(--font-mono, monospace)' };
+
+  return (
+    <div style={{ maxWidth: 980, margin: '0 auto' }}>
+      <div className="label" style={{ color: 'var(--sea)' }}>NUOVO CUORE · FLOTTA (anteprima)</div>
+      <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: 22, letterSpacing: '-0.01em', margin: '2px 0 4px' }}>Parco Mezzi — lista unica</h1>
+      <p style={{ fontSize: 13, color: 'var(--ink-2)', marginBottom: 14 }}>
+        {parco.length} mezzi · {mancanti > 0 ? <strong style={{ color: 'var(--accent, #c0392b)' }}>{mancanti} senza targa</strong> : 'tutte le targhe presenti'}.
+        Targa da una <strong>fonte sola</strong> (la tabella). {admin ? 'Clicca una targa per modificarla.' : 'Attiva Admin per modificare.'}
+      </p>
+
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
+        <input value={q} onChange={e => setQ(e.target.value)} placeholder="Cerca numero, targa, modello…" style={{ padding: '7px 10px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 13, minWidth: 240 }} />
+        <label style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+          <input type="checkbox" checked={soloMancanti} onChange={e => setSoloMancanti(e.target.checked)} /> Solo targhe mancanti
+        </label>
+      </div>
+
+      <div className="card-paper" style={{ padding: 0, overflow: 'hidden' }}>
+        <div style={{ maxHeight: '68vh', overflowY: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead><tr><th style={th}>Numero</th><th style={th}>Targa</th><th style={th}>Tipo</th><th style={th}>Categoria</th><th style={th}>cc</th><th style={th}>Modello</th><th style={th}>Stato</th></tr></thead>
+            <tbody>
+              {visibili.map(m => (
+                <tr key={m.numero}>
+                  <td style={{ ...td, ...mono }}>{m.numero}</td>
+                  <td style={{ ...td, ...mono }}>
+                    {editNum === m.numero ? (
+                      <span style={{ display: 'flex', gap: 4 }}>
+                        <input autoFocus value={draft} onChange={e => setDraft(e.target.value)}
+                          onKeyDown={e => { if (e.key === 'Enter') salva(m.numero); if (e.key === 'Escape') { setEditNum(null); setDraft(''); } }}
+                          style={{ padding: '2px 5px', border: '1px solid var(--sea)', borderRadius: 4, width: 100, textTransform: 'uppercase', fontFamily: 'inherit' }} />
+                        <button type="button" onClick={() => salva(m.numero)} style={{ border: 'none', background: 'var(--sea)', color: '#fff', borderRadius: 4, padding: '2px 8px', cursor: 'pointer', fontSize: 11 }}>OK</button>
+                      </span>
+                    ) : (
+                      <span onClick={() => apriEdit(m)} style={{ cursor: admin ? 'pointer' : 'default', color: m.targa ? 'var(--ink)' : 'var(--accent, #c0392b)', fontWeight: m.targa ? 400 : 700, borderBottom: admin ? '1px dashed var(--border)' : 'none' }}>
+                        {m.targa || '(manca)'}
+                      </span>
+                    )}
+                  </td>
+                  <td style={td}>{m.tipo}</td>
+                  <td style={td}>{m.categoria || '—'}</td>
+                  <td style={{ ...td, ...mono }}>{m.cc || '—'}</td>
+                  <td style={td}>{m.modello || '—'}</td>
+                  <td style={{ ...td, color: m.stato === 'disponibile' ? 'var(--ink-2)' : 'var(--accent, #c0392b)', fontWeight: m.stato === 'disponibile' ? 400 : 600 }}>{m.stato}</td>
+                </tr>
+              ))}
+              {visibili.length === 0 && <tr><td colSpan={7} style={{ ...td, textAlign: 'center', color: 'var(--ink-2)', padding: 20 }}>Nessun mezzo.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <p style={{ fontSize: 11, color: 'var(--ink-2)', marginTop: 8 }}>
+        La targa che metti qui è l'<strong>unica</strong>, usata identica ovunque (flotta, calendario, prenotazioni, e — in arrivo — il contratto).
+        Lo stato/manutenzione arriva da RentMe; modifica stato/scadenze in arrivo.
+      </p>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
 // SIDEBAR
 // ═══════════════════════════════════════════════════════════════════
-function Sidebar({ page, setPage, onNew, online, agency, rentmeSyncStatus, rentmeAlertCount, rentmeRetryCount, offlineSyncCount }) {
+function Sidebar({ page, setPage, onNew, online, agency, rentmeSyncStatus, rentmeAlertCount, rentmeRetryCount, offlineSyncCount, cuoreNuovo }) {
   const items = [
     { id: 'dashboard',    label: 'Dashboard',    icon: LayoutDashboard },
     { id: 'oggi',         label: 'Oggi',         icon: Compass },
@@ -17617,6 +18316,13 @@ function Sidebar({ page, setPage, onNew, online, agency, rentmeSyncStatus, rentm
       badge: rentmeRetryCount > 0 ? rentmeRetryCount : (offlineSyncCount > 0 ? '!' : null),
       badgeColor: rentmeRetryCount > 0 ? '#e67e22' : '#c0392b' },
   ];
+  // 🫀 Voce visibile solo con l'interruttore "nuovo cuore" acceso (anteprima).
+  if (cuoreNuovo) {
+    items.push({ id: 'cuore', label: 'Cuore (anteprima)', icon: Sparkles });
+    items.push({ id: 'cuore_cal', label: 'Calendario nuovo', icon: Sparkles });
+    items.push({ id: 'cuore_preno', label: 'Prenota (cuore)', icon: Sparkles });
+    items.push({ id: 'cuore_flotta', label: 'Flotta (cuore)', icon: Sparkles });
+  }
 
   const sidebarDark = '#16181d';
   const sidebarBorder = 'rgba(255,255,255,0.07)';
@@ -20194,7 +20900,7 @@ function SecuritySection({ appUsers, setAppUsers, onLogout, pushToast }) {
   );
 }
 
-function SettingsPage({ operator, operators, cargosConfig, admin, backendStatus, lastCheck, apiBaseUrl, syncStatus, agency, onSyncAll, onExportBackup, onImportBackup, pushToast, onAddOperator, onEditOperator, onDeleteOperator, onEditCargos, onEditApiBase, onEditAgency, onResetCustomers, onResetContracts, onResetEverything, onImportFleetFromRentMe, customers, contracts, rentmeConfig, setRentmeConfig, rentmeSync, rentmeVehicles, prenotazioni, onImportStorico, appUsers, setAppUsers, onLogout, driveClientId, setDriveClientId, driveLastBackup, onDriveBackup, driveAutoEnabled, setDriveAutoEnabled, renderLastBackup, onRenderBackup, backupToken, setBackupToken, pecStatus, onPecVerify }) {
+function SettingsPage({ operator, operators, cargosConfig, admin, backendStatus, lastCheck, apiBaseUrl, syncStatus, agency, onSyncAll, onExportBackup, onImportBackup, pushToast, onAddOperator, onEditOperator, onDeleteOperator, onEditCargos, onEditApiBase, onEditAgency, onResetCustomers, onResetContracts, onResetEverything, onImportFleetFromRentMe, customers, contracts, rentmeConfig, setRentmeConfig, rentmeSync, rentmeVehicles, prenotazioni, onImportStorico, appUsers, setAppUsers, onLogout, driveClientId, setDriveClientId, driveLastBackup, onDriveBackup, driveAutoEnabled, setDriveAutoEnabled, renderLastBackup, onRenderBackup, backupToken, setBackupToken, pecStatus, onPecVerify, cuoreNuovo, setCuoreNuovo }) {
   const importInputRef = useRef();
   const [showCargosSecrets, setShowCargosSecrets] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -20732,6 +21438,30 @@ function SettingsPage({ operator, operators, cargosConfig, admin, backendStatus,
               <div className="mono mt-1" style={{ color: 'var(--muted)' }}>chiavi: edo:v1:operators, edo:v1:cargos</div>
             </div>
           </div>
+        </section>
+      )}
+
+      {/* ── 🫀 Nuovo cuore (anteprima) ────────────────────────────── */}
+      {admin && (
+        <section className="card-paper p-6">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-3">
+              <Sparkles className="w-5 h-5" style={{ color: cuoreNuovo ? 'var(--sea)' : 'var(--muted)' }} aria-hidden="true" />
+              <div>
+                <h3 className="serif text-lg font-medium">Nuovo cuore (anteprima)</h3>
+                <div className="text-xs" style={{ color: 'var(--muted)' }}>Motore unificato mezzi · disponibilità. Solo anteprima: non cambia nulla.</div>
+              </div>
+            </div>
+            <button type="button" role="switch" aria-checked={cuoreNuovo}
+              onClick={() => setCuoreNuovo(v => !v)}
+              style={{ position: 'relative', width: 46, height: 26, borderRadius: 13, border: 'none', cursor: 'pointer', background: cuoreNuovo ? 'var(--sea)' : '#aaa' }}>
+              <span style={{ position: 'absolute', top: 3, left: cuoreNuovo ? 23 : 3, width: 20, height: 20, borderRadius: '50%', background: '#fff', transition: 'left .15s' }} />
+            </button>
+          </div>
+          <p className="text-xs" style={{ color: 'var(--ink-2)' }}>
+            Acceso → compare la voce <strong>“Cuore (anteprima)”</strong> nel menu: mostra il Parco Mezzi e la
+            disponibilità calcolati dal motore nuovo sui tuoi dati reali. Per-dispositivo, default spento.
+          </p>
         </section>
       )}
 
