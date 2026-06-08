@@ -17886,6 +17886,70 @@ function CuoreCalendarioPage({ rentmeVehicles, targhe, fleet, prenotazioni, scad
     </div>
   );
 
+  // ── Responsive: su smartphone (stretto) → vista AGENDA invece della griglia ──
+  const [isNarrow, setIsNarrow] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 700px)').matches);
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 700px)');
+    const onR = () => setIsNarrow(mq.matches);
+    mq.addEventListener('change', onR);
+    return () => mq.removeEventListener('change', onR);
+  }, []);
+  const mezzoDi = (p) => {
+    const segs = cuoreSegmenti(p);
+    if (!segs.length) return `${p.categoria || p.tipo} · da assegnare`;
+    const m = parco.find(x => String(x.numero) === String(segs[0].numero));
+    return m ? `${m.modello || ''} ${m.targa || ('n.' + m.numero)}`.trim() : `n.${segs[0].numero}`;
+  };
+  const agenda = useMemo(() => {
+    const byDay = {};
+    prenoNuove.forEach(p => {
+      if (p.dal >= meseInizio && p.dal <= meseFine) (byDay[p.dal] ||= { ritiri: [], rientri: [] }).ritiri.push(p);
+      if (p.al >= meseInizio && p.al <= meseFine) (byDay[p.al] ||= { ritiri: [], rientri: [] }).rientri.push(p);
+    });
+    return Object.keys(byDay).sort().map(d => ({ giorno: d, ...byDay[d] }));
+  }, [prenoNuove, meseInizio, meseFine]);
+  const HeaderControlli = (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
+      <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: 22, letterSpacing: '-0.01em', margin: '2px 0', textTransform: 'capitalize' }}>{meseLabel}</h1>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <button type="button" onClick={() => cambiaMese(-1)} style={{ padding: '5px 12px', border: '1px solid var(--border)', borderRadius: 6, background: 'transparent', cursor: 'pointer' }}>‹</button>
+        <button type="button" onClick={() => setYm(oggi.slice(0, 7))} style={{ padding: '5px 12px', border: '1px solid var(--border)', borderRadius: 6, background: 'transparent', cursor: 'pointer', fontSize: 12 }}>Oggi</button>
+        <button type="button" onClick={() => cambiaMese(1)} style={{ padding: '5px 12px', border: '1px solid var(--border)', borderRadius: 6, background: 'transparent', cursor: 'pointer' }}>›</button>
+      </div>
+    </div>
+  );
+
+  if (isNarrow) {
+    const dataLabel = (d) => new Date(d + 'T12:00:00').toLocaleDateString('it-IT', { weekday: 'short', day: 'numeric', month: 'short' });
+    return (
+      <div>
+        <div className="label" style={{ color: 'var(--sea)' }}>NUOVO CUORE · AGENDA (anteprima telefono)</div>
+        {HeaderControlli}
+        {agenda.length === 0 && <div className="card-paper" style={{ padding: 20, textAlign: 'center', color: 'var(--ink-2)' }}>Nessun movimento questo mese.</div>}
+        <div style={{ display: 'grid', gap: 10 }}>
+          {agenda.map(g => (
+            <div key={g.giorno} className="card-paper" style={{ padding: 12, borderLeft: `3px solid ${g.giorno === oggi ? 'var(--sea)' : 'transparent'}` }}>
+              <div style={{ fontWeight: 700, fontSize: 13, textTransform: 'capitalize', marginBottom: 6 }}>{dataLabel(g.giorno)}{g.giorno === oggi ? ' · oggi' : ''}</div>
+              {g.ritiri.map(p => (
+                <div key={'r' + p.id} style={{ display: 'flex', gap: 8, fontSize: 13, padding: '3px 0' }}>
+                  <span style={{ color: '#2e6e3e', fontWeight: 700, whiteSpace: 'nowrap' }}>↑ Ritira</span>
+                  <span><strong>{cliente(p)}</strong> · {mezzoDi(p)}</span>
+                </div>
+              ))}
+              {g.rientri.map(p => (
+                <div key={'i' + p.id} style={{ display: 'flex', gap: 8, fontSize: 13, padding: '3px 0' }}>
+                  <span style={{ color: '#1f5d83', fontWeight: 700, whiteSpace: 'nowrap' }}>↓ Rientra</span>
+                  <span><strong>{cliente(p)}</strong> · {mezzoDi(p)}</span>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+        <p style={{ fontSize: 11, color: 'var(--ink-2)', marginTop: 10 }}>Su schermo grande questa pagina mostra il calendario a mese intero.</p>
+      </div>
+    );
+  }
+
   return (
     <div>
       <div className="label" style={{ color: 'var(--sea)' }}>NUOVO CUORE · CALENDARIO (anteprima)</div>
