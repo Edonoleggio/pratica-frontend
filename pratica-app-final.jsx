@@ -17151,6 +17151,7 @@ export default function App() {
               {page === 'prenotazioni' && <PrenotazioniPage prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} setCassa={setCassa} fleet={fleet} rentmeVehicles={rentmeVehicles} customers={customers} partners={partners} operator={operator} onOpenWizard={openWizard} pushToast={pushToast} prefill={prenotazioniPrefill} onClearPrefill={() => setPrenotazioniPrefill(null)} fermiFlotta={fermiFlotta} rentmePush={rentmeSync.pushBooking} rentmeConnected={rentmeSync.status === 'ok'} agency={agency} targhe={targhe} />}
               {page === 'contracts'  && <ContractsList contracts={localContracts} operators={operators} onRetry={retryContract} onMarkReturned={markContractReturned} onSendPec={sendContractPec} pecStatus={pecStatus} online={online} />}
               {page === 'cuore' && cuoreNuovo && <CuoreAnteprimaPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} prenotazioni={prenotazioni} scadenze={scadenze} />}
+              {page === 'cuore_oggi' && cuoreNuovo && <CuoreOggiPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPage={setPage} />}
               {page === 'cuore_cal' && cuoreNuovo && <CuoreCalendarioPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} prenotazioni={prenotazioni} scadenze={scadenze} setPrenotazioni={setPrenotazioni} pushToast={pushToast} />}
               {page === 'cuore_preno' && cuoreNuovo && <CuorePrenotaPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} pushToast={pushToast} prefill={cuorePrefill} />}
               {page === 'cuore_consegna' && cuoreNuovo && <CuoreConsegnaPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} pushToast={pushToast} operator={operator} />}
@@ -17805,6 +17806,126 @@ function CuoreAnteprimaPage({ rentmeVehicles, targhe, fleet, prenotazioni, scade
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 🫀 OGGI (cuore) — la fotografia operativa di oggi dal MOTORE UNICO.
+// "Situazione flotta ORA" (totale/liberi/occupati/manutenzione) e disponibilità per
+// categoria calcolate dalla STESSA regola di prenotazioni/calendario (zero traduttori),
+// + agenda di oggi (consegne da fare, rientri/scaduti) con scorciatoie alle pagine.
+// ═══════════════════════════════════════════════════════════════════
+function CuoreOggiPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazioni, setPage }) {
+  const parco = useMemo(() => cuoreBuildParco(rentmeVehicles, { targhe, fleet, scadenze }), [rentmeVehicles, targhe, fleet, scadenze]);
+  const prenoNuove = useMemo(() => (prenotazioni || []).map(p => cuoreMigraPreno(p, parco)), [prenotazioni, parco]);
+  const oggi = todayISO();
+  const cliente = (p) => `${p.clienteCognome || ''} ${p.clienteNome || ''}`.trim() || p.cliente || '—';
+
+  // Fotografia flotta ORA (oggi) — stessi primitivi della regola, applicati globalmente.
+  const snap = useMemo(() => {
+    const disponibili = parco.filter(m => !CUORE_MEZZO_FUORI.has(String(m.stato || 'disponibile')));
+    const manutenzione = parco.filter(m => CUORE_MEZZO_FUORI.has(String(m.stato || 'disponibile')));
+    const occ = new Set();
+    prenoNuove.forEach(p => {
+      if (!p || CUORE_PRENO_FUORI.has(String(p.stato || ''))) return;
+      cuoreSegmenti(p).forEach(s => { if (cuoreOverlaps(s.dal, s.al, oggi, oggi)) occ.add(String(s.numero)); });
+    });
+    const occupati = disponibili.filter(m => occ.has(String(m.numero)));
+    const liberi = disponibili.filter(m => !occ.has(String(m.numero)));
+    return { totale: parco.length, disp: disponibili.length, liberi, occupati, manutenzione };
+  }, [parco, prenoNuove, oggi]);
+
+  const categorie = useMemo(() => {
+    const seen = new Map();
+    parco.forEach(m => { const k = `${m.tipo}|${m.categoria}`; if (!seen.has(k)) seen.set(k, { tipo: m.tipo, categoria: m.categoria }); });
+    return Array.from(seen.values()).sort((a, b) => (a.tipo + a.categoria).localeCompare(b.tipo + b.categoria));
+  }, [parco]);
+
+  const rows = useMemo(() => categorie.map(c => {
+    const a = cuoreAvailability(parco, prenoNuove, { tipo: c.tipo, categoria: c.categoria, dal: oggi, al: oggi });
+    return { ...c, totale: a.totale, occupati: a.occupati, liberi: a.liberi };
+  }).filter(r => r.totale > 0), [categorie, parco, prenoNuove, oggi]);
+
+  // Agenda di oggi.
+  const consegneOggi = useMemo(() => prenoNuove.filter(p =>
+    p && !CUORE_PRENO_FUORI.has(String(p.stato || '')) && String(p.stato || '') !== 'in_corso' && p.dal && p.al && p.dal <= oggi && p.al >= oggi),
+    [prenoNuove, oggi]);
+  const rientriOggi = useMemo(() => prenoNuove.filter(p =>
+    p && String(p.stato || '') === 'in_corso' && p.al && p.al <= oggi),
+    [prenoNuove, oggi]);
+  const rientriScaduti = rientriOggi.filter(p => p.al < oggi).length;
+
+  const dataLunga = (() => { try { return new Date(oggi + 'T12:00:00').toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' }); } catch { return oggi; } })();
+
+  const kpi = (label, val, color) => (
+    <div className="card-paper" style={{ padding: 14, borderTop: `3px solid ${color}` }}>
+      <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--ink-2)' }}>{label}</div>
+      <div style={{ fontFamily: 'var(--font-mono, monospace)', fontSize: 34, fontWeight: 700, color, lineHeight: 1.1, marginTop: 4 }}>{val}</div>
+    </div>
+  );
+  const agendaCard = (titolo, n, sub, page, tone) => (
+    <button type="button" onClick={() => setPage && setPage(page)}
+      className="card-paper" style={{ padding: 14, textAlign: 'left', cursor: 'pointer', border: '1px solid var(--border)', borderLeft: `3px solid ${tone}` }}>
+      <div style={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--ink-2)' }}>{titolo}</div>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginTop: 4 }}>
+        <span style={{ fontFamily: 'var(--font-mono, monospace)', fontSize: 28, fontWeight: 700, color: 'var(--ink)' }}>{n}</span>
+        <span style={{ fontSize: 12, color: tone }}>{sub} →</span>
+      </div>
+    </button>
+  );
+
+  const th = { textAlign: 'left', padding: '6px 10px', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--ink-2)', borderBottom: '1px solid var(--border)' };
+  const td = { padding: '6px 10px', fontSize: 13, borderBottom: '1px solid var(--border)' };
+  const mono = { fontFamily: 'var(--font-mono, monospace)' };
+
+  return (
+    <div style={{ maxWidth: 1000, margin: '0 auto' }}>
+      <div className="label" style={{ color: 'var(--sea)' }}>NUOVO CUORE · OGGI (anteprima)</div>
+      <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: 22, letterSpacing: '-0.01em', margin: '2px 0 4px', textTransform: 'capitalize' }}>{dataLunga}</h1>
+      <p style={{ fontSize: 13, color: 'var(--ink-2)', marginBottom: 16 }}>
+        La situazione di oggi dal <strong>motore unico</strong>: gli stessi numeri di prenotazioni, calendario e disponibilità.
+      </p>
+
+      {/* KPI flotta ORA */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12, marginBottom: 16 }}>
+        {kpi('Mezzi totali', snap.totale, 'var(--ink)')}
+        {kpi('Liberi ora', snap.liberi.length, 'var(--sea)')}
+        {kpi('Occupati ora', snap.occupati.length, '#c88a2e')}
+        {kpi('In manutenzione', snap.manutenzione.length, 'var(--accent, #c0392b)')}
+      </div>
+
+      {/* Agenda di oggi */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12, marginBottom: 24 }}>
+        {agendaCard('Consegne da fare', consegneOggi.length, consegneOggi.length === 1 ? 'ritiro' : 'ritiri', 'cuore_consegna', 'var(--sea)')}
+        {agendaCard('Rientri di oggi', rientriOggi.length, rientriScaduti > 0 ? `${rientriScaduti} scaduti` : 'in scadenza', 'cuore_rientro', rientriScaduti > 0 ? 'var(--accent, #c0392b)' : 'var(--sea)')}
+        {agendaCard('Calendario', '', 'vedi il mese', 'cuore_cal', 'var(--ink-2)')}
+      </div>
+
+      {/* Disponibilità per categoria ORA */}
+      <div className="card-paper" style={{ padding: 0, overflow: 'hidden' }}>
+        <div style={{ padding: '10px 12px', fontWeight: 600, fontSize: 13, borderBottom: '1px solid var(--border)' }}>Disponibilità ora, per categoria</div>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead><tr><th style={th}>Tipo</th><th style={th}>Categoria</th><th style={{ ...th, textAlign: 'right' }}>Totale</th><th style={{ ...th, textAlign: 'right' }}>Occupati</th><th style={{ ...th, textAlign: 'right' }}>Liberi</th></tr></thead>
+          <tbody>
+            {rows.map((r, i) => (
+              <tr key={i}>
+                <td style={td}>{r.tipo}</td>
+                <td style={td}>{r.categoria || <em style={{ color: 'var(--ink-2)' }}>(tutte)</em>}</td>
+                <td style={{ ...td, ...mono, textAlign: 'right' }}>{r.totale}</td>
+                <td style={{ ...td, ...mono, textAlign: 'right' }}>{r.occupati}</td>
+                <td style={{ ...td, ...mono, textAlign: 'right', fontWeight: 700, color: r.liberi === 0 ? 'var(--accent, #c0392b)' : 'var(--sea)' }}>{r.liberi}</td>
+              </tr>
+            ))}
+            {rows.length === 0 && <tr><td colSpan={5} style={{ ...td, textAlign: 'center', color: 'var(--ink-2)', padding: 18 }}>Nessuna categoria nel Parco Mezzi.</td></tr>}
+          </tbody>
+        </table>
+      </div>
+
+      <p style={{ fontSize: 11, color: 'var(--ink-2)', marginTop: 12 }}>
+        "Liberi ora" = mezzi non in manutenzione e senza un noleggio che copre oggi. Numeri presi dalla stessa
+        regola usata ovunque: niente conteggi sballati, niente falsi "pieno".
+      </p>
     </div>
   );
 }
@@ -18817,6 +18938,7 @@ function Sidebar({ page, setPage, onNew, online, agency, rentmeSyncStatus, rentm
   // 🫀 Voce visibile solo con l'interruttore "nuovo cuore" acceso (anteprima).
   if (cuoreNuovo) {
     items.push({ id: 'cuore', label: 'Cuore (anteprima)', icon: Sparkles });
+    items.push({ id: 'cuore_oggi', label: 'Oggi (cuore)', icon: Sparkles });
     items.push({ id: 'cuore_cal', label: 'Calendario nuovo', icon: Sparkles });
     items.push({ id: 'cuore_preno', label: 'Prenota (cuore)', icon: Sparkles });
     items.push({ id: 'cuore_consegna', label: 'Consegna (cuore)', icon: Sparkles });
