@@ -17153,6 +17153,7 @@ export default function App() {
               {page === 'cuore' && cuoreNuovo && <CuoreAnteprimaPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} prenotazioni={prenotazioni} scadenze={scadenze} />}
               {page === 'cuore_cal' && cuoreNuovo && <CuoreCalendarioPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} prenotazioni={prenotazioni} scadenze={scadenze} setPrenotazioni={setPrenotazioni} pushToast={pushToast} />}
               {page === 'cuore_preno' && cuoreNuovo && <CuorePrenotaPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} pushToast={pushToast} prefill={cuorePrefill} />}
+              {page === 'cuore_consegna' && cuoreNuovo && <CuoreConsegnaPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} pushToast={pushToast} operator={operator} />}
               {page === 'cuore_prev' && cuoreNuovo && <CuorePreventiviPage listino={listino} fleet={fleet} rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} targhe={targhe} scadenze={scadenze} setPage={setPage} setCuorePrefill={setCuorePrefill} pushToast={pushToast} />}
               {page === 'cuore_flotta' && cuoreNuovo && <CuoreFlottaPage rentmeVehicles={rentmeVehicles} targhe={targhe} setTarghe={setTarghe} fleet={fleet} scadenze={scadenze} admin={admin} />}
               {page === 'fleet'      && <FleetPage fleet={unifiedFleet} prenotazioni={prenotazioni} admin={admin} onAddVehicle={() => setModal('newVehicle')} onEditVehicle={(v) => setModal({ type: 'editVehicle', vehicle: v })} onDeleteVehicle={requestDeleteVehicle} onImportCSV={() => setShowCsvImport(true)} onResetFleet={() => setModal({ type: 'confirm', title: 'Azzera flotta?', message: <><strong>Tutti i {fleet.length} veicoli</strong> verranno eliminati dalla flotta. Le prenotazioni esistenti restano invariate. Dopo puoi reimportare con un CSV aggiornato. <strong>Azione irreversibile.</strong></>, confirmLabel: 'Azzera flotta', variant: 'danger', onConfirm: () => { setFleet([]); pushToast({ tone: 'info', title: 'Flotta azzerata', message: 'Tutti i veicoli rimossi. Importa un nuovo CSV per ricaricare.' }); } })} onSetFleet={setFleet} scadenze={scadenze} setScadenze={setScadenze} fermiFlotta={fermiFlotta} setFermiFlotta={setFermiFlotta} rentmeVehicles={rentmeVehicles} manutenzioni={manutenzioni} setManutenzioni={setManutenzioni} partners={partners} targhe={targhe} setTarghe={setTarghe} />}
@@ -18226,6 +18227,224 @@ function CuorePrenotaPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazion
 }
 
 // ═══════════════════════════════════════════════════════════════════
+// 🫀 CONSEGNA (cuore) — al ritiro: assegna la targa + segna consegnato.
+// Chiude il ciclo "metà alla prenotazione, metà alla consegna": una prenotazione può
+// nascere per sola CATEGORIA; qui, al ritiro, l'operatore le dà il MEZZO preciso (con i
+// DUE BLOCCHI del motore unico) e la porta a "in_corso". La targa viene presa dalla
+// TABELLA (Parco Mezzi = fonte unica) → il contratto la legge giusta (chiude pezza 2-bis).
+// ═══════════════════════════════════════════════════════════════════
+function CuoreConsegnaDialog({ preno, parco, prenoNuove, onConfirm, onClose }) {
+  const segNum = (cuoreSegmenti(preno)[0] || {}).numero;
+  // mezzi liberi della categoria del noleggio nelle sue date (escludendo sé stessa →
+  // il mezzo eventualmente già pre-assegnato resta scegliibile se nessun ALTRO lo occupa).
+  const liberi = useMemo(
+    () => cuoreAvailability(parco, prenoNuove, { tipo: preno.tipo, categoria: preno.categoria, dal: preno.dal, al: preno.al, excludeId: preno.id }).mezziLiberi,
+    [parco, prenoNuove, preno]
+  );
+  const preAssOk = segNum != null && segNum !== '' && liberi.some(m => String(m.numero) === String(segNum));
+  const preAssConflitto = segNum != null && segNum !== '' && !preAssOk;
+  const [numero, setNumero] = useState(preAssOk ? String(segNum) : '');
+  const [km, setKm] = useState(preno.kmPartenza ?? '');
+  const [carburante, setCarburante] = useState(preno.carburante || '');
+  const [note, setNote] = useState(preno.noteConsegna || '');
+  const cliente = `${preno.clienteCognome || ''} ${preno.clienteNome || ''}`.trim() || '—';
+  const FUEL = [{ v: '100', l: '🟢 Pieno' }, { v: '75', l: '🟡 3/4' }, { v: '50', l: '🟠 Metà' }, { v: '25', l: '🔴 1/4' }];
+  const inp = { padding: '7px 9px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 13, width: '100%', boxSizing: 'border-box' };
+
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
+      <div onClick={e => e.stopPropagation()} className="card-paper" style={{ padding: 20, width: 460, maxWidth: '92vw', maxHeight: '90vh', overflowY: 'auto' }}>
+        <h3 style={{ fontFamily: 'var(--font-serif)', fontSize: 18, marginBottom: 2 }}>Consegna mezzo</h3>
+        <p style={{ fontSize: 13, color: 'var(--ink-2)', marginBottom: 14 }}>{cliente} · {preno.tipo} {preno.categoria || ''} · {formatDate(preno.dal)} → {formatDate(preno.al)}</p>
+
+        {preAssConflitto && (
+          <div style={{ padding: '8px 10px', borderRadius: 8, background: 'rgba(192,57,50,0.10)', color: 'var(--accent, #c0392b)', fontSize: 12, fontWeight: 600, marginBottom: 10 }}>
+            ⚠️ Il mezzo n.{segNum} pre-assegnato è ora occupato in queste date — scegli un altro mezzo.
+          </div>
+        )}
+
+        <label style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--ink-2)', display: 'block', marginBottom: 6 }}>Mezzo (i due blocchi: solo i liberi della categoria)</label>
+        {liberi.length === 0 ? (
+          <div style={{ padding: '10px 12px', borderRadius: 8, background: 'rgba(192,57,50,0.1)', color: 'var(--accent, #c0392b)', fontSize: 13, fontWeight: 600 }}>⛔ Nessun mezzo libero per queste date</div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 6, maxHeight: '34vh', overflowY: 'auto' }}>
+            {liberi.map(m => {
+              const sel = String(m.numero) === String(numero);
+              return (
+                <button key={m.numero} type="button" onClick={() => setNumero(String(m.numero))}
+                  style={{ textAlign: 'left', padding: '8px 9px', border: `2px solid ${sel ? 'var(--sea)' : 'var(--border)'}`, borderRadius: 8, background: sel ? 'rgba(31,93,131,0.08)' : 'transparent', cursor: 'pointer' }}>
+                  <div style={{ fontFamily: 'var(--font-mono, monospace)', fontWeight: 700, fontSize: 13 }}>{m.targa || ('n.' + m.numero)}</div>
+                  <div style={{ fontSize: 10, color: 'var(--ink-2)', marginTop: 1 }}>{m.modello || m.tipo || '—'} · n.{m.numero}</div>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 14 }}>
+          <div>
+            <label style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--ink-2)', display: 'block', marginBottom: 4 }}>Km partenza <span style={{ textTransform: 'none', color: 'var(--muted)' }}>(facolt.)</span></label>
+            <input type="number" inputMode="numeric" style={inp} value={km} onChange={e => setKm(e.target.value)} placeholder="es. 12450" />
+          </div>
+          <div>
+            <label style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--ink-2)', display: 'block', marginBottom: 4 }}>Carburante <span style={{ textTransform: 'none', color: 'var(--muted)' }}>(facolt.)</span></label>
+            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+              {FUEL.map(f => (
+                <button key={f.v} type="button" onClick={() => setCarburante(carburante === f.v ? '' : f.v)}
+                  style={{ padding: '6px 8px', fontSize: 11, borderRadius: 6, cursor: 'pointer', border: `1px solid ${carburante === f.v ? 'var(--sea)' : 'var(--border)'}`, background: carburante === f.v ? 'rgba(31,93,131,0.08)' : 'transparent', fontWeight: carburante === f.v ? 700 : 400 }}>{f.l}</button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div style={{ marginTop: 12 }}>
+          <label style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--ink-2)', display: 'block', marginBottom: 4 }}>Note consegna <span style={{ textTransform: 'none', color: 'var(--muted)' }}>(facolt.)</span></label>
+          <input style={inp} value={note} onChange={e => setNote(e.target.value)} placeholder="graffio paraurti, ecc." />
+        </div>
+
+        <div style={{ display: 'flex', gap: 8, marginTop: 18 }}>
+          <button type="button" onClick={() => numero && onConfirm({ numero, km, carburante, note })} disabled={!numero}
+            style={{ flex: 1, padding: '10px 16px', borderRadius: 8, border: 'none', fontWeight: 700, fontSize: 14, cursor: numero ? 'pointer' : 'not-allowed', background: numero ? 'var(--sea)' : 'var(--surface-2)', color: numero ? '#fff' : 'var(--ink-2)' }}>
+            🚗 Conferma consegna
+          </button>
+          <button type="button" onClick={onClose} style={{ padding: '10px 16px', border: '1px solid var(--border)', borderRadius: 8, background: 'transparent', cursor: 'pointer', fontSize: 13 }}>Annulla</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CuoreConsegnaPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazioni, setPrenotazioni, pushToast, operator }) {
+  const parco = useMemo(() => cuoreBuildParco(rentmeVehicles, { targhe, fleet, scadenze }), [rentmeVehicles, targhe, fleet, scadenze]);
+  const prenoNuove = useMemo(() => (prenotazioni || []).map(p => cuoreMigraPreno(p, parco)), [prenotazioni, parco]);
+  const parcoByNum = useMemo(() => new Map(parco.map(m => [String(m.numero), m])), [parco]);
+  const oggi = todayISO();
+  const cliente = (p) => `${p.clienteCognome || ''} ${p.clienteNome || ''}`.trim() || p.cliente || '—';
+
+  const [quando, setQuando] = useState(oggi);  // data di riferimento dei ritiri
+  const [target, setTarget] = useState(null);  // prenotazione in consegna
+
+  // Ritiri da fare: prenotazioni ATTIVE non ancora consegnate (≠ in_corso/chiuse), il cui
+  // periodo include la data scelta — incluse le ARRETRATE (dal < oggi, non ancora consegnate).
+  const daConsegnare = useMemo(() => prenoNuove
+    .filter(p => p && !CUORE_PRENO_FUORI.has(String(p.stato || '')) && String(p.stato || '') !== 'in_corso')
+    .filter(p => p.dal && p.al && p.dal <= quando && p.al >= oggi)
+    .sort((a, b) => (a.dal || '').localeCompare(b.dal || '') || cliente(a).localeCompare(cliente(b))),
+    [prenoNuove, quando, oggi]);
+
+  // Consegnati oggi (riepilogo, sola lettura).
+  const consegnatiOggi = useMemo(() => prenoNuove
+    .filter(p => p && String(p.stato || '') === 'in_corso' && String(p.consegnaAt || '').slice(0, 10) === oggi)
+    .sort((a, b) => String(b.consegnaAt || '').localeCompare(String(a.consegnaAt || ''))),
+    [prenoNuove, oggi]);
+
+  const mezzoDi = (p) => { const s = cuoreSegmenti(p)[0]; return s ? parcoByNum.get(String(s.numero)) : null; };
+
+  function confermaConsegna({ numero, km, carburante, note }) {
+    const preno = target;
+    const mezzo = parcoByNum.get(String(numero));
+    if (!preno || !mezzo) return;
+    setPrenotazioni(prev => (prev || []).map(x => x.id === preno.id ? {
+      ...x,
+      stato: 'in_corso',
+      assegnazioni: [{ numero: String(mezzo.numero), dal: preno.dal, al: preno.al }],
+      // specchio campi vecchi — TARGA DALLA TABELLA (Parco Mezzi) = fonte unica → contratto giusto
+      vehicleId: String(mezzo.numero),
+      vehicleTarga: mezzo.targa || '',
+      vehicleLabel: mezzo.modello || ('n.' + mezzo.numero),
+      vehicleType: mezzo.tipo,
+      vehicleCategoria: mezzo.categoria,
+      kmPartenza: (km !== '' && km != null) ? Number(km) : (x.kmPartenza ?? null),
+      carburante: carburante || x.carburante || null,
+      noteConsegna: note || x.noteConsegna || '',
+      consegnaAt: new Date().toISOString(),
+      consegnaOperatore: operator?.nome || x.consegnaOperatore || '',
+      updatedAt: new Date().toISOString(),
+    } : x));
+    pushToast && pushToast({ tone: 'success', title: '🚗 Consegna confermata', message: `${cliente(preno)} → ${mezzo.modello || ''} ${mezzo.targa || ('n.' + mezzo.numero)}` });
+    setTarget(null);
+  }
+
+  const card = { padding: '11px 13px', border: '1px solid var(--border)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, background: 'var(--paper)' };
+
+  return (
+    <div style={{ maxWidth: 760, margin: '0 auto' }}>
+      <div className="label" style={{ color: 'var(--sea)' }}>NUOVO CUORE · CONSEGNA (anteprima)</div>
+      <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: 22, letterSpacing: '-0.01em', margin: '2px 0 4px' }}>Consegna mezzo</h1>
+      <p style={{ fontSize: 13, color: 'var(--ink-2)', marginBottom: 16 }}>
+        I <strong>ritiri da fare</strong>: assegni il mezzo preciso (i due blocchi del motore) e segni <strong>consegnato</strong>.
+        La targa la prende dalla <strong>tabella</strong> (fonte unica) → il contratto la legge giusta.
+      </p>
+
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 14, flexWrap: 'wrap' }}>
+        <label style={{ fontSize: 12, color: 'var(--ink-2)' }}>Ritiri fino al <input type="date" value={quando} onChange={e => setQuando(e.target.value)} style={{ padding: 6, border: '1px solid var(--border)', borderRadius: 6, marginLeft: 6 }} /></label>
+        <span style={{ fontSize: 12, color: 'var(--muted)' }}>{daConsegnare.length} da consegnare</span>
+      </div>
+
+      <div style={{ display: 'grid', gap: 8 }}>
+        {daConsegnare.map(p => {
+          const m = mezzoDi(p);
+          const arretrato = p.dal < oggi;
+          return (
+            <div key={p.id} style={card}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontWeight: 700, fontSize: 14 }}>{cliente(p)}</div>
+                <div style={{ fontSize: 12, color: 'var(--ink-2)', marginTop: 1 }}>
+                  {p.tipo} {p.categoria || ''} · {formatDate(p.dal)} → {formatDate(p.al)}
+                  {arretrato && <span style={{ color: 'var(--accent, #c0392b)', fontWeight: 600 }}> · ritiro arretrato</span>}
+                </div>
+                <div style={{ fontSize: 12, marginTop: 2, color: m ? 'var(--sea)' : 'var(--muted)' }}>
+                  {m ? <>Pre-assegnato: <strong>{m.targa || ('n.' + m.numero)}</strong> {m.modello ? `· ${m.modello}` : ''}</> : 'Da assegnare al ritiro'}
+                </div>
+              </div>
+              <button type="button" onClick={() => setTarget(p)}
+                style={{ flexShrink: 0, padding: '8px 14px', borderRadius: 8, border: 'none', fontWeight: 700, fontSize: 13, cursor: 'pointer', background: 'var(--sea)', color: '#fff' }}>
+                Consegna →
+              </button>
+            </div>
+          );
+        })}
+        {daConsegnare.length === 0 && <div style={{ padding: 20, textAlign: 'center', color: 'var(--ink-2)', border: '1px dashed var(--border)', borderRadius: 8 }}>Nessun ritiro da consegnare entro questa data.</div>}
+      </div>
+
+      {consegnatiOggi.length > 0 && (
+        <div style={{ marginTop: 24 }}>
+          <div className="label" style={{ color: 'var(--ink-2)', marginBottom: 8 }}>CONSEGNATI OGGI ({consegnatiOggi.length})</div>
+          <div style={{ display: 'grid', gap: 6 }}>
+            {consegnatiOggi.map(p => {
+              const m = mezzoDi(p);
+              return (
+                <div key={p.id} style={{ ...card, background: 'transparent', opacity: 0.85 }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600 }}>{cliente(p)} <span style={{ color: 'var(--ink-2)', fontWeight: 400 }}>· {p.tipo} {p.categoria || ''}</span></div>
+                    <div style={{ fontSize: 12, color: 'var(--sea)', marginTop: 1 }}>✓ {m ? (m.targa || ('n.' + m.numero)) : '—'} · consegnato {formatDate(p.dal)} → {formatDate(p.al)}</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      <p style={{ fontSize: 11, color: 'var(--ink-2)', marginTop: 18 }}>
+        Consegnare porta la prenotazione a <strong>in corso</strong> e fissa il mezzo (con la sua targa dalla tabella).
+        Il rientro/riconsegna resta nel flusso esistente per ora.
+      </p>
+
+      {target && (
+        <CuoreConsegnaDialog
+          preno={target}
+          parco={parco}
+          prenoNuove={prenoNuove}
+          onConfirm={confermaConsegna}
+          onClose={() => setTarget(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
 // 🫀 FLOTTA NUOVA (Fase 4) — il Parco Mezzi (lista unica) con modifica TARGA.
 // Targa = una fonte sola (la tabella). "(manca)" evidenziato. Sistema qui le
 // targhe mancanti (mxu 167, panda 350…). Stato/scadenze read-only per ora.
@@ -18415,6 +18634,7 @@ function Sidebar({ page, setPage, onNew, online, agency, rentmeSyncStatus, rentm
     items.push({ id: 'cuore', label: 'Cuore (anteprima)', icon: Sparkles });
     items.push({ id: 'cuore_cal', label: 'Calendario nuovo', icon: Sparkles });
     items.push({ id: 'cuore_preno', label: 'Prenota (cuore)', icon: Sparkles });
+    items.push({ id: 'cuore_consegna', label: 'Consegna (cuore)', icon: Sparkles });
     items.push({ id: 'cuore_prev', label: 'Preventivi (cuore)', icon: Sparkles });
     items.push({ id: 'cuore_flotta', label: 'Flotta (cuore)', icon: Sparkles });
   }
