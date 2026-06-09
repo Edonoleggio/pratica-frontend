@@ -16131,6 +16131,8 @@ export default function App() {
   // 🫀 Interruttore "nuovo cuore" (Fase 4): per-dispositivo (skipRemote), default SPENTO.
   // Acceso → compare la voce "Cuore (anteprima)". Non cambia NIENTE altro finché spento.
   const [cuoreNuovo, setCuoreNuovo] = usePersistentState('edo:v1:cuore_nuovo', false, { skipRemote: true });
+  // Ponte Preventivo(cuore) → Prenota(cuore): categoria+date precompilate.
+  const [cuorePrefill, setCuorePrefill] = useState(null);
   // Registro cassa: tutti i movimenti economici dell'agenzia.
   // skipRemote: false → sincronizzato su tutti i dispositivi (critico per contabilità).
   const [cassa, setCassa, cassaSync] = usePersistentState('edo:v1:cassa', [], sharedOpts);
@@ -17150,7 +17152,8 @@ export default function App() {
               {page === 'contracts'  && <ContractsList contracts={localContracts} operators={operators} onRetry={retryContract} onMarkReturned={markContractReturned} onSendPec={sendContractPec} pecStatus={pecStatus} online={online} />}
               {page === 'cuore' && cuoreNuovo && <CuoreAnteprimaPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} prenotazioni={prenotazioni} scadenze={scadenze} />}
               {page === 'cuore_cal' && cuoreNuovo && <CuoreCalendarioPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} prenotazioni={prenotazioni} scadenze={scadenze} setPrenotazioni={setPrenotazioni} pushToast={pushToast} />}
-              {page === 'cuore_preno' && cuoreNuovo && <CuorePrenotaPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} pushToast={pushToast} />}
+              {page === 'cuore_preno' && cuoreNuovo && <CuorePrenotaPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} pushToast={pushToast} prefill={cuorePrefill} />}
+              {page === 'cuore_prev' && cuoreNuovo && <CuorePreventiviPage listino={listino} fleet={fleet} rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} targhe={targhe} scadenze={scadenze} setPage={setPage} setCuorePrefill={setCuorePrefill} pushToast={pushToast} />}
               {page === 'cuore_flotta' && cuoreNuovo && <CuoreFlottaPage rentmeVehicles={rentmeVehicles} targhe={targhe} setTarghe={setTarghe} fleet={fleet} scadenze={scadenze} admin={admin} />}
               {page === 'fleet'      && <FleetPage fleet={unifiedFleet} prenotazioni={prenotazioni} admin={admin} onAddVehicle={() => setModal('newVehicle')} onEditVehicle={(v) => setModal({ type: 'editVehicle', vehicle: v })} onDeleteVehicle={requestDeleteVehicle} onImportCSV={() => setShowCsvImport(true)} onResetFleet={() => setModal({ type: 'confirm', title: 'Azzera flotta?', message: <><strong>Tutti i {fleet.length} veicoli</strong> verranno eliminati dalla flotta. Le prenotazioni esistenti restano invariate. Dopo puoi reimportare con un CSV aggiornato. <strong>Azione irreversibile.</strong></>, confirmLabel: 'Azzera flotta', variant: 'danger', onConfirm: () => { setFleet([]); pushToast({ tone: 'info', title: 'Flotta azzerata', message: 'Tutti i veicoli rimossi. Importa un nuovo CSV per ricaricare.' }); } })} onSetFleet={setFleet} scadenze={scadenze} setScadenze={setScadenze} fermiFlotta={fermiFlotta} setFermiFlotta={setFermiFlotta} rentmeVehicles={rentmeVehicles} manutenzioni={manutenzioni} setManutenzioni={setManutenzioni} partners={partners} targhe={targhe} setTarghe={setTarghe} />}
               {page === 'customers'  && <CustomersPage customers={customers} setCustomers={setCustomers} prenotazioni={prenotazioni} admin={admin} onShowQR={(c) => setModal({ type: 'qr', customer: c })} onNewWithCustomer={openWizard} onAddCustomer={() => setModal('newCustomer')} onEditCustomer={(c) => setModal({ type: 'editCustomer', customer: c })} onDeleteCustomer={deleteCustomer} onShowStorico={(c) => setStorioClienteId(c.id)} />}
@@ -18086,15 +18089,16 @@ function CuoreCalendarioPage({ rentmeVehicles, targhe, fleet, prenotazioni, scad
 // Categoria esaurita → bloccato. Mezzo già occupato → bloccato. Scrive il nuovo
 // modello {tipo,categoria,assegnazioni} + rispecchia i campi vecchi per compatibilità.
 // ═══════════════════════════════════════════════════════════════════
-function CuorePrenotaPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazioni, setPrenotazioni, pushToast }) {
+function CuorePrenotaPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazioni, setPrenotazioni, pushToast, prefill }) {
   const parco = useMemo(() => cuoreBuildParco(rentmeVehicles, { targhe, fleet, scadenze }), [rentmeVehicles, targhe, fleet, scadenze]);
   const prenoNuove = useMemo(() => (prenotazioni || []).map(p => cuoreMigraPreno(p, parco)), [prenotazioni, parco]);
 
   const oggi = todayISO();
-  const [tipo, setTipo] = useState('');
-  const [categoria, setCategoria] = useState('');
-  const [dal, setDal] = useState(oggi);
-  const [al, setAl] = useState(oggi);
+  // Precompilazione da Preventivo (cuore): categoria + date già pronte.
+  const [tipo, setTipo] = useState(prefill?.tipo || '');
+  const [categoria, setCategoria] = useState(prefill?.categoria || '');
+  const [dal, setDal] = useState(prefill?.dal || oggi);
+  const [al, setAl] = useState(prefill?.al || oggi);
   const [numero, setNumero] = useState('');      // mezzo preciso, facoltativo
   const [cognome, setCognome] = useState('');
   const [nome, setNome] = useState('');
@@ -18313,6 +18317,76 @@ function CuoreFlottaPage({ rentmeVehicles, targhe, setTarghe, fleet, scadenze, a
 }
 
 // ═══════════════════════════════════════════════════════════════════
+// 🫀 PREVENTIVI (cuore) — prezzo dal listino + disponibilità dal motore unico.
+// Mostra SOLO categorie che esistono in flotta. Prezzo anche se pieno (altre date),
+// ma "Prenota" attivo solo se ci sono liberi (blocco-categoria del motore).
+// ═══════════════════════════════════════════════════════════════════
+function CuorePreventiviPage({ listino, fleet, rentmeVehicles, prenotazioni, targhe, scadenze, setPage, setCuorePrefill, pushToast }) {
+  const userPriceMap = Object.fromEntries((listino || []).map(c => [c.id, c]));
+  const cats = LISTINO.map(m => { const s = userPriceMap[m.id]; return s ? { ...s, nome: m.nome, tipo: m.tipo, categoria: m.categoria } : m; });
+  const parco = useMemo(() => cuoreBuildParco(rentmeVehicles, { targhe, fleet, scadenze }), [rentmeVehicles, targhe, fleet, scadenze]);
+  const prenoNuove = useMemo(() => (prenotazioni || []).map(p => cuoreMigraPreno(p, parco)), [prenotazioni, parco]);
+
+  const today = todayISO();
+  const [dal, setDal] = useState(today);
+  const [al, setAl] = useState(today);
+
+  const righe = useMemo(() => cats.map(cat => {
+    const a = cuoreAvailability(parco, prenoNuove, { tipo: cat.tipo, categoria: cat.categoria, dal, al });
+    if (a.totale === 0) return null; // categoria che NON esiste in flotta → non si quota
+    const prev = (dal && al && al >= dal) ? calcPreventivo(cat, dal, al) : null;
+    return { cat, totale: a.totale, liberi: a.liberi, prezzo: prev ? prev.totale : 0, giorni: prev ? prev.giorni : 0 };
+  }).filter(Boolean).sort((x, y) => (x.cat.tipo + x.cat.categoria).localeCompare(y.cat.tipo + y.cat.categoria)), [cats, parco, prenoNuove, dal, al]);
+
+  const prenota = (r) => {
+    if (r.liberi <= 0) return;
+    setCuorePrefill && setCuorePrefill({ tipo: r.cat.tipo, categoria: r.cat.categoria, dal, al });
+    setPage('cuore_preno');
+    pushToast && pushToast({ tone: 'success', title: 'Preventivo → Prenotazione', message: `${r.cat.nome} · ${dal} → ${al}` });
+  };
+
+  return (
+    <div style={{ maxWidth: 1000, margin: '0 auto' }}>
+      <div className="label" style={{ color: 'var(--sea)' }}>NUOVO CUORE · PREVENTIVI (anteprima)</div>
+      <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: 22, letterSpacing: '-0.01em', margin: '2px 0 4px' }}>Preventivo</h1>
+      <p style={{ fontSize: 13, color: 'var(--ink-2)', marginBottom: 14 }}>
+        Prezzo dal listino + disponibilità dal <strong>motore unico</strong> (gli stessi numeri di Prenota e Calendario).
+        Mostra solo categorie <strong>che esistono in flotta</strong>. Il prezzo c'è anche se è pieno (per altre date),
+        ma <strong>"Prenota" è attivo solo se c'è posto</strong>.
+      </p>
+
+      <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', marginBottom: 16, flexWrap: 'wrap' }}>
+        <label style={{ fontSize: 12, color: 'var(--ink-2)' }}>Dal<br /><input type="date" value={dal} onChange={e => setDal(e.target.value)} style={{ padding: 6, border: '1px solid var(--border)', borderRadius: 6 }} /></label>
+        <label style={{ fontSize: 12, color: 'var(--ink-2)' }}>Al<br /><input type="date" value={al} onChange={e => setAl(e.target.value)} style={{ padding: 6, border: '1px solid var(--border)', borderRadius: 6 }} /></label>
+        {righe[0] && righe[0].giorni > 0 && <span style={{ fontSize: 12, color: 'var(--ink-2)' }}>{righe[0].giorni} giorni</span>}
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: 12 }}>
+        {righe.map(r => {
+          const pieno = r.liberi <= 0;
+          return (
+            <div key={r.cat.id} className="card-paper" style={{ padding: 14, borderTop: `3px solid ${pieno ? 'var(--accent, #c0392b)' : 'var(--sea)'}` }}>
+              <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--ink-2)' }}>{r.cat.tipo}</div>
+              <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 6 }}>{r.cat.nome}</div>
+              <div style={{ fontFamily: 'var(--font-mono, monospace)', fontSize: 26, fontWeight: 700, color: 'var(--ink)' }}>€{r.prezzo}</div>
+              <div style={{ fontSize: 11, color: 'var(--ink-2)', marginBottom: 8 }}>{r.giorni > 0 ? `per ${r.giorni} giorni` : 'imposta le date'}</div>
+              <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 10, color: pieno ? 'var(--accent, #c0392b)' : 'var(--sea)' }}>
+                {pieno ? `⛔ Pieno per queste date (${r.totale}/${r.totale})` : `✓ ${r.liberi} liberi su ${r.totale}`}
+              </div>
+              <button type="button" onClick={() => prenota(r)} disabled={pieno}
+                style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: 'none', fontWeight: 700, fontSize: 13, cursor: pieno ? 'not-allowed' : 'pointer', background: pieno ? 'var(--surface-2)' : 'var(--sea)', color: pieno ? 'var(--ink-2)' : '#fff' }}>
+                {pieno ? 'Nessun mezzo libero' : 'Prenota →'}
+              </button>
+            </div>
+          );
+        })}
+        {righe.length === 0 && <div style={{ padding: 20, color: 'var(--ink-2)' }}>Imposta le date per vedere prezzi e disponibilità.</div>}
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
 // SIDEBAR
 // ═══════════════════════════════════════════════════════════════════
 function Sidebar({ page, setPage, onNew, online, agency, rentmeSyncStatus, rentmeAlertCount, rentmeRetryCount, offlineSyncCount, cuoreNuovo }) {
@@ -18341,6 +18415,7 @@ function Sidebar({ page, setPage, onNew, online, agency, rentmeSyncStatus, rentm
     items.push({ id: 'cuore', label: 'Cuore (anteprima)', icon: Sparkles });
     items.push({ id: 'cuore_cal', label: 'Calendario nuovo', icon: Sparkles });
     items.push({ id: 'cuore_preno', label: 'Prenota (cuore)', icon: Sparkles });
+    items.push({ id: 'cuore_prev', label: 'Preventivi (cuore)', icon: Sparkles });
     items.push({ id: 'cuore_flotta', label: 'Flotta (cuore)', icon: Sparkles });
   }
 
