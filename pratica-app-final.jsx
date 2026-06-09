@@ -17156,7 +17156,7 @@ export default function App() {
               {page === 'cuore_preno' && cuoreNuovo && <CuorePrenotaPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} pushToast={pushToast} prefill={cuorePrefill} />}
               {page === 'cuore_banco' && cuoreNuovo && <CuoreBancoPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} listino={listino} pushToast={pushToast} operator={operator} />}
               {page === 'cuore_consegna' && cuoreNuovo && <CuoreConsegnaPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} pushToast={pushToast} operator={operator} />}
-              {page === 'cuore_rientro' && cuoreNuovo && <CuoreRientroPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} pushToast={pushToast} />}
+              {page === 'cuore_rientro' && cuoreNuovo && <CuoreRientroPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} pushToast={pushToast} setCassa={setCassa} operator={operator} />}
               {page === 'cuore_prev' && cuoreNuovo && <CuorePreventiviPage listino={listino} fleet={fleet} rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} targhe={targhe} scadenze={scadenze} setPage={setPage} setCuorePrefill={setCuorePrefill} pushToast={pushToast} />}
               {page === 'cuore_flotta' && cuoreNuovo && <CuoreFlottaPage rentmeVehicles={rentmeVehicles} targhe={targhe} setTarghe={setTarghe} fleet={fleet} scadenze={scadenze} admin={admin} />}
               {page === 'fleet'      && <FleetPage fleet={unifiedFleet} prenotazioni={prenotazioni} admin={admin} onAddVehicle={() => setModal('newVehicle')} onEditVehicle={(v) => setModal({ type: 'editVehicle', vehicle: v })} onDeleteVehicle={requestDeleteVehicle} onImportCSV={() => setShowCsvImport(true)} onResetFleet={() => setModal({ type: 'confirm', title: 'Azzera flotta?', message: <><strong>Tutti i {fleet.length} veicoli</strong> verranno eliminati dalla flotta. Le prenotazioni esistenti restano invariate. Dopo puoi reimportare con un CSV aggiornato. <strong>Azione irreversibile.</strong></>, confirmLabel: 'Azzera flotta', variant: 'danger', onConfirm: () => { setFleet([]); pushToast({ tone: 'info', title: 'Flotta azzerata', message: 'Tutti i veicoli rimossi. Importa un nuovo CSV per ricaricare.' }); } })} onSetFleet={setFleet} scadenze={scadenze} setScadenze={setScadenze} fermiFlotta={fermiFlotta} setFermiFlotta={setFermiFlotta} rentmeVehicles={rentmeVehicles} manutenzioni={manutenzioni} setManutenzioni={setManutenzioni} partners={partners} targhe={targhe} setTarghe={setTarghe} />}
@@ -18785,11 +18785,20 @@ function CuoreRientroDialog({ preno, mezzo, onConfirm, onClose }) {
   const [carburante, setCarburante] = useState(preno.carburanteRientro || '');
   const [danni, setDanni] = useState((preno.danniRiscontrati || []).join(', '));
   const [note, setNote] = useState(preno.noteRientro || '');
+  // ── Saldo in cassa al rientro (stesso formato di handleSaldoRapido) ──
+  // residuo = prezzo − acconto; si registra solo se c'è un prezzo e non è già saldato.
+  const residuo = Math.max(0, (Number(preno.prezzo) || 0) - (Number(preno.acconto) || 0));
+  const saldoPossibile = !preno.saldoRegistrato && (Number(preno.prezzo) || 0) > 0;
+  const [registraSaldo, setRegistraSaldo] = useState(saldoPossibile && residuo > 0);
+  const [importo, setImporto] = useState(residuo > 0 ? String(residuo) : '');
+  const [metodo, setMetodo] = useState('contanti');
+  const METODI = [{ v: 'contanti', l: '💵 Contanti' }, { v: 'carta', l: '💳 Carta' }, { v: 'bonifico', l: '🏦 Bonifico' }, { v: 'altro', l: 'Altro' }];
   const cliente = `${preno.clienteCognome || ''} ${preno.clienteNome || ''}`.trim() || '—';
   const FUEL = [{ v: '100', l: '🟢 Pieno' }, { v: '75', l: '🟡 3/4' }, { v: '50', l: '🟠 Metà' }, { v: '25', l: '🔴 1/4' }];
   const inp = { padding: '7px 9px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 13, width: '100%', boxSizing: 'border-box' };
   const lbl = { fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--ink-2)', display: 'block', marginBottom: 4 };
   const hasDanni = danni.trim().length > 0;
+  const saldoOk = !registraSaldo || (Number(importo) > 0);
 
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
@@ -18824,10 +18833,37 @@ function CuoreRientroDialog({ preno, mezzo, onConfirm, onClose }) {
           <input style={inp} value={note} onChange={e => setNote(e.target.value)} placeholder="" />
         </div>
 
+        {/* ── Saldo in cassa ── */}
+        {saldoPossibile ? (
+          <div style={{ marginTop: 14, padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 8, background: 'var(--surface-2, rgba(0,0,0,0.02))' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer', fontWeight: 600 }}>
+              <input type="checkbox" checked={registraSaldo} onChange={e => setRegistraSaldo(e.target.checked)} />
+              Registra saldo in cassa
+              <span style={{ fontWeight: 400, color: 'var(--ink-2)' }}>· prezzo €{Number(preno.prezzo) || 0}{Number(preno.acconto) > 0 ? ` − acconto €${Number(preno.acconto)}` : ''} → residuo €{residuo}</span>
+            </label>
+            {registraSaldo && (
+              <div style={{ display: 'grid', gridTemplateColumns: '110px 1fr', gap: 12, marginTop: 10 }}>
+                <div><label style={lbl}>Importo €</label>
+                  <input type="number" inputMode="decimal" min="0" style={inp} value={importo} onChange={e => setImporto(e.target.value)} /></div>
+                <div><label style={lbl}>Metodo</label>
+                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                    {METODI.map(m => (
+                      <button key={m.v} type="button" onClick={() => setMetodo(m.v)}
+                        style={{ padding: '6px 8px', fontSize: 11, borderRadius: 6, cursor: 'pointer', border: `1px solid ${metodo === m.v ? 'var(--sea)' : 'var(--border)'}`, background: metodo === m.v ? 'rgba(31,93,131,0.08)' : 'transparent', fontWeight: metodo === m.v ? 700 : 400 }}>{m.l}</button>
+                    ))}
+                  </div></div>
+              </div>
+            )}
+          </div>
+        ) : (preno.saldoRegistrato ? (
+          <div style={{ marginTop: 14, fontSize: 12, color: 'var(--sea)', fontWeight: 600 }}>✓ Saldo già registrato in cassa{preno.saldato ? ` (€${preno.saldato})` : ''}</div>
+        ) : null)}
+
         <div style={{ display: 'flex', gap: 8, marginTop: 18 }}>
-          <button type="button" onClick={() => onConfirm({ km, carburante, danni, note })}
-            style={{ flex: 1, padding: '10px 16px', borderRadius: 8, border: 'none', fontWeight: 700, fontSize: 14, cursor: 'pointer', background: hasDanni ? 'var(--accent, #c0392b)' : 'var(--sea)', color: '#fff' }}>
-            {hasDanni ? '⚠️ Rientro con danni' : '📍 Conferma rientro'}
+          <button type="button" disabled={!saldoOk}
+            onClick={() => saldoOk && onConfirm({ km, carburante, danni, note, saldo: (registraSaldo && Number(importo) > 0) ? { importo: Number(importo), metodo } : null })}
+            style={{ flex: 1, padding: '10px 16px', borderRadius: 8, border: 'none', fontWeight: 700, fontSize: 14, cursor: saldoOk ? 'pointer' : 'not-allowed', background: !saldoOk ? 'var(--surface-2)' : (hasDanni ? 'var(--accent, #c0392b)' : 'var(--sea)'), color: !saldoOk ? 'var(--ink-2)' : '#fff' }}>
+            {hasDanni ? '⚠️ Rientro con danni' : '📍 Conferma rientro'}{registraSaldo && Number(importo) > 0 ? ` + saldo €${Number(importo)}` : ''}
           </button>
           <button type="button" onClick={onClose} style={{ padding: '10px 16px', border: '1px solid var(--border)', borderRadius: 8, background: 'transparent', cursor: 'pointer', fontSize: 13 }}>Annulla</button>
         </div>
@@ -18836,7 +18872,7 @@ function CuoreRientroDialog({ preno, mezzo, onConfirm, onClose }) {
   );
 }
 
-function CuoreRientroPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazioni, setPrenotazioni, pushToast }) {
+function CuoreRientroPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazioni, setPrenotazioni, pushToast, setCassa, operator }) {
   const parco = useMemo(() => cuoreBuildParco(rentmeVehicles, { targhe, fleet, scadenze }), [rentmeVehicles, targhe, fleet, scadenze]);
   const prenoNuove = useMemo(() => (prenotazioni || []).map(p => cuoreMigraPreno(p, parco)), [prenotazioni, parco]);
   const parcoByNum = useMemo(() => new Map(parco.map(m => [String(m.numero), m])), [parco]);
@@ -18857,10 +18893,27 @@ function CuoreRientroPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazion
     .sort((a, b) => String(b.riconsegnaAt || '').localeCompare(String(a.riconsegnaAt || ''))),
     [prenoNuove, oggi]);
 
-  function confermaRientro({ km, carburante, danni, note }) {
+  function confermaRientro({ km, carburante, danni, note, saldo }) {
     const preno = target;
     if (!preno) return;
     const danniArr = danni && danni.trim() ? danni.split(',').map(s => s.trim()).filter(Boolean) : null;
+    // Saldo in cassa (stesso formato di handleSaldoRapido): record 'saldo' + flag sulla preno.
+    if (saldo && saldo.importo > 0 && setCassa) {
+      setCassa(prev => [{
+        id: 'cassa_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+        createdAt: new Date().toISOString(),
+        data: oggi,
+        clienteNome: cliente(preno),
+        prenotazioneId: preno.id,
+        vehicleLabel: preno.vehicleLabel || '',
+        importo: saldo.importo,
+        metodo: saldo.metodo || 'contanti',
+        tipo: 'saldo',
+        nota: `Saldo al rientro (cuore) · ${formatDate(preno.dal)}→${formatDate(preno.al)}`,
+        operatorId: operator?.id || '',
+        operatorName: operator?.nome || '',
+      }, ...(prev || [])]);
+    }
     setPrenotazioni(prev => (prev || []).map(x => x.id === preno.id ? {
       ...x,
       stato: 'completata',
@@ -18870,13 +18923,14 @@ function CuoreRientroPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazion
       danniRiscontrati: danniArr,
       noteDanni: danniArr ? (note || x.noteDanni || '') : (x.noteDanni || ''),
       noteRientro: note || '',
+      ...(saldo && saldo.importo > 0 ? { saldoRegistrato: true, saldato: saldo.importo } : {}),
       riconsegnaAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     } : x));
     pushToast && pushToast({
       tone: danniArr ? 'warning' : 'success',
       title: danniArr ? '⚠️ Rientro con danni' : '📍 Rientro completato',
-      message: `${cliente(preno)}${danniArr ? ' · danni: ' + danniArr.join(', ') : ''}`,
+      message: `${cliente(preno)}${saldo && saldo.importo > 0 ? ` · saldo €${saldo.importo} (${saldo.metodo})` : ''}${danniArr ? ' · danni: ' + danniArr.join(', ') : ''}`,
     });
     setTarget(null);
   }
