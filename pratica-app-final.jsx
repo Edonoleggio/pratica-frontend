@@ -17881,6 +17881,13 @@ function CuoreCalendarioPage({ rentmeVehicles, targhe, fleet, prenotazioni, scad
 
   const LABEL_W = 160;
   const cliente = (p) => `${p.clienteCognome || ''} ${p.clienteNome || ''}`.trim() || p.cliente || '—';
+  // Colore per CLIENTE: ogni cliente un colore stabile (stessa persona → stesso colore su
+  // tutte le sue prenotazioni). Hash del nome → tonalità; luminosità fissa per testo bianco.
+  const coloreCliente = (p) => {
+    const key = (`${p.clienteCognome || ''} ${p.clienteNome || ''}`).toLowerCase().trim() || ('id:' + p.id);
+    let h = 0; for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
+    return `hsl(${h % 360}, 52%, 38%)`;
+  };
 
   // celle di sfondo (bordi, weekend, oggi)
   const TrackBg = () => (
@@ -18017,12 +18024,12 @@ function CuoreCalendarioPage({ rentmeVehicles, targhe, fleet, prenotazioni, scad
                     <div key={m.numero} style={{ display: 'flex', borderBottom: '1px solid var(--border)', minHeight: 30 }}>
                       <div style={{ width: LABEL_W, flexShrink: 0, padding: '4px 10px', borderRight: '1px solid var(--border)', fontSize: 12 }}>
                         <div style={{ fontWeight: 600 }}>{m.modello || m.numero}</div>
-                        <div style={{ fontFamily: 'var(--font-mono, monospace)', fontSize: 10, color: m.targa ? 'var(--ink-2)' : 'var(--accent, #c0392b)' }}>{m.targa || '(manca)'} · n.{m.numero}</div>
+                        <div style={{ fontFamily: 'var(--font-mono, monospace)', fontSize: 10, color: m.targa ? 'var(--ink-2)' : (m.targaAttesa === false ? 'var(--muted)' : 'var(--accent, #c0392b)') }}>{m.targa || (m.targaAttesa === false ? '—' : '(manca)')} · n.{m.numero}</div>
                       </div>
                       <div style={{ flex: 1, position: 'relative', minHeight: 30 }}>
                         <TrackBg />
                         {barre.map((b, i) => (
-                          <div key={i} title={`${cliente(b.p)} · ${b.dal} → ${b.al}`} style={{ position: 'absolute', top: 4, height: 22, ...barStyle(b.dal, b.al), background: CUORE_STATO_COLORE[b.p.stato] || '#777', borderRadius: 4, color: '#fff', fontSize: 11, padding: '3px 6px', overflow: 'hidden', whiteSpace: 'nowrap', boxShadow: '0 1px 2px rgba(0,0,0,0.2)' }}>{cliente(b.p)}</div>
+                          <div key={i} title={`${cliente(b.p)} · ${b.dal} → ${b.al}`} style={{ position: 'absolute', top: 4, height: 22, ...barStyle(b.dal, b.al), background: coloreCliente(b.p), borderRadius: 4, color: '#fff', fontSize: 11, padding: '3px 6px', overflow: 'hidden', whiteSpace: 'nowrap', boxShadow: '0 1px 2px rgba(0,0,0,0.2)' }}>{cliente(b.p)}</div>
                         ))}
                       </div>
                     </div>
