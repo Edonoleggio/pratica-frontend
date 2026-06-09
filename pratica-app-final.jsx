@@ -4952,7 +4952,7 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rent
       )}
       {contrattoPreno && (
         <ContractPdfModal
-          data={prenoToContractData(contrattoPreno, fleet, customers)}
+          data={prenoToContractData(contrattoPreno, fleet, customers, targhe, rentmeVehicles)}
           operator={operator}
           partners={partners || []}
           agency={agency}
@@ -23487,14 +23487,26 @@ function ResultScreen({ data, onClose, operator, submitResult, onShowPdf, contra
 // HELPER — converte prenotazione (formato booking) in data-format
 // compatibile con ContractPdfModal (formato wizard/pratica)
 // ═══════════════════════════════════════════════════════════════════
-function prenoToContractData(preno, fleet, customers) {
+function prenoToContractData(preno, fleet, customers, targhe, rentmeVehicles) {
   // Risolvi veicolo dalla flotta
   const fv = (fleet || []).find(x => x.id === preno.vehicleId) || {};
   const fvr = resolveVehicleDisplay({ ...fv, id: preno.vehicleId, idRentme: preno.vehicleId });
+  // FONTE UNICA della targa: la TABELLA (Parco Mezzi del cuore), stesso linguaggio di tutte
+  // le altre schermate. Chiude la pezza 2-bis: prima si guardava la mappa vecchia
+  // RENTME_TARGA_MAP (fvr.targa) — qui la TABELLA la precede. Si applica SOLO quando il
+  // booking non ha già una targa salvata; se la tabella non copre il mezzo, si ricade nei
+  // vecchi fallback (nessuna regressione).
+  let targaTabella = '';
+  try {
+    const parco = cuoreBuildParco(rentmeVehicles, { targhe });
+    const num = cuoreRisolviNumero(preno.vehicleId, parco);
+    const m = parco.find(x => String(x.numero) === String(num));
+    if (m && m.targa) targaTabella = m.targa;
+  } catch (e) { /* tabella non disponibile → fallback legacy */ }
   const vehicle = {
     marca: fv.marca || preno.vehicleLabel?.split(' · ')[0]?.trim() || '',
     modello: fv.modello || '',
-    targa: preno.vehicleTarga || fvr.targa || fv.targa || preno.vehicleLabel?.split(' · ')[1]?.trim() || '',
+    targa: preno.vehicleTarga || targaTabella || fvr.targa || fv.targa || preno.vehicleLabel?.split(' · ')[1]?.trim() || '',
     colore: fv.colore || '',
     cilindrata: fv.cilindrata || '',
     anno: fv.anno || '',
