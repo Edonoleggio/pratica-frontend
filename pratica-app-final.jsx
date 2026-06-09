@@ -17154,6 +17154,7 @@ export default function App() {
               {page === 'cuore_oggi' && cuoreNuovo && <CuoreOggiPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPage={setPage} />}
               {page === 'cuore_cal' && cuoreNuovo && <CuoreCalendarioPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} prenotazioni={prenotazioni} scadenze={scadenze} setPrenotazioni={setPrenotazioni} pushToast={pushToast} />}
               {page === 'cuore_preno' && cuoreNuovo && <CuorePrenotaPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} pushToast={pushToast} prefill={cuorePrefill} />}
+              {page === 'cuore_banco' && cuoreNuovo && <CuoreBancoPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} listino={listino} pushToast={pushToast} operator={operator} />}
               {page === 'cuore_consegna' && cuoreNuovo && <CuoreConsegnaPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} pushToast={pushToast} operator={operator} />}
               {page === 'cuore_rientro' && cuoreNuovo && <CuoreRientroPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} pushToast={pushToast} />}
               {page === 'cuore_prev' && cuoreNuovo && <CuorePreventiviPage listino={listino} fleet={fleet} rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} targhe={targhe} scadenze={scadenze} setPage={setPage} setCuorePrefill={setCuorePrefill} pushToast={pushToast} />}
@@ -18567,6 +18568,213 @@ function CuoreConsegnaPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazio
 }
 
 // ═══════════════════════════════════════════════════════════════════
+// 🫀 BANCO RAPIDO (cuore) — walk-in sul motore unico.
+// Il cliente è al banco: vedi le categorie con liberi/totale e prezzo del periodo,
+// un tap → scegli il mezzo (solo i LIBERI: i due blocchi), cognome, e con
+// "consegna subito" la prenotazione nasce già in_corso con la targa dalla TABELLA.
+// Stessa regola di disponibilità di tutte le altre pagine: zero traduttori.
+// ═══════════════════════════════════════════════════════════════════
+function CuoreBancoPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazioni, setPrenotazioni, listino, pushToast, operator }) {
+  const parco = useMemo(() => cuoreBuildParco(rentmeVehicles, { targhe, fleet, scadenze }), [rentmeVehicles, targhe, fleet, scadenze]);
+  const prenoNuove = useMemo(() => (prenotazioni || []).map(p => cuoreMigraPreno(p, parco)), [prenotazioni, parco]);
+  const oggi = todayISO();
+
+  const [dal, setDal] = useState(oggi);
+  const [al, setAl] = useState(oggi);
+  const [sel, setSel] = useState(null); // categoria selezionata { tipo, categoria, nome, prezzo }
+
+  // Listino per prezzo del periodo (stesso matching dei Preventivi cuore).
+  const catsListino = useMemo(() => {
+    const userPriceMap = Object.fromEntries((listino || []).map(c => [c.id, c]));
+    return LISTINO.map(m => { const s = userPriceMap[m.id]; return s ? { ...s, nome: m.nome, tipo: m.tipo, categoria: m.categoria } : m; });
+  }, [listino]);
+  const prezzoDi = (tipo, categoria) => {
+    const cat = catsListino.find(c =>
+      canonicalTipo({ tipo: c.tipo }) === canonicalTipo({ tipo }) &&
+      String(c.categoria || '').toUpperCase() === String(categoria || '').toUpperCase());
+    if (!cat || !dal || !al || al < dal) return null;
+    const prev = calcPreventivo(cat, dal, al);
+    return prev ? { totale: prev.totale, giorni: prev.giorni, nome: cat.nome } : null;
+  };
+
+  // Categorie del Parco con disponibilità nel periodo (la regola, una sola).
+  const righe = useMemo(() => {
+    const seen = new Map();
+    parco.forEach(m => { const k = `${m.tipo}|${m.categoria}`; if (!seen.has(k)) seen.set(k, { tipo: m.tipo, categoria: m.categoria }); });
+    return Array.from(seen.values()).map(c => {
+      const a = cuoreAvailability(parco, prenoNuove, { tipo: c.tipo, categoria: c.categoria, dal, al });
+      return { ...c, totale: a.totale, liberi: a.liberi, mezziLiberi: a.mezziLiberi };
+    }).filter(r => r.totale > 0)
+      .sort((a, b) => (a.tipo + a.categoria).localeCompare(b.tipo + b.categoria));
+  }, [parco, prenoNuove, dal, al]);
+
+  const tono = (r) => {
+    if (r.liberi <= 0) return { border: 'var(--accent, #c0392b)', text: 'var(--accent, #c0392b)', label: 'Esaurito' };
+    if (r.liberi / r.totale <= 0.25) return { border: '#e67e22', text: '#d35400', label: 'Quasi esaurito' };
+    return { border: 'var(--sea)', text: 'var(--sea)', label: 'Disponibile' };
+  };
+
+  // ── Dialog walk-in ──
+  const [numero, setNumero] = useState('');
+  const [cognome, setCognome] = useState('');
+  const [nome, setNome] = useState('');
+  const [consegnaSubito, setConsegnaSubito] = useState(true); // walk-in: il cliente è qui
+  const [km, setKm] = useState('');
+  const [carburante, setCarburante] = useState('');
+  const apri = (r) => { if (r.liberi <= 0) return; setSel(r); setNumero(''); setCognome(''); setNome(''); setConsegnaSubito(true); setKm(''); setCarburante(''); };
+
+  const puoConfermare = sel && cognome.trim() && (!consegnaSubito || numero);
+
+  function conferma() {
+    if (!puoConfermare) return;
+    const mezzo = numero ? parco.find(m => String(m.numero) === String(numero)) : null;
+    const prezzo = prezzoDi(sel.tipo, sel.categoria);
+    const id = 'b' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    const nuova = {
+      id,
+      codice: (typeof generateBookingCode === 'function' ? generateBookingCode() : id),
+      stato: consegnaSubito ? 'in_corso' : 'confermata',
+      fonte: 'walk_in',
+      clienteCognome: cognome.trim(),
+      clienteNome: nome.trim(),
+      dal, al,
+      prezzo: prezzo ? prezzo.totale : null,
+      // modello NUOVO + specchio vecchio (targa DALLA TABELLA)
+      tipo: sel.tipo, categoria: sel.categoria,
+      assegnazioni: mezzo ? [{ numero: String(mezzo.numero), dal, al }] : [],
+      vehicleType: sel.tipo,
+      vehicleCategoria: sel.categoria,
+      vehicleId: mezzo ? String(mezzo.numero) : null,
+      vehicleTarga: mezzo ? (mezzo.targa || '') : '',
+      vehicleLabel: mezzo ? (mezzo.modello || mezzo.numero) : '',
+      ...(consegnaSubito ? {
+        kmPartenza: (km !== '' && km != null) ? Number(km) : null,
+        carburante: carburante || null,
+        consegnaAt: new Date().toISOString(),
+        consegnaOperatore: operator?.nome || '',
+      } : {}),
+    };
+    setPrenotazioni(prev => [...(prev || []), nuova]);
+    pushToast && pushToast({ tone: 'success', title: consegnaSubito ? '🚶 Walk-in consegnato' : '🚶 Walk-in prenotato',
+      message: `${cognome} · ${mezzo ? (mezzo.targa || 'n.' + mezzo.numero) : sel.tipo + ' ' + (sel.categoria || '')} · ${dal === al ? formatDate(dal) : formatDate(dal) + ' → ' + formatDate(al)}` });
+    setSel(null);
+  }
+
+  const FUEL = [{ v: '100', l: '🟢 Pieno' }, { v: '75', l: '🟡 3/4' }, { v: '50', l: '🟠 Metà' }, { v: '25', l: '🔴 1/4' }];
+  const inp = { padding: '7px 9px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 13, width: '100%', boxSizing: 'border-box' };
+  const lbl = { fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--ink-2)', display: 'block', marginBottom: 4 };
+
+  return (
+    <div style={{ maxWidth: 1000, margin: '0 auto' }}>
+      <div className="label" style={{ color: 'var(--sea)' }}>NUOVO CUORE · BANCO RAPIDO (anteprima)</div>
+      <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: 22, letterSpacing: '-0.01em', margin: '2px 0 4px' }}>Banco rapido</h1>
+      <p style={{ fontSize: 13, color: 'var(--ink-2)', marginBottom: 16 }}>
+        Walk-in sul <strong>motore unico</strong>: categorie con liberi reali e prezzo del periodo; un tap →
+        mezzo (solo i liberi) + cognome → con <strong>consegna subito</strong> nasce già in corso, targa dalla <strong>tabella</strong>.
+      </p>
+
+      <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', marginBottom: 16, flexWrap: 'wrap' }}>
+        <label style={{ fontSize: 12, color: 'var(--ink-2)' }}>Dal<br /><input type="date" value={dal} onChange={e => { setDal(e.target.value); if (e.target.value > al) setAl(e.target.value); }} style={{ padding: 6, border: '1px solid var(--border)', borderRadius: 6 }} /></label>
+        <label style={{ fontSize: 12, color: 'var(--ink-2)' }}>Al<br /><input type="date" value={al} min={dal} onChange={e => setAl(e.target.value)} style={{ padding: 6, border: '1px solid var(--border)', borderRadius: 6 }} /></label>
+        <button type="button" onClick={() => { setDal(oggi); setAl(oggi); }} style={{ padding: '7px 12px', fontSize: 12, border: '1px solid var(--border)', borderRadius: 6, background: 'transparent', cursor: 'pointer', color: 'var(--ink-2)' }}>Oggi</button>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 12 }}>
+        {righe.map((r, i) => {
+          const t = tono(r);
+          const prezzo = prezzoDi(r.tipo, r.categoria);
+          const pieno = r.liberi <= 0;
+          return (
+            <button key={i} type="button" onClick={() => apri(r)} disabled={pieno}
+              className="card-paper" style={{ padding: 14, textAlign: 'left', cursor: pieno ? 'not-allowed' : 'pointer', borderTop: `3px solid ${t.border}`, opacity: pieno ? 0.7 : 1 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: t.text }}>{t.label}</div>
+              <div style={{ fontWeight: 700, fontSize: 15, margin: '4px 0 6px' }}>{prezzo?.nome || `${r.tipo} ${r.categoria || ''}`}</div>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                <span style={{ fontFamily: 'var(--font-mono, monospace)', fontSize: 30, fontWeight: 700, color: t.text, lineHeight: 1 }}>{r.liberi}</span>
+                <span style={{ fontSize: 13, color: 'var(--muted)' }}>/ {r.totale} liberi</span>
+              </div>
+              {prezzo && <div style={{ fontSize: 12, color: 'var(--ink-2)', marginTop: 6 }}>€{prezzo.totale} · {prezzo.giorni} {prezzo.giorni === 1 ? 'giorno' : 'giorni'}</div>}
+              {!pieno && <div style={{ fontSize: 11, color: t.text, fontWeight: 600, marginTop: 6 }}>Prenota →</div>}
+            </button>
+          );
+        })}
+        {righe.length === 0 && <div style={{ padding: 20, color: 'var(--ink-2)' }}>Nessuna categoria nel Parco Mezzi (sincronizza RentMe).</div>}
+      </div>
+
+      <p style={{ fontSize: 11, color: 'var(--ink-2)', marginTop: 14 }}>
+        Gli stessi numeri di Prenota/Calendario/Oggi (una regola sola). "Consegna subito" = il cliente parte ora:
+        prenotazione già <strong>in corso</strong>, mezzo fissato con targa dalla tabella.
+      </p>
+
+      {sel && (() => {
+        const a = cuoreAvailability(parco, prenoNuove, { tipo: sel.tipo, categoria: sel.categoria, dal, al });
+        const prezzo = prezzoDi(sel.tipo, sel.categoria);
+        return (
+          <div onClick={() => setSel(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
+            <div onClick={e => e.stopPropagation()} className="card-paper" style={{ padding: 20, width: 460, maxWidth: '92vw', maxHeight: '90vh', overflowY: 'auto' }}>
+              <h3 style={{ fontFamily: 'var(--font-serif)', fontSize: 18, marginBottom: 2 }}>Walk-in · {prezzo?.nome || `${sel.tipo} ${sel.categoria || ''}`}</h3>
+              <p style={{ fontSize: 13, color: 'var(--ink-2)', marginBottom: 14 }}>
+                {formatDate(dal)} → {formatDate(al)}{prezzo ? <> · <strong>€{prezzo.totale}</strong> ({prezzo.giorni}g)</> : ''} · {a.liberi} liberi
+              </p>
+
+              <label style={lbl}>Mezzo {consegnaSubito ? '(obbligatorio: parte ora)' : '(facoltativo — altrimenti da assegnare)'}</label>
+              {a.mezziLiberi.length === 0 ? (
+                <div style={{ padding: '10px 12px', borderRadius: 8, background: 'rgba(192,57,50,0.1)', color: 'var(--accent, #c0392b)', fontSize: 13, fontWeight: 600 }}>⛔ Nessun mezzo libero per queste date</div>
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(135px, 1fr))', gap: 6, maxHeight: '30vh', overflowY: 'auto' }}>
+                  {a.mezziLiberi.map(m => {
+                    const isSel = String(m.numero) === String(numero);
+                    return (
+                      <button key={m.numero} type="button" onClick={() => setNumero(isSel ? '' : String(m.numero))}
+                        style={{ textAlign: 'left', padding: '8px 9px', border: `2px solid ${isSel ? 'var(--sea)' : 'var(--border)'}`, borderRadius: 8, background: isSel ? 'rgba(31,93,131,0.08)' : 'transparent', cursor: 'pointer' }}>
+                        <div style={{ fontFamily: 'var(--font-mono, monospace)', fontWeight: 700, fontSize: 13 }}>{m.targa || ('n.' + m.numero)}</div>
+                        <div style={{ fontSize: 10, color: 'var(--ink-2)', marginTop: 1 }}>{m.modello || m.tipo || '—'} · n.{m.numero}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 14 }}>
+                <div><label style={lbl}>Cognome cliente</label><input style={inp} value={cognome} onChange={e => setCognome(e.target.value)} placeholder="Rossi" autoFocus /></div>
+                <div><label style={lbl}>Nome</label><input style={inp} value={nome} onChange={e => setNome(e.target.value)} placeholder="Mario" /></div>
+              </div>
+
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 14, fontSize: 13, cursor: 'pointer', fontWeight: 600 }}>
+                <input type="checkbox" checked={consegnaSubito} onChange={e => setConsegnaSubito(e.target.checked)} />
+                Consegna subito (il cliente parte ora)
+              </label>
+
+              {consegnaSubito && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 10 }}>
+                  <div><label style={lbl}>Km partenza <span style={{ textTransform: 'none', color: 'var(--muted)' }}>(facolt.)</span></label>
+                    <input type="number" inputMode="numeric" style={inp} value={km} onChange={e => setKm(e.target.value)} placeholder="es. 12450" /></div>
+                  <div><label style={lbl}>Carburante <span style={{ textTransform: 'none', color: 'var(--muted)' }}>(facolt.)</span></label>
+                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                      {FUEL.map(f => (
+                        <button key={f.v} type="button" onClick={() => setCarburante(carburante === f.v ? '' : f.v)}
+                          style={{ padding: '6px 8px', fontSize: 11, borderRadius: 6, cursor: 'pointer', border: `1px solid ${carburante === f.v ? 'var(--sea)' : 'var(--border)'}`, background: carburante === f.v ? 'rgba(31,93,131,0.08)' : 'transparent', fontWeight: carburante === f.v ? 700 : 400 }}>{f.l}</button>
+                      ))}
+                    </div></div>
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: 8, marginTop: 18 }}>
+                <button type="button" onClick={conferma} disabled={!puoConfermare}
+                  style={{ flex: 1, padding: '10px 16px', borderRadius: 8, border: 'none', fontWeight: 700, fontSize: 14, cursor: puoConfermare ? 'pointer' : 'not-allowed', background: puoConfermare ? 'var(--sea)' : 'var(--surface-2)', color: puoConfermare ? '#fff' : 'var(--ink-2)' }}>
+                  {consegnaSubito ? '🚶 Prenota e consegna' : '🚶 Prenota'}
+                </button>
+                <button type="button" onClick={() => setSel(null)} style={{ padding: '10px 16px', border: '1px solid var(--border)', borderRadius: 8, background: 'transparent', cursor: 'pointer', fontSize: 13 }}>Annulla</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
 // 🫀 RIENTRO (cuore) — al rientro: km/carburante/danni + segna completato.
 // Chiude il ciclo di vita: prenota → consegna (in_corso) → RIENTRO (completata).
 // Portare a 'completata' LIBERA il mezzo nel motore (completata è fuori da
@@ -18941,6 +19149,7 @@ function Sidebar({ page, setPage, onNew, online, agency, rentmeSyncStatus, rentm
     items.push({ id: 'cuore_oggi', label: 'Oggi (cuore)', icon: Sparkles });
     items.push({ id: 'cuore_cal', label: 'Calendario nuovo', icon: Sparkles });
     items.push({ id: 'cuore_preno', label: 'Prenota (cuore)', icon: Sparkles });
+    items.push({ id: 'cuore_banco', label: 'Banco (cuore)', icon: Sparkles });
     items.push({ id: 'cuore_consegna', label: 'Consegna (cuore)', icon: Sparkles });
     items.push({ id: 'cuore_rientro', label: 'Rientro (cuore)', icon: Sparkles });
     items.push({ id: 'cuore_prev', label: 'Preventivi (cuore)', icon: Sparkles });
