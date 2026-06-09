@@ -17154,6 +17154,7 @@ export default function App() {
               {page === 'cuore_cal' && cuoreNuovo && <CuoreCalendarioPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} prenotazioni={prenotazioni} scadenze={scadenze} setPrenotazioni={setPrenotazioni} pushToast={pushToast} />}
               {page === 'cuore_preno' && cuoreNuovo && <CuorePrenotaPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} pushToast={pushToast} prefill={cuorePrefill} />}
               {page === 'cuore_consegna' && cuoreNuovo && <CuoreConsegnaPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} pushToast={pushToast} operator={operator} />}
+              {page === 'cuore_rientro' && cuoreNuovo && <CuoreRientroPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} pushToast={pushToast} />}
               {page === 'cuore_prev' && cuoreNuovo && <CuorePreventiviPage listino={listino} fleet={fleet} rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} targhe={targhe} scadenze={scadenze} setPage={setPage} setCuorePrefill={setCuorePrefill} pushToast={pushToast} />}
               {page === 'cuore_flotta' && cuoreNuovo && <CuoreFlottaPage rentmeVehicles={rentmeVehicles} targhe={targhe} setTarghe={setTarghe} fleet={fleet} scadenze={scadenze} admin={admin} />}
               {page === 'fleet'      && <FleetPage fleet={unifiedFleet} prenotazioni={prenotazioni} admin={admin} onAddVehicle={() => setModal('newVehicle')} onEditVehicle={(v) => setModal({ type: 'editVehicle', vehicle: v })} onDeleteVehicle={requestDeleteVehicle} onImportCSV={() => setShowCsvImport(true)} onResetFleet={() => setModal({ type: 'confirm', title: 'Azzera flotta?', message: <><strong>Tutti i {fleet.length} veicoli</strong> verranno eliminati dalla flotta. Le prenotazioni esistenti restano invariate. Dopo puoi reimportare con un CSV aggiornato. <strong>Azione irreversibile.</strong></>, confirmLabel: 'Azzera flotta', variant: 'danger', onConfirm: () => { setFleet([]); pushToast({ tone: 'info', title: 'Flotta azzerata', message: 'Tutti i veicoli rimossi. Importa un nuovo CSV per ricaricare.' }); } })} onSetFleet={setFleet} scadenze={scadenze} setScadenze={setScadenze} fermiFlotta={fermiFlotta} setFermiFlotta={setFermiFlotta} rentmeVehicles={rentmeVehicles} manutenzioni={manutenzioni} setManutenzioni={setManutenzioni} partners={partners} targhe={targhe} setTarghe={setTarghe} />}
@@ -18445,6 +18446,190 @@ function CuoreConsegnaPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazio
 }
 
 // ═══════════════════════════════════════════════════════════════════
+// 🫀 RIENTRO (cuore) — al rientro: km/carburante/danni + segna completato.
+// Chiude il ciclo di vita: prenota → consegna (in_corso) → RIENTRO (completata).
+// Portare a 'completata' LIBERA il mezzo nel motore (completata è fuori da
+// CUORE_PRENO_FUORI) → la disponibilità torna giusta da sola, senza traduttori.
+// ═══════════════════════════════════════════════════════════════════
+function CuoreRientroDialog({ preno, mezzo, onConfirm, onClose }) {
+  const [km, setKm] = useState(preno.kmRientro ?? '');
+  const [carburante, setCarburante] = useState(preno.carburanteRientro || '');
+  const [danni, setDanni] = useState((preno.danniRiscontrati || []).join(', '));
+  const [note, setNote] = useState(preno.noteRientro || '');
+  const cliente = `${preno.clienteCognome || ''} ${preno.clienteNome || ''}`.trim() || '—';
+  const FUEL = [{ v: '100', l: '🟢 Pieno' }, { v: '75', l: '🟡 3/4' }, { v: '50', l: '🟠 Metà' }, { v: '25', l: '🔴 1/4' }];
+  const inp = { padding: '7px 9px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 13, width: '100%', boxSizing: 'border-box' };
+  const lbl = { fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--ink-2)', display: 'block', marginBottom: 4 };
+  const hasDanni = danni.trim().length > 0;
+
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
+      <div onClick={e => e.stopPropagation()} className="card-paper" style={{ padding: 20, width: 440, maxWidth: '92vw', maxHeight: '90vh', overflowY: 'auto' }}>
+        <h3 style={{ fontFamily: 'var(--font-serif)', fontSize: 18, marginBottom: 2 }}>Rientro mezzo</h3>
+        <p style={{ fontSize: 13, color: 'var(--ink-2)', marginBottom: 14 }}>
+          {cliente} · {mezzo ? (mezzo.targa || ('n.' + mezzo.numero)) : (preno.vehicleTarga || '—')}{mezzo && mezzo.modello ? ` · ${mezzo.modello}` : ''} · {formatDate(preno.dal)} → {formatDate(preno.al)}
+        </p>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div>
+            <label style={lbl}>Km rientro <span style={{ textTransform: 'none', color: 'var(--muted)' }}>(facolt.)</span></label>
+            <input type="number" inputMode="numeric" style={inp} value={km} onChange={e => setKm(e.target.value)} placeholder="es. 12530" />
+          </div>
+          <div>
+            <label style={lbl}>Carburante <span style={{ textTransform: 'none', color: 'var(--muted)' }}>(facolt.)</span></label>
+            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+              {FUEL.map(f => (
+                <button key={f.v} type="button" onClick={() => setCarburante(carburante === f.v ? '' : f.v)}
+                  style={{ padding: '6px 8px', fontSize: 11, borderRadius: 6, cursor: 'pointer', border: `1px solid ${carburante === f.v ? 'var(--sea)' : 'var(--border)'}`, background: carburante === f.v ? 'rgba(31,93,131,0.08)' : 'transparent', fontWeight: carburante === f.v ? 700 : 400 }}>{f.l}</button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div style={{ marginTop: 12 }}>
+          <label style={lbl}>Danni riscontrati <span style={{ textTransform: 'none', color: 'var(--muted)' }}>(facolt. — vuoto = nessun danno)</span></label>
+          <input style={{ ...inp, borderColor: hasDanni ? 'var(--accent, #c0392b)' : 'var(--border)' }} value={danni} onChange={e => setDanni(e.target.value)} placeholder="es. graffio sportello, specchietto" />
+        </div>
+        <div style={{ marginTop: 12 }}>
+          <label style={lbl}>Note rientro <span style={{ textTransform: 'none', color: 'var(--muted)' }}>(facolt.)</span></label>
+          <input style={inp} value={note} onChange={e => setNote(e.target.value)} placeholder="" />
+        </div>
+
+        <div style={{ display: 'flex', gap: 8, marginTop: 18 }}>
+          <button type="button" onClick={() => onConfirm({ km, carburante, danni, note })}
+            style={{ flex: 1, padding: '10px 16px', borderRadius: 8, border: 'none', fontWeight: 700, fontSize: 14, cursor: 'pointer', background: hasDanni ? 'var(--accent, #c0392b)' : 'var(--sea)', color: '#fff' }}>
+            {hasDanni ? '⚠️ Rientro con danni' : '📍 Conferma rientro'}
+          </button>
+          <button type="button" onClick={onClose} style={{ padding: '10px 16px', border: '1px solid var(--border)', borderRadius: 8, background: 'transparent', cursor: 'pointer', fontSize: 13 }}>Annulla</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CuoreRientroPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazioni, setPrenotazioni, pushToast }) {
+  const parco = useMemo(() => cuoreBuildParco(rentmeVehicles, { targhe, fleet, scadenze }), [rentmeVehicles, targhe, fleet, scadenze]);
+  const prenoNuove = useMemo(() => (prenotazioni || []).map(p => cuoreMigraPreno(p, parco)), [prenotazioni, parco]);
+  const parcoByNum = useMemo(() => new Map(parco.map(m => [String(m.numero), m])), [parco]);
+  const oggi = todayISO();
+  const cliente = (p) => `${p.clienteCognome || ''} ${p.clienteNome || ''}`.trim() || p.cliente || '—';
+  const mezzoDi = (p) => { const s = cuoreSegmenti(p)[0]; return s ? parcoByNum.get(String(s.numero)) : null; };
+
+  const [target, setTarget] = useState(null);
+
+  // Rientri da fare: prenotazioni consegnate (in_corso). I "in scadenza/scaduti" (al ≤ oggi) in cima.
+  const daRientrare = useMemo(() => prenoNuove
+    .filter(p => p && String(p.stato || '') === 'in_corso')
+    .sort((a, b) => (a.al || '').localeCompare(b.al || '') || cliente(a).localeCompare(cliente(b))),
+    [prenoNuove, oggi]);
+
+  const rientratiOggi = useMemo(() => prenoNuove
+    .filter(p => p && String(p.stato || '') === 'completata' && String(p.riconsegnaAt || '').slice(0, 10) === oggi)
+    .sort((a, b) => String(b.riconsegnaAt || '').localeCompare(String(a.riconsegnaAt || ''))),
+    [prenoNuove, oggi]);
+
+  function confermaRientro({ km, carburante, danni, note }) {
+    const preno = target;
+    if (!preno) return;
+    const danniArr = danni && danni.trim() ? danni.split(',').map(s => s.trim()).filter(Boolean) : null;
+    setPrenotazioni(prev => (prev || []).map(x => x.id === preno.id ? {
+      ...x,
+      stato: 'completata',
+      rientroEffettivo: oggi,
+      kmRientro: (km !== '' && km != null) ? Number(km) : (x.kmRientro ?? null),
+      carburanteRientro: carburante || null,
+      danniRiscontrati: danniArr,
+      noteDanni: danniArr ? (note || x.noteDanni || '') : (x.noteDanni || ''),
+      noteRientro: note || '',
+      riconsegnaAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    } : x));
+    pushToast && pushToast({
+      tone: danniArr ? 'warning' : 'success',
+      title: danniArr ? '⚠️ Rientro con danni' : '📍 Rientro completato',
+      message: `${cliente(preno)}${danniArr ? ' · danni: ' + danniArr.join(', ') : ''}`,
+    });
+    setTarget(null);
+  }
+
+  const card = { padding: '11px 13px', border: '1px solid var(--border)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, background: 'var(--paper)' };
+
+  return (
+    <div style={{ maxWidth: 760, margin: '0 auto' }}>
+      <div className="label" style={{ color: 'var(--sea)' }}>NUOVO CUORE · RIENTRO (anteprima)</div>
+      <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: 22, letterSpacing: '-0.01em', margin: '2px 0 4px' }}>Rientro mezzo</h1>
+      <p style={{ fontSize: 13, color: 'var(--ink-2)', marginBottom: 16 }}>
+        I noleggi <strong>in corso</strong>: registri km/carburante/danni e segni <strong>completato</strong>.
+        Il mezzo torna subito <strong>libero</strong> nella disponibilità (stessa regola, niente traduttori).
+      </p>
+
+      <div style={{ marginBottom: 12, fontSize: 12, color: 'var(--muted)' }}>{daRientrare.length} da rientrare</div>
+
+      <div style={{ display: 'grid', gap: 8 }}>
+        {daRientrare.map(p => {
+          const m = mezzoDi(p);
+          const scaduto = p.al < oggi, oggiScade = p.al === oggi;
+          return (
+            <div key={p.id} style={{ ...card, borderColor: scaduto ? 'rgba(192,57,50,0.4)' : 'var(--border)' }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontWeight: 700, fontSize: 14 }}>{cliente(p)}</div>
+                <div style={{ fontSize: 12, color: 'var(--ink-2)', marginTop: 1 }}>
+                  {m ? (m.targa || ('n.' + m.numero)) : (p.vehicleTarga || '—')}{m && m.modello ? ` · ${m.modello}` : ''} · {p.tipo} {p.categoria || ''}
+                </div>
+                <div style={{ fontSize: 12, marginTop: 2, color: scaduto ? 'var(--accent, #c0392b)' : (oggiScade ? 'var(--sea)' : 'var(--ink-2)'), fontWeight: (scaduto || oggiScade) ? 600 : 400 }}>
+                  rientro {formatDate(p.al)}{scaduto ? ' · SCADUTO' : (oggiScade ? ' · oggi' : '')}
+                </div>
+              </div>
+              <button type="button" onClick={() => setTarget(p)}
+                style={{ flexShrink: 0, padding: '8px 14px', borderRadius: 8, border: 'none', fontWeight: 700, fontSize: 13, cursor: 'pointer', background: 'var(--sea)', color: '#fff' }}>
+                Rientro →
+              </button>
+            </div>
+          );
+        })}
+        {daRientrare.length === 0 && <div style={{ padding: 20, textAlign: 'center', color: 'var(--ink-2)', border: '1px dashed var(--border)', borderRadius: 8 }}>Nessun noleggio in corso da far rientrare.</div>}
+      </div>
+
+      {rientratiOggi.length > 0 && (
+        <div style={{ marginTop: 24 }}>
+          <div className="label" style={{ color: 'var(--ink-2)', marginBottom: 8 }}>RIENTRATI OGGI ({rientratiOggi.length})</div>
+          <div style={{ display: 'grid', gap: 6 }}>
+            {rientratiOggi.map(p => {
+              const m = mezzoDi(p);
+              const danni = (p.danniRiscontrati || []).length > 0;
+              return (
+                <div key={p.id} style={{ ...card, background: 'transparent', opacity: 0.85 }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600 }}>{cliente(p)} <span style={{ color: 'var(--ink-2)', fontWeight: 400 }}>· {m ? (m.targa || ('n.' + m.numero)) : (p.vehicleTarga || '—')}</span></div>
+                    <div style={{ fontSize: 12, marginTop: 1, color: danni ? 'var(--accent, #c0392b)' : 'var(--sea)' }}>
+                      {danni ? `⚠️ danni: ${(p.danniRiscontrati || []).join(', ')}` : '✓ rientrato senza danni'}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      <p style={{ fontSize: 11, color: 'var(--ink-2)', marginTop: 18 }}>
+        Il rientro porta la prenotazione a <strong>completata</strong> e <strong>libera il mezzo</strong> nella disponibilità.
+        Il saldo/cassa resta nel flusso esistente per ora.
+      </p>
+
+      {target && (
+        <CuoreRientroDialog
+          preno={target}
+          mezzo={mezzoDi(target)}
+          onConfirm={confermaRientro}
+          onClose={() => setTarget(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
 // 🫀 FLOTTA NUOVA (Fase 4) — il Parco Mezzi (lista unica) con modifica TARGA.
 // Targa = una fonte sola (la tabella). "(manca)" evidenziato. Sistema qui le
 // targhe mancanti (mxu 167, panda 350…). Stato/scadenze read-only per ora.
@@ -18635,6 +18820,7 @@ function Sidebar({ page, setPage, onNew, online, agency, rentmeSyncStatus, rentm
     items.push({ id: 'cuore_cal', label: 'Calendario nuovo', icon: Sparkles });
     items.push({ id: 'cuore_preno', label: 'Prenota (cuore)', icon: Sparkles });
     items.push({ id: 'cuore_consegna', label: 'Consegna (cuore)', icon: Sparkles });
+    items.push({ id: 'cuore_rientro', label: 'Rientro (cuore)', icon: Sparkles });
     items.push({ id: 'cuore_prev', label: 'Preventivi (cuore)', icon: Sparkles });
     items.push({ id: 'cuore_flotta', label: 'Flotta (cuore)', icon: Sparkles });
   }
