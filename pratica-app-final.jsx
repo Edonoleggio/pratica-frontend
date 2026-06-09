@@ -9444,14 +9444,21 @@ function cuoreBuildParco(rentmeVehicles, { targhe = {}, fleet = [], scadenze = {
     const fv = fleetByNum[numero];
     const statoRentme = v.riparazione ? 'manutenzione' : 'disponibile';
     const statoPratica = (fv && (fv.stato === 'fuori_uso' || fv.stato === 'venduto')) ? fv.stato : null;
+    const tipo = canonicalTipo({ tipo: v.tipo, modello: v.modello || v.nome });
+    // RentMe usa il campo `cilindrata` SOLO per scooter/quad (cc reale, es "50cc"); per le
+    // AUTO ci mette la categoria (es "5posti","aperta") → la cc per le auto non esiste: vuota.
+    const ccReale = (tipo === 'scooter' || tipo === 'quad') ? (v.cilindrata || v.cc || '') : '';
+    // bici/ebike non hanno targa in Italia → la targa NON è attesa (vuoto neutro, non "manca").
+    const targaAttesa = !(tipo === 'bici' || tipo === 'ebike');
     return {
       numero,
       targa: (targhe[numero] || '').toUpperCase(),
-      tipo: canonicalTipo({ tipo: v.tipo, modello: v.modello || v.nome }),
+      tipo,
       categoria: getVehicleCategoria({ tipo: v.tipo, idRentme: v.idRentme, cc: v.cilindrata, modello: v.modello, nome: v.nome, slug: v.slug, targa: (targhe[numero] || '') }) || '',
-      cc: v.cilindrata || v.cc || '', marca: v.marca || '', modello: v.modello || v.nome || '',
+      cc: ccReale, marca: v.marca || '', modello: v.modello || v.nome || '',
       stato: statoPratica || statoRentme,
       scadenze: scadenze[numero] || {},
+      targaAttesa,
       rentme: true,
     };
   }).filter(Boolean);
@@ -17874,6 +17881,13 @@ function CuoreCalendarioPage({ rentmeVehicles, targhe, fleet, prenotazioni, scad
 
   const LABEL_W = 160;
   const cliente = (p) => `${p.clienteCognome || ''} ${p.clienteNome || ''}`.trim() || p.cliente || '—';
+  // Colore per CLIENTE: ogni cliente un colore stabile (stessa persona → stesso colore su
+  // tutte le sue prenotazioni). Hash del nome → tonalità; luminosità fissa per testo bianco.
+  const coloreCliente = (p) => {
+    const key = (`${p.clienteCognome || ''} ${p.clienteNome || ''}`).toLowerCase().trim() || ('id:' + p.id);
+    let h = 0; for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
+    return `hsl(${h % 360}, 52%, 38%)`;
+  };
 
   // celle di sfondo (bordi, weekend, oggi)
   const TrackBg = () => (
@@ -18010,12 +18024,12 @@ function CuoreCalendarioPage({ rentmeVehicles, targhe, fleet, prenotazioni, scad
                     <div key={m.numero} style={{ display: 'flex', borderBottom: '1px solid var(--border)', minHeight: 30 }}>
                       <div style={{ width: LABEL_W, flexShrink: 0, padding: '4px 10px', borderRight: '1px solid var(--border)', fontSize: 12 }}>
                         <div style={{ fontWeight: 600 }}>{m.modello || m.numero}</div>
-                        <div style={{ fontFamily: 'var(--font-mono, monospace)', fontSize: 10, color: m.targa ? 'var(--ink-2)' : 'var(--accent, #c0392b)' }}>{m.targa || '(manca)'} · n.{m.numero}</div>
+                        <div style={{ fontFamily: 'var(--font-mono, monospace)', fontSize: 10, color: m.targa ? 'var(--ink-2)' : (m.targaAttesa === false ? 'var(--muted)' : 'var(--accent, #c0392b)') }}>{m.targa || (m.targaAttesa === false ? '—' : '(manca)')} · n.{m.numero}</div>
                       </div>
                       <div style={{ flex: 1, position: 'relative', minHeight: 30 }}>
                         <TrackBg />
                         {barre.map((b, i) => (
-                          <div key={i} title={`${cliente(b.p)} · ${b.dal} → ${b.al}`} style={{ position: 'absolute', top: 4, height: 22, ...barStyle(b.dal, b.al), background: CUORE_STATO_COLORE[b.p.stato] || '#777', borderRadius: 4, color: '#fff', fontSize: 11, padding: '3px 6px', overflow: 'hidden', whiteSpace: 'nowrap', boxShadow: '0 1px 2px rgba(0,0,0,0.2)' }}>{cliente(b.p)}</div>
+                          <div key={i} title={`${cliente(b.p)} · ${b.dal} → ${b.al}`} style={{ position: 'absolute', top: 4, height: 22, ...barStyle(b.dal, b.al), background: coloreCliente(b.p), borderRadius: 4, color: '#fff', fontSize: 11, padding: '3px 6px', overflow: 'hidden', whiteSpace: 'nowrap', boxShadow: '0 1px 2px rgba(0,0,0,0.2)' }}>{cliente(b.p)}</div>
                         ))}
                       </div>
                     </div>
@@ -18219,13 +18233,15 @@ function CuoreFlottaPage({ rentmeVehicles, targhe, setTarghe, fleet, scadenze, a
   const [editNum, setEditNum] = useState(null);
   const [draft, setDraft] = useState('');
 
+  // "manca" vale solo per i mezzi che una targa la DEVONO avere (no bici/ebike, regola italiana).
+  const targaMancante = (m) => m.targaAttesa !== false && !m.targa;
   const visibili = useMemo(() => parco
-    .filter(m => (!soloMancanti || !m.targa))
+    .filter(m => (!soloMancanti || targaMancante(m)))
     .filter(m => { if (!q) return true; const s = q.toLowerCase(); return [m.numero, m.targa, m.modello, m.marca, m.categoria].some(x => String(x || '').toLowerCase().includes(s)); })
     .sort((a, b) => (a.tipo + a.categoria).localeCompare(b.tipo + b.categoria) || (parseInt(a.numero) - parseInt(b.numero))),
     [parco, q, soloMancanti]);
 
-  const mancanti = useMemo(() => parco.filter(m => !m.targa).length, [parco]);
+  const mancanti = useMemo(() => parco.filter(targaMancante).length, [parco]);
 
   const apriEdit = (m) => { if (!admin) return; setEditNum(m.numero); setDraft(m.targa || ''); };
   const salva = (numero) => { setTarghe(prev => ({ ...(prev || {}), [numero]: draft.toUpperCase().trim() })); setEditNum(null); setDraft(''); };
@@ -18239,7 +18255,7 @@ function CuoreFlottaPage({ rentmeVehicles, targhe, setTarghe, fleet, scadenze, a
       <div className="label" style={{ color: 'var(--sea)' }}>NUOVO CUORE · FLOTTA (anteprima)</div>
       <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: 22, letterSpacing: '-0.01em', margin: '2px 0 4px' }}>Parco Mezzi — lista unica</h1>
       <p style={{ fontSize: 13, color: 'var(--ink-2)', marginBottom: 14 }}>
-        {parco.length} mezzi · {mancanti > 0 ? <strong style={{ color: 'var(--accent, #c0392b)' }}>{mancanti} senza targa</strong> : 'tutte le targhe presenti'}.
+        {parco.length} mezzi · {mancanti > 0 ? <strong style={{ color: 'var(--accent, #c0392b)' }}>{mancanti} senza targa</strong> : 'tutte le targhe presenti'} <span style={{ color: 'var(--muted)' }}>(bici/ebike escluse: in Italia non hanno targa)</span>.
         Targa da una <strong>fonte sola</strong> (la tabella). {admin ? 'Clicca una targa per modificarla.' : 'Attiva Admin per modificare.'}
       </p>
 
@@ -18266,11 +18282,15 @@ function CuoreFlottaPage({ rentmeVehicles, targhe, setTarghe, fleet, scadenze, a
                           style={{ padding: '2px 5px', border: '1px solid var(--sea)', borderRadius: 4, width: 100, textTransform: 'uppercase', fontFamily: 'inherit' }} />
                         <button type="button" onClick={() => salva(m.numero)} style={{ border: 'none', background: 'var(--sea)', color: '#fff', borderRadius: 4, padding: '2px 8px', cursor: 'pointer', fontSize: 11 }}>OK</button>
                       </span>
-                    ) : (
-                      <span onClick={() => apriEdit(m)} style={{ cursor: admin ? 'pointer' : 'default', color: m.targa ? 'var(--ink)' : 'var(--accent, #c0392b)', fontWeight: m.targa ? 400 : 700, borderBottom: admin ? '1px dashed var(--border)' : 'none' }}>
-                        {m.targa || '(manca)'}
-                      </span>
-                    )}
+                    ) : (() => {
+                      const manca = targaMancante(m);            // rosso solo se la targa è ATTESA
+                      const vuotaOk = !m.targa && !manca;        // bici/ebike senza targa = neutro
+                      return (
+                        <span onClick={() => apriEdit(m)} title={vuotaOk ? 'Bici/ebike: targa non prevista (modificabile)' : ''} style={{ cursor: admin ? 'pointer' : 'default', color: m.targa ? 'var(--ink)' : (manca ? 'var(--accent, #c0392b)' : 'var(--muted)'), fontWeight: manca ? 700 : 400, borderBottom: admin ? '1px dashed var(--border)' : 'none' }}>
+                          {m.targa || (manca ? '(manca)' : '—')}
+                        </span>
+                      );
+                    })()}
                   </td>
                   <td style={td}>{m.tipo}</td>
                   <td style={td}>{m.categoria || '—'}</td>
