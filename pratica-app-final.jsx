@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef, useCallback, memo, Component } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback, memo, Component, Fragment } from 'react';
 import { CalendarDays, Receipt, BarChart2,
   LayoutDashboard, FileText, Car, Users, Settings, Plus, Search,
   ChevronRight, Check, AlertCircle, Clock, Send, Camera, ScanLine,
@@ -17778,12 +17778,31 @@ function CuoreAnteprimaPage({ rentmeVehicles, targhe, fleet, prenotazioni, scade
   const confronto = useMemo(() => {
     let vecchie = [];
     try { vecchie = calcAvailability(dal, al, rentmeVehicles, prenotazioni, fleet, fermiFlotta, undefined, targhe) || []; }
-    catch (e) { return { errore: String(e && e.message || e), righe: [] }; }
+    catch (e) { return { errore: String(e && e.message || e), righe: [], perTipo: [] }; }
     const righe = vecchie.map(c => {
       const a = cuoreAvailability(parco, prenoConFermi, { tipo: c.tipo, categoria: c.categoria, dal, al });
-      return { nome: c.nome || `${c.tipo} ${c.categoria || ''}`, vecFree: c.free, vecTotal: c.total, nuoLiberi: a.liberi, nuoTotale: a.totale, match: c.free === a.liberi && c.total === a.totale };
+      return { nome: c.nome || `${c.tipo} ${c.categoria || ''}`, vecFree: c.free, vecTotal: c.total, nuoLiberi: a.liberi, nuoTotale: a.totale, match: c.free === a.liberi && c.total === a.totale,
+        // sulle righe ≠: i numeri-mezzo della categoria nel NUOVO, per capire chi c'è in più/in meno
+        mezziNuovo: a.mezziTotali.map(m => m.numero).join(' ') };
     });
-    return { errore: null, righe, diff: righe.filter(r => !r.match).length };
+    // ── CONFRONTO PER TIPO: l'invariante VERA (somma su tutte le categorie del tipo).
+    // Le tassonomie vecchio (listino) ↔ nuovo (classi RentMe) raggruppano diverso, ma le
+    // SOMME per tipo devono coincidere: se un tipo ≠ anche qui, è una differenza reale.
+    const byTipo = new Map();
+    vecchie.forEach(c => {
+      const t = canonicalTipo({ tipo: c.tipo }) || String(c.tipo || '?');
+      const e = byTipo.get(t) || { free: 0, total: 0 };
+      e.free += (c.free || 0); e.total += (c.total || 0);
+      byTipo.set(t, e);
+    });
+    // tipi presenti solo nel parco nuovo (il vecchio non li elenca) → vanno mostrati lo stesso
+    parco.forEach(m => { const t = canonicalTipo({ tipo: m.tipo }) || String(m.tipo || '?'); if (!byTipo.has(t)) byTipo.set(t, { free: null, total: null }); });
+    const perTipo = [...byTipo.entries()].map(([t, v]) => {
+      const a = cuoreAvailability(parco, prenoConFermi, { tipo: t, categoria: '', dal, al });
+      return { tipo: t, vecFree: v.free, vecTotal: v.total, nuoLiberi: a.liberi, nuoTotale: a.totale,
+        match: v.free === a.liberi && v.total === a.totale };
+    }).sort((x, y) => x.tipo.localeCompare(y.tipo));
+    return { errore: null, righe, perTipo, diff: righe.filter(r => !r.match).length, diffTipo: perTipo.filter(r => !r.match).length };
   }, [dal, al, rentmeVehicles, prenotazioni, fleet, fermiFlotta, targhe, parco, prenoConFermi]);
 
   const th = { textAlign: 'left', padding: '6px 10px', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--ink-2)', borderBottom: '1px solid var(--border)' };
@@ -17836,27 +17855,56 @@ function CuoreAnteprimaPage({ rentmeVehicles, targhe, fleet, prenotazioni, scade
           <span>Check cutover — vecchio ↔ nuovo ({dal} → {al})</span>
           {confronto.errore
             ? <span style={{ color: 'var(--accent, #c0392b)', fontSize: 12 }}>errore vecchio motore: {confronto.errore}</span>
-            : <span style={{ fontSize: 12, fontWeight: 700, color: confronto.diff === 0 ? 'var(--sea)' : 'var(--accent, #c0392b)' }}>
-                {confronto.diff === 0 ? '✓ tutti i numeri coincidono' : `⚠️ ${confronto.diff} categorie con numeri diversi`}
+            : <span style={{ fontSize: 12, fontWeight: 700, color: confronto.diffTipo === 0 ? 'var(--sea)' : 'var(--accent, #c0392b)' }}>
+                {confronto.diffTipo === 0 ? '✓ le somme per tipo coincidono' : `⚠️ ${confronto.diffTipo} TIPI con somme diverse`}
               </span>}
         </div>
+
+        {/* 1) PER TIPO — l'invariante che DEVE coincidere (somma di tutte le categorie del tipo) */}
+        <div style={{ padding: '8px 12px 2px', fontSize: 12, fontWeight: 700, color: 'var(--ink-2)' }}>1 · Per TIPO (le somme — qui ✓ è obbligatorio)</div>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead><tr><th style={th}>Categoria</th><th style={{ ...th, textAlign: 'right' }}>Vecchio (liberi/tot)</th><th style={{ ...th, textAlign: 'right' }}>Nuovo (liberi/tot)</th><th style={{ ...th, textAlign: 'center' }}>Esito</th></tr></thead>
+          <thead><tr><th style={th}>Tipo</th><th style={{ ...th, textAlign: 'right' }}>Vecchio (liberi/tot)</th><th style={{ ...th, textAlign: 'right' }}>Nuovo (liberi/tot)</th><th style={{ ...th, textAlign: 'center' }}>Esito</th></tr></thead>
           <tbody>
-            {confronto.righe.map((r, i) => (
+            {(confronto.perTipo || []).map((r, i) => (
               <tr key={i} style={{ background: r.match ? 'transparent' : 'rgba(192,57,50,0.06)' }}>
-                <td style={td}>{r.nome}</td>
-                <td style={{ ...td, ...mono, textAlign: 'right' }}>{r.vecFree}/{r.vecTotal}</td>
+                <td style={td}>{r.tipo}</td>
+                <td style={{ ...td, ...mono, textAlign: 'right' }}>{r.vecTotal == null ? '—' : `${r.vecFree}/${r.vecTotal}`}</td>
                 <td style={{ ...td, ...mono, textAlign: 'right' }}>{r.nuoLiberi}/{r.nuoTotale}</td>
                 <td style={{ ...td, textAlign: 'center', fontWeight: 700, color: r.match ? 'var(--sea)' : 'var(--accent, #c0392b)' }}>{r.match ? '✓' : '≠'}</td>
               </tr>
+            ))}
+          </tbody>
+        </table>
+
+        {/* 2) PER CATEGORIA — i nomi vecchi (listino) e nuovi (classi RentMe) raggruppano diverso:
+               un ≠ qui con il tipo ✓ è solo un raggruppamento differente, non un errore. */}
+        <div style={{ padding: '12px 12px 2px', fontSize: 12, fontWeight: 700, color: 'var(--ink-2)' }}>2 · Per categoria (tassonomie diverse: ≠ qui + ✓ sul tipo = solo raggruppamento)</div>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead><tr><th style={th}>Categoria (nome vecchio)</th><th style={{ ...th, textAlign: 'right' }}>Vecchio (liberi/tot)</th><th style={{ ...th, textAlign: 'right' }}>Nuovo (liberi/tot)</th><th style={{ ...th, textAlign: 'center' }}>Esito</th></tr></thead>
+          <tbody>
+            {confronto.righe.map((r, i) => (
+              <Fragment key={i}>
+                <tr style={{ background: r.match ? 'transparent' : 'rgba(192,57,50,0.06)' }}>
+                  <td style={td}>{r.nome}</td>
+                  <td style={{ ...td, ...mono, textAlign: 'right' }}>{r.vecFree}/{r.vecTotal}</td>
+                  <td style={{ ...td, ...mono, textAlign: 'right' }}>{r.nuoLiberi}/{r.nuoTotale}</td>
+                  <td style={{ ...td, textAlign: 'center', fontWeight: 700, color: r.match ? 'var(--sea)' : 'var(--accent, #c0392b)' }}>{r.match ? '✓' : '≠'}</td>
+                </tr>
+                {!r.match && r.mezziNuovo != null && (
+                  <tr style={{ background: 'rgba(192,57,50,0.04)' }}>
+                    <td colSpan={4} style={{ ...td, ...mono, fontSize: 10, color: 'var(--ink-2)' }}>↳ mezzi della categoria nel NUOVO: {r.mezziNuovo || '(nessuno)'}</td>
+                  </tr>
+                )}
+              </Fragment>
             ))}
             {confronto.righe.length === 0 && !confronto.errore && <tr><td colSpan={4} style={{ ...td, textAlign: 'center', color: 'var(--ink-2)', padding: 16 }}>Nessuna categoria dal vecchio motore.</td></tr>}
           </tbody>
         </table>
         <p style={{ fontSize: 11, color: 'var(--ink-2)', padding: '8px 12px', margin: 0 }}>
-          Una differenza (≠) non è per forza un errore del nuovo: il vecchio ha i bug noti che hanno motivato la
-          ricostruzione. Ma ogni ≠ va <strong>capito e spiegato</strong> prima di accendere il cuore per tutti.
+          <strong>Come leggerlo:</strong> la tabella 1 (per tipo) deve essere tutta ✓ — un ≠ lì è una differenza
+          REALE da capire prima del cutover. Nella tabella 2 un ≠ con il tipo ✓ è quasi sempre solo un
+          <strong> raggruppamento diverso</strong> (es. il vecchio "Scooter 125" = STANDARD+SUPERIOR del nuovo);
+          la riga "↳ mezzi" elenca i numeri per controllare chi c'è.
         </p>
       </div>
 
