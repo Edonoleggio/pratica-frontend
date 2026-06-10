@@ -9513,6 +9513,27 @@ function cuoreRisolviNumero(vid, parco) {
   const t = (parco || []).find(m => (m.targa || '').toUpperCase() === up);
   return t ? String(t.numero) : s;
 }
+// Fermi programmati → pseudo-prenotazioni assegnate al mezzo, così LA STESSA regola
+// di disponibilità li conta (mezzo non scegliibile + un posto in meno nella categoria).
+// Niente seconda regola, niente traduttori: si normalizza il dato al modello del cuore.
+function cuoreFermiToPreno(fermi, parco) {
+  const out = [];
+  (fermi || []).forEach((f, i) => {
+    if (!f || !f.vehicleId || !f.dal || !f.al) return;
+    const numero = cuoreRisolviNumero(f.vehicleId, parco);
+    const m = (parco || []).find(x => String(x.numero) === String(numero));
+    if (!m) return; // fermo su mezzo non in parco → non conta
+    out.push({
+      id: 'fermo_' + (f.id || i),
+      stato: 'confermata',
+      _fermo: true,
+      dal: f.dal, al: f.al,
+      tipo: m.tipo, categoria: m.categoria,
+      assegnazioni: [{ numero: String(m.numero), dal: f.dal, al: f.al }],
+    });
+  });
+  return out;
+}
 // Migra una prenotazione vecchia → nuovo modello {tipo, categoria, assegnazioni}.
 function cuoreMigraPreno(p, parco) {
   if (!p || Array.isArray(p.assegnazioni)) return p;
@@ -17150,14 +17171,14 @@ export default function App() {
               {page === 'preventivi'    && <PreventiviPage setPage={setPage} setPrenotazioniPrefill={setPrenotazioniPrefill} listino={listino} fleet={fleet} rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} pushToast={pushToast} fermiFlotta={fermiFlotta} targhe={targhe} />}
               {page === 'prenotazioni' && <PrenotazioniPage prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} setCassa={setCassa} fleet={fleet} rentmeVehicles={rentmeVehicles} customers={customers} partners={partners} operator={operator} onOpenWizard={openWizard} pushToast={pushToast} prefill={prenotazioniPrefill} onClearPrefill={() => setPrenotazioniPrefill(null)} fermiFlotta={fermiFlotta} rentmePush={rentmeSync.pushBooking} rentmeConnected={rentmeSync.status === 'ok'} agency={agency} targhe={targhe} />}
               {page === 'contracts'  && <ContractsList contracts={localContracts} operators={operators} onRetry={retryContract} onMarkReturned={markContractReturned} onSendPec={sendContractPec} pecStatus={pecStatus} online={online} />}
-              {page === 'cuore' && cuoreNuovo && <CuoreAnteprimaPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} prenotazioni={prenotazioni} scadenze={scadenze} />}
-              {page === 'cuore_oggi' && cuoreNuovo && <CuoreOggiPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPage={setPage} />}
-              {page === 'cuore_cal' && cuoreNuovo && <CuoreCalendarioPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} prenotazioni={prenotazioni} scadenze={scadenze} setPrenotazioni={setPrenotazioni} pushToast={pushToast} />}
-              {page === 'cuore_preno' && cuoreNuovo && <CuorePrenotaPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} pushToast={pushToast} prefill={cuorePrefill} />}
-              {page === 'cuore_banco' && cuoreNuovo && <CuoreBancoPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} listino={listino} pushToast={pushToast} operator={operator} />}
-              {page === 'cuore_consegna' && cuoreNuovo && <CuoreConsegnaPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} pushToast={pushToast} operator={operator} />}
+              {page === 'cuore' && cuoreNuovo && <CuoreAnteprimaPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} prenotazioni={prenotazioni} scadenze={scadenze} fermiFlotta={fermiFlotta} />}
+              {page === 'cuore_oggi' && cuoreNuovo && <CuoreOggiPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPage={setPage} fermiFlotta={fermiFlotta} />}
+              {page === 'cuore_cal' && cuoreNuovo && <CuoreCalendarioPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} prenotazioni={prenotazioni} scadenze={scadenze} setPrenotazioni={setPrenotazioni} pushToast={pushToast} fermiFlotta={fermiFlotta} />}
+              {page === 'cuore_preno' && cuoreNuovo && <CuorePrenotaPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} pushToast={pushToast} prefill={cuorePrefill} fermiFlotta={fermiFlotta} />}
+              {page === 'cuore_banco' && cuoreNuovo && <CuoreBancoPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} listino={listino} pushToast={pushToast} operator={operator} fermiFlotta={fermiFlotta} />}
+              {page === 'cuore_consegna' && cuoreNuovo && <CuoreConsegnaPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} pushToast={pushToast} operator={operator} fermiFlotta={fermiFlotta} />}
               {page === 'cuore_rientro' && cuoreNuovo && <CuoreRientroPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} pushToast={pushToast} setCassa={setCassa} operator={operator} />}
-              {page === 'cuore_prev' && cuoreNuovo && <CuorePreventiviPage listino={listino} fleet={fleet} rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} targhe={targhe} scadenze={scadenze} setPage={setPage} setCuorePrefill={setCuorePrefill} pushToast={pushToast} />}
+              {page === 'cuore_prev' && cuoreNuovo && <CuorePreventiviPage listino={listino} fleet={fleet} rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} targhe={targhe} scadenze={scadenze} setPage={setPage} setCuorePrefill={setCuorePrefill} pushToast={pushToast} fermiFlotta={fermiFlotta} />}
               {page === 'cuore_flotta' && cuoreNuovo && <CuoreFlottaPage rentmeVehicles={rentmeVehicles} targhe={targhe} setTarghe={setTarghe} fleet={fleet} scadenze={scadenze} admin={admin} />}
               {page === 'fleet'      && <FleetPage fleet={unifiedFleet} prenotazioni={prenotazioni} admin={admin} onAddVehicle={() => setModal('newVehicle')} onEditVehicle={(v) => setModal({ type: 'editVehicle', vehicle: v })} onDeleteVehicle={requestDeleteVehicle} onImportCSV={() => setShowCsvImport(true)} onResetFleet={() => setModal({ type: 'confirm', title: 'Azzera flotta?', message: <><strong>Tutti i {fleet.length} veicoli</strong> verranno eliminati dalla flotta. Le prenotazioni esistenti restano invariate. Dopo puoi reimportare con un CSV aggiornato. <strong>Azione irreversibile.</strong></>, confirmLabel: 'Azzera flotta', variant: 'danger', onConfirm: () => { setFleet([]); pushToast({ tone: 'info', title: 'Flotta azzerata', message: 'Tutti i veicoli rimossi. Importa un nuovo CSV per ricaricare.' }); } })} onSetFleet={setFleet} scadenze={scadenze} setScadenze={setScadenze} fermiFlotta={fermiFlotta} setFermiFlotta={setFermiFlotta} rentmeVehicles={rentmeVehicles} manutenzioni={manutenzioni} setManutenzioni={setManutenzioni} partners={partners} targhe={targhe} setTarghe={setTarghe} />}
               {page === 'customers'  && <CustomersPage customers={customers} setCustomers={setCustomers} prenotazioni={prenotazioni} admin={admin} onShowQR={(c) => setModal({ type: 'qr', customer: c })} onNewWithCustomer={openWizard} onAddCustomer={() => setModal('newCustomer')} onEditCustomer={(c) => setModal({ type: 'editCustomer', customer: c })} onDeleteCustomer={deleteCustomer} onShowStorico={(c) => setStorioClienteId(c.id)} />}
@@ -17723,7 +17744,7 @@ function Styles() {
 // sui DATI REALI dell'app, senza toccare nulla. Serve a verificare prima di
 // collegare le schermate vere.
 // ═══════════════════════════════════════════════════════════════════
-function CuoreAnteprimaPage({ rentmeVehicles, targhe, fleet, prenotazioni, scadenze }) {
+function CuoreAnteprimaPage({ rentmeVehicles, targhe, fleet, prenotazioni, scadenze, fermiFlotta }) {
   const parco = useMemo(
     () => cuoreBuildParco(rentmeVehicles, { targhe, fleet, scadenze }),
     [rentmeVehicles, targhe, fleet, scadenze]
@@ -17731,6 +17752,11 @@ function CuoreAnteprimaPage({ rentmeVehicles, targhe, fleet, prenotazioni, scade
   const prenoNuove = useMemo(
     () => (prenotazioni || []).map(p => cuoreMigraPreno(p, parco)),
     [prenotazioni, parco]
+  );
+  // I fermi programmati contano come occupazioni del mezzo (stessa regola, nessuna eccezione).
+  const prenoConFermi = useMemo(
+    () => [...prenoNuove, ...cuoreFermiToPreno(fermiFlotta, parco)],
+    [prenoNuove, fermiFlotta, parco]
   );
   const categorie = useMemo(() => {
     const seen = new Map();
@@ -17742,9 +17768,23 @@ function CuoreAnteprimaPage({ rentmeVehicles, targhe, fleet, prenotazioni, scade
   const [al, setAl]   = useState(todayISO());
 
   const rows = useMemo(() => categorie.map(c => {
-    const a = cuoreAvailability(parco, prenoNuove, { tipo: c.tipo, categoria: c.categoria, dal, al });
+    const a = cuoreAvailability(parco, prenoConFermi, { tipo: c.tipo, categoria: c.categoria, dal, al });
     return { ...c, totale: a.totale, occupati: a.occupati, liberi: a.liberi, mezziLiberi: a.mezziLiberi };
-  }), [categorie, parco, prenoNuove, dal, al]);
+  }), [categorie, parco, prenoConFermi, dal, al]);
+
+  // ── CHECK DI COERENZA per la Fase 5: vecchio (calcAvailability) ↔ nuovo (cuoreAvailability)
+  // sulle stesse date. Differenze NON sono per forza errori del nuovo (il vecchio ha i bug
+  // noti che hanno motivato la ricostruzione) ma vanno SPIEGATE prima del cutover.
+  const confronto = useMemo(() => {
+    let vecchie = [];
+    try { vecchie = calcAvailability(dal, al, rentmeVehicles, prenotazioni, fleet, fermiFlotta, undefined, targhe) || []; }
+    catch (e) { return { errore: String(e && e.message || e), righe: [] }; }
+    const righe = vecchie.map(c => {
+      const a = cuoreAvailability(parco, prenoConFermi, { tipo: c.tipo, categoria: c.categoria, dal, al });
+      return { nome: c.nome || `${c.tipo} ${c.categoria || ''}`, vecFree: c.free, vecTotal: c.total, nuoLiberi: a.liberi, nuoTotale: a.totale, match: c.free === a.liberi && c.total === a.totale };
+    });
+    return { errore: null, righe, diff: righe.filter(r => !r.match).length };
+  }, [dal, al, rentmeVehicles, prenotazioni, fleet, fermiFlotta, targhe, parco, prenoConFermi]);
 
   const th = { textAlign: 'left', padding: '6px 10px', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--ink-2)', borderBottom: '1px solid var(--border)' };
   const td = { padding: '6px 10px', fontSize: 13, borderBottom: '1px solid var(--border)' };
@@ -17790,6 +17830,36 @@ function CuoreAnteprimaPage({ rentmeVehicles, targhe, fleet, prenotazioni, scade
         </table>
       </div>
 
+      {/* check di coerenza Fase 5: vecchio ↔ nuovo */}
+      <div className="card-paper" style={{ padding: 0, overflow: 'hidden', marginBottom: 24 }}>
+        <div style={{ padding: '10px 12px', fontWeight: 600, fontSize: 13, borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <span>Check cutover — vecchio ↔ nuovo ({dal} → {al})</span>
+          {confronto.errore
+            ? <span style={{ color: 'var(--accent, #c0392b)', fontSize: 12 }}>errore vecchio motore: {confronto.errore}</span>
+            : <span style={{ fontSize: 12, fontWeight: 700, color: confronto.diff === 0 ? 'var(--sea)' : 'var(--accent, #c0392b)' }}>
+                {confronto.diff === 0 ? '✓ tutti i numeri coincidono' : `⚠️ ${confronto.diff} categorie con numeri diversi`}
+              </span>}
+        </div>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead><tr><th style={th}>Categoria</th><th style={{ ...th, textAlign: 'right' }}>Vecchio (liberi/tot)</th><th style={{ ...th, textAlign: 'right' }}>Nuovo (liberi/tot)</th><th style={{ ...th, textAlign: 'center' }}>Esito</th></tr></thead>
+          <tbody>
+            {confronto.righe.map((r, i) => (
+              <tr key={i} style={{ background: r.match ? 'transparent' : 'rgba(192,57,50,0.06)' }}>
+                <td style={td}>{r.nome}</td>
+                <td style={{ ...td, ...mono, textAlign: 'right' }}>{r.vecFree}/{r.vecTotal}</td>
+                <td style={{ ...td, ...mono, textAlign: 'right' }}>{r.nuoLiberi}/{r.nuoTotale}</td>
+                <td style={{ ...td, textAlign: 'center', fontWeight: 700, color: r.match ? 'var(--sea)' : 'var(--accent, #c0392b)' }}>{r.match ? '✓' : '≠'}</td>
+              </tr>
+            ))}
+            {confronto.righe.length === 0 && !confronto.errore && <tr><td colSpan={4} style={{ ...td, textAlign: 'center', color: 'var(--ink-2)', padding: 16 }}>Nessuna categoria dal vecchio motore.</td></tr>}
+          </tbody>
+        </table>
+        <p style={{ fontSize: 11, color: 'var(--ink-2)', padding: '8px 12px', margin: 0 }}>
+          Una differenza (≠) non è per forza un errore del nuovo: il vecchio ha i bug noti che hanno motivato la
+          ricostruzione. Ma ogni ≠ va <strong>capito e spiegato</strong> prima di accendere il cuore per tutti.
+        </p>
+      </div>
+
       <div className="card-paper" style={{ padding: 0, overflow: 'hidden' }}>
         <div style={{ padding: '10px 12px', fontWeight: 600, fontSize: 13, borderBottom: '1px solid var(--border)' }}>Parco Mezzi (lista unica)</div>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -17817,9 +17887,10 @@ function CuoreAnteprimaPage({ rentmeVehicles, targhe, fleet, prenotazioni, scade
 // categoria calcolate dalla STESSA regola di prenotazioni/calendario (zero traduttori),
 // + agenda di oggi (consegne da fare, rientri/scaduti) con scorciatoie alle pagine.
 // ═══════════════════════════════════════════════════════════════════
-function CuoreOggiPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazioni, setPage }) {
+function CuoreOggiPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazioni, setPage, fermiFlotta }) {
   const parco = useMemo(() => cuoreBuildParco(rentmeVehicles, { targhe, fleet, scadenze }), [rentmeVehicles, targhe, fleet, scadenze]);
   const prenoNuove = useMemo(() => (prenotazioni || []).map(p => cuoreMigraPreno(p, parco)), [prenotazioni, parco]);
+  const prenoConFermi = useMemo(() => [...prenoNuove, ...cuoreFermiToPreno(fermiFlotta, parco)], [prenoNuove, fermiFlotta, parco]);
   const oggi = todayISO();
   const cliente = (p) => `${p.clienteCognome || ''} ${p.clienteNome || ''}`.trim() || p.cliente || '—';
 
@@ -17828,14 +17899,14 @@ function CuoreOggiPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazioni, 
     const disponibili = parco.filter(m => !CUORE_MEZZO_FUORI.has(String(m.stato || 'disponibile')));
     const manutenzione = parco.filter(m => CUORE_MEZZO_FUORI.has(String(m.stato || 'disponibile')));
     const occ = new Set();
-    prenoNuove.forEach(p => {
+    prenoConFermi.forEach(p => {
       if (!p || CUORE_PRENO_FUORI.has(String(p.stato || ''))) return;
       cuoreSegmenti(p).forEach(s => { if (cuoreOverlaps(s.dal, s.al, oggi, oggi)) occ.add(String(s.numero)); });
     });
     const occupati = disponibili.filter(m => occ.has(String(m.numero)));
     const liberi = disponibili.filter(m => !occ.has(String(m.numero)));
     return { totale: parco.length, disp: disponibili.length, liberi, occupati, manutenzione };
-  }, [parco, prenoNuove, oggi]);
+  }, [parco, prenoConFermi, oggi]);
 
   const categorie = useMemo(() => {
     const seen = new Map();
@@ -17844,9 +17915,9 @@ function CuoreOggiPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazioni, 
   }, [parco]);
 
   const rows = useMemo(() => categorie.map(c => {
-    const a = cuoreAvailability(parco, prenoNuove, { tipo: c.tipo, categoria: c.categoria, dal: oggi, al: oggi });
+    const a = cuoreAvailability(parco, prenoConFermi, { tipo: c.tipo, categoria: c.categoria, dal: oggi, al: oggi });
     return { ...c, totale: a.totale, occupati: a.occupati, liberi: a.liberi };
-  }).filter(r => r.totale > 0), [categorie, parco, prenoNuove, oggi]);
+  }).filter(r => r.totale > 0), [categorie, parco, prenoConFermi, oggi]);
 
   // Agenda di oggi.
   const consegneOggi = useMemo(() => prenoNuove.filter(p =>
@@ -17938,13 +18009,14 @@ function CuoreOggiPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazioni, 
 // orizzontale su schermi larghi) · navigazione mese-per-mese.
 // ═══════════════════════════════════════════════════════════════════
 const CUORE_STATO_COLORE = { confermata: '#2e6e3e', in_corso: '#1f5d83', prorogata: '#7a5cc0', bozza: '#9a8c6a' };
-function CuoreCalendarioPage({ rentmeVehicles, targhe, fleet, prenotazioni, scadenze, setPrenotazioni, pushToast }) {
+function CuoreCalendarioPage({ rentmeVehicles, targhe, fleet, prenotazioni, scadenze, setPrenotazioni, pushToast, fermiFlotta }) {
   const parco = useMemo(() => cuoreBuildParco(rentmeVehicles, { targhe, fleet, scadenze }), [rentmeVehicles, targhe, fleet, scadenze]);
   const [assegna, setAssegna] = useState(null); // prenotazione da assegnare
   const prenoNuove = useMemo(
     () => (prenotazioni || []).map(p => cuoreMigraPreno(p, parco)).filter(p => p && !CUORE_PRENO_FUORI.has(String(p.stato || ''))),
     [prenotazioni, parco]
   );
+  const prenoConFermi = useMemo(() => [...prenoNuove, ...cuoreFermiToPreno(fermiFlotta, parco)], [prenoNuove, fermiFlotta, parco]);
 
   const oggi = todayISO();
   const [ym, setYm] = useState(() => oggi.slice(0, 7)); // 'YYYY-MM'
@@ -18175,7 +18247,7 @@ function CuoreCalendarioPage({ rentmeVehicles, targhe, fleet, prenotazioni, scad
       </p>
 
       {assegna && (() => {
-        const liberi = cuoreAvailability(parco, prenoNuove, { tipo: assegna.tipo, categoria: assegna.categoria, dal: assegna.dal, al: assegna.al, excludeId: assegna.id }).mezziLiberi;
+        const liberi = cuoreAvailability(parco, prenoConFermi, { tipo: assegna.tipo, categoria: assegna.categoria, dal: assegna.dal, al: assegna.al, excludeId: assegna.id }).mezziLiberi;
         const conferma = (numero) => {
           const mezzo = parco.find(m => String(m.numero) === String(numero));
           if (!mezzo) return;
@@ -18213,9 +18285,10 @@ function CuoreCalendarioPage({ rentmeVehicles, targhe, fleet, prenotazioni, scad
 // Categoria esaurita → bloccato. Mezzo già occupato → bloccato. Scrive il nuovo
 // modello {tipo,categoria,assegnazioni} + rispecchia i campi vecchi per compatibilità.
 // ═══════════════════════════════════════════════════════════════════
-function CuorePrenotaPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazioni, setPrenotazioni, pushToast, prefill }) {
+function CuorePrenotaPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazioni, setPrenotazioni, pushToast, prefill, fermiFlotta }) {
   const parco = useMemo(() => cuoreBuildParco(rentmeVehicles, { targhe, fleet, scadenze }), [rentmeVehicles, targhe, fleet, scadenze]);
   const prenoNuove = useMemo(() => (prenotazioni || []).map(p => cuoreMigraPreno(p, parco)), [prenotazioni, parco]);
+  const prenoConFermi = useMemo(() => [...prenoNuove, ...cuoreFermiToPreno(fermiFlotta, parco)], [prenoNuove, fermiFlotta, parco]);
 
   const oggi = todayISO();
   // Precompilazione da Preventivo (cuore): categoria + date già pronte.
@@ -18233,11 +18306,11 @@ function CuorePrenotaPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazion
     return [...new Set(parco.filter(m => canonicalTipo({ tipo: m.tipo }) === canonicalTipo({ tipo })).map(m => m.categoria).filter(Boolean))].sort();
   }, [parco, tipo]);
 
-  // disponibilità della categoria scelta (la regola, una sola funzione)
+  // disponibilità della categoria scelta (la regola, una sola funzione — fermi inclusi)
   const disp = useMemo(() => {
     if (!tipo || !dal || !al) return null;
-    return cuoreAvailability(parco, prenoNuove, { tipo, categoria, dal, al });
-  }, [parco, prenoNuove, tipo, categoria, dal, al]);
+    return cuoreAvailability(parco, prenoConFermi, { tipo, categoria, dal, al });
+  }, [parco, prenoConFermi, tipo, categoria, dal, al]);
 
   const categoriaPiena = disp && disp.liberi <= 0;
   const mezziScegliibili = disp ? disp.mezziLiberi : [];
@@ -18300,7 +18373,7 @@ function CuorePrenotaPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazion
             <select style={inp} value={categoria} onChange={e => cambiaCategoria(e.target.value)} disabled={!tipo}>
               <option value="">— qualsiasi {tipo} —</option>
               {categorieDelTipo.map(c => {
-                const a = cuoreAvailability(parco, prenoNuove, { tipo, categoria: c, dal, al });
+                const a = cuoreAvailability(parco, prenoConFermi, { tipo, categoria: c, dal, al });
                 return <option key={c} value={c}>{c} — {a.liberi}/{a.totale} liberi{a.liberi <= 0 ? ' (esaurita)' : ''}</option>;
               })}
             </select>
@@ -18437,9 +18510,10 @@ function CuoreConsegnaDialog({ preno, parco, prenoNuove, onConfirm, onClose }) {
   );
 }
 
-function CuoreConsegnaPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazioni, setPrenotazioni, pushToast, operator }) {
+function CuoreConsegnaPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazioni, setPrenotazioni, pushToast, operator, fermiFlotta }) {
   const parco = useMemo(() => cuoreBuildParco(rentmeVehicles, { targhe, fleet, scadenze }), [rentmeVehicles, targhe, fleet, scadenze]);
   const prenoNuove = useMemo(() => (prenotazioni || []).map(p => cuoreMigraPreno(p, parco)), [prenotazioni, parco]);
+  const prenoConFermi = useMemo(() => [...prenoNuove, ...cuoreFermiToPreno(fermiFlotta, parco)], [prenoNuove, fermiFlotta, parco]);
   const parcoByNum = useMemo(() => new Map(parco.map(m => [String(m.numero), m])), [parco]);
   const oggi = todayISO();
   const cliente = (p) => `${p.clienteCognome || ''} ${p.clienteNome || ''}`.trim() || p.cliente || '—';
@@ -18558,7 +18632,7 @@ function CuoreConsegnaPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazio
         <CuoreConsegnaDialog
           preno={target}
           parco={parco}
-          prenoNuove={prenoNuove}
+          prenoNuove={prenoConFermi}
           onConfirm={confermaConsegna}
           onClose={() => setTarget(null)}
         />
@@ -18574,9 +18648,10 @@ function CuoreConsegnaPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazio
 // "consegna subito" la prenotazione nasce già in_corso con la targa dalla TABELLA.
 // Stessa regola di disponibilità di tutte le altre pagine: zero traduttori.
 // ═══════════════════════════════════════════════════════════════════
-function CuoreBancoPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazioni, setPrenotazioni, listino, pushToast, operator }) {
+function CuoreBancoPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazioni, setPrenotazioni, listino, pushToast, operator, fermiFlotta }) {
   const parco = useMemo(() => cuoreBuildParco(rentmeVehicles, { targhe, fleet, scadenze }), [rentmeVehicles, targhe, fleet, scadenze]);
   const prenoNuove = useMemo(() => (prenotazioni || []).map(p => cuoreMigraPreno(p, parco)), [prenotazioni, parco]);
+  const prenoConFermi = useMemo(() => [...prenoNuove, ...cuoreFermiToPreno(fermiFlotta, parco)], [prenoNuove, fermiFlotta, parco]);
   const oggi = todayISO();
 
   const [dal, setDal] = useState(oggi);
@@ -18602,11 +18677,11 @@ function CuoreBancoPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazioni,
     const seen = new Map();
     parco.forEach(m => { const k = `${m.tipo}|${m.categoria}`; if (!seen.has(k)) seen.set(k, { tipo: m.tipo, categoria: m.categoria }); });
     return Array.from(seen.values()).map(c => {
-      const a = cuoreAvailability(parco, prenoNuove, { tipo: c.tipo, categoria: c.categoria, dal, al });
+      const a = cuoreAvailability(parco, prenoConFermi, { tipo: c.tipo, categoria: c.categoria, dal, al });
       return { ...c, totale: a.totale, liberi: a.liberi, mezziLiberi: a.mezziLiberi };
     }).filter(r => r.totale > 0)
       .sort((a, b) => (a.tipo + a.categoria).localeCompare(b.tipo + b.categoria));
-  }, [parco, prenoNuove, dal, al]);
+  }, [parco, prenoConFermi, dal, al]);
 
   const tono = (r) => {
     if (r.liberi <= 0) return { border: 'var(--accent, #c0392b)', text: 'var(--accent, #c0392b)', label: 'Esaurito' };
@@ -18707,7 +18782,7 @@ function CuoreBancoPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazioni,
       </p>
 
       {sel && (() => {
-        const a = cuoreAvailability(parco, prenoNuove, { tipo: sel.tipo, categoria: sel.categoria, dal, al });
+        const a = cuoreAvailability(parco, prenoConFermi, { tipo: sel.tipo, categoria: sel.categoria, dal, al });
         const prezzo = prezzoDi(sel.tipo, sel.categoria);
         return (
           <div onClick={() => setSel(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
@@ -19108,22 +19183,23 @@ function CuoreFlottaPage({ rentmeVehicles, targhe, setTarghe, fleet, scadenze, a
 // Mostra SOLO categorie che esistono in flotta. Prezzo anche se pieno (altre date),
 // ma "Prenota" attivo solo se ci sono liberi (blocco-categoria del motore).
 // ═══════════════════════════════════════════════════════════════════
-function CuorePreventiviPage({ listino, fleet, rentmeVehicles, prenotazioni, targhe, scadenze, setPage, setCuorePrefill, pushToast }) {
+function CuorePreventiviPage({ listino, fleet, rentmeVehicles, prenotazioni, targhe, scadenze, setPage, setCuorePrefill, pushToast, fermiFlotta }) {
   const userPriceMap = Object.fromEntries((listino || []).map(c => [c.id, c]));
   const cats = LISTINO.map(m => { const s = userPriceMap[m.id]; return s ? { ...s, nome: m.nome, tipo: m.tipo, categoria: m.categoria } : m; });
   const parco = useMemo(() => cuoreBuildParco(rentmeVehicles, { targhe, fleet, scadenze }), [rentmeVehicles, targhe, fleet, scadenze]);
   const prenoNuove = useMemo(() => (prenotazioni || []).map(p => cuoreMigraPreno(p, parco)), [prenotazioni, parco]);
+  const prenoConFermi = useMemo(() => [...prenoNuove, ...cuoreFermiToPreno(fermiFlotta, parco)], [prenoNuove, fermiFlotta, parco]);
 
   const today = todayISO();
   const [dal, setDal] = useState(today);
   const [al, setAl] = useState(today);
 
   const righe = useMemo(() => cats.map(cat => {
-    const a = cuoreAvailability(parco, prenoNuove, { tipo: cat.tipo, categoria: cat.categoria, dal, al });
+    const a = cuoreAvailability(parco, prenoConFermi, { tipo: cat.tipo, categoria: cat.categoria, dal, al });
     if (a.totale === 0) return null; // categoria che NON esiste in flotta → non si quota
     const prev = (dal && al && al >= dal) ? calcPreventivo(cat, dal, al) : null;
     return { cat, totale: a.totale, liberi: a.liberi, prezzo: prev ? prev.totale : 0, giorni: prev ? prev.giorni : 0 };
-  }).filter(Boolean).sort((x, y) => (x.cat.tipo + x.cat.categoria).localeCompare(y.cat.tipo + y.cat.categoria)), [cats, parco, prenoNuove, dal, al]);
+  }).filter(Boolean).sort((x, y) => (x.cat.tipo + x.cat.categoria).localeCompare(y.cat.tipo + y.cat.categoria)), [cats, parco, prenoConFermi, dal, al]);
 
   const prenota = (r) => {
     if (r.liberi <= 0) return;
