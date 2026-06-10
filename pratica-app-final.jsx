@@ -9429,6 +9429,10 @@ const CUORE_MEZZO_FUORI = new Set(['manutenzione', 'fuori_uso', 'venduto']);
 function cuoreOverlaps(aDal, aAl, bDal, bAl) {
   return !!(aDal && aAl && bDal && bAl) && aDal <= bAl && aAl >= bDal;
 }
+function cuoreGiornoDopo(iso) {
+  const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
 function cuoreNumero(idRentme, rentmeCode) {
   if (rentmeCode != null && String(rentmeCode).trim() !== '') return String(rentmeCode).trim();
   const m = String(idRentme || '').trim().match(/(\d+)\s*$/);
@@ -9491,13 +9495,30 @@ function cuoreAvailability(parco, prenotazioni, q) {
   const attive = (prenotazioni || []).filter(p =>
     p && p.id !== excludeId && !CUORE_PRENO_FUORI.has(String(p.stato || '')) && cuoreOverlaps(p.dal, p.al, dal, al));
   const parcoByNum = new Map((parco || []).map(m => [String(m.numero), m]));
-  // Una prenotazione occupa un posto della categoria del MEZZO ASSEGNATO (se assegnata),
-  // altrimenti della categoria RICHIESTA (prenotazione "categoria sola").
-  const occupati = attive.filter(p => {
+  // ── occupati = PICCO GIORNALIERO di occupazione nel periodo richiesto ──
+  // NON il numero di prenotazioni che toccano il periodo: tre noleggi IN FILA sullo
+  // stesso mezzo sono 1 posto, non 3 (scoperto sui dati veri: "37/13 occupati" su una
+  // finestra di 20 giorni). Su un giorno singolo coincide col conteggio semplice; su
+  // periodi lunghi evita i falsi "pieno" (stella polare, 2ª paura). Gli intervalli sono
+  // un grafo perfetto: il picco di sovrapposizione giornaliera è ESATTAMENTE il numero
+  // minimo di mezzi necessari, anche senza cambi-mezzo a metà noleggio.
+  // Una prenotazione contribuisce nella categoria del MEZZO ASSEGNATO (se assegnata),
+  // altrimenti in quella RICHIESTA. Sweep a eventi: +1 il primo giorno, −1 il giorno dopo.
+  const eventi = new Map();
+  const addIntervallo = (s, e) => {
+    const da = s > dal ? s : dal, a = e < al ? e : al;
+    if (!da || !a || da > a) return;
+    eventi.set(da, (eventi.get(da) || 0) + 1);
+    const dopo = cuoreGiornoDopo(a);
+    eventi.set(dopo, (eventi.get(dopo) || 0) - 1);
+  };
+  attive.forEach(p => {
     const segs = cuoreSegmenti(p).filter(s => cuoreOverlaps(s.dal, s.al, dal, al));
-    if (segs.length) return segs.some(s => { const m = parcoByNum.get(String(s.numero)); return m && cuoreMezzoInCat(m, tipo, categoria); });
-    return cuorePrenoInCat(p, tipo, categoria);
-  }).length;
+    if (segs.length) segs.forEach(s => { const m = parcoByNum.get(String(s.numero)); if (m && cuoreMezzoInCat(m, tipo, categoria)) addIntervallo(s.dal, s.al); });
+    else if (cuorePrenoInCat(p, tipo, categoria)) addIntervallo(p.dal, p.al);
+  });
+  let occupati = 0, correnti = 0;
+  [...eventi.keys()].sort().forEach(g => { correnti += eventi.get(g); if (correnti > occupati) occupati = correnti; });
   const liberi = Math.max(0, totale - occupati);
   const numOcc = new Set();
   attive.forEach(p => cuoreSegmenti(p).forEach(s => { if (cuoreOverlaps(s.dal, s.al, dal, al)) numOcc.add(String(s.numero)); }));
@@ -18571,8 +18592,8 @@ function CuorePrenotaPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazion
             color: categoriaPiena ? 'var(--accent, #c0392b)' : 'var(--sea)',
             border: `1px solid ${categoriaPiena ? 'rgba(192,57,50,0.3)' : 'rgba(31,93,131,0.25)'}` }}>
             {categoriaPiena
-              ? `⛔ ${tipo} ${categoria || ''} ESAURITA per queste date (${disp.occupati}/${disp.totale} occupati) — non si può prenotare`
-              : `✓ ${disp.liberi} ${tipo} ${categoria || ''} liberi su ${disp.totale} per queste date`}
+              ? `⛔ ${tipo} ${categoria || ''} ESAURITA per queste date (${disp.occupati}/${disp.totale} occupati nel giorno di picco) — non si può prenotare`
+              : `✓ ${disp.liberi} ${tipo} ${categoria || ''} liberi su ${disp.totale} per queste date (nel giorno di picco)`}
           </div>
         )}
 
