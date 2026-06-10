@@ -18067,17 +18067,33 @@ function CuoreCalendarioPage({ rentmeVehicles, targhe, fleet, prenotazioni, scad
   const prenoConFermi = useMemo(() => [...prenoNuove, ...cuoreFermiToPreno(fermiFlotta, parco)], [prenoNuove, fermiFlotta, parco]);
 
   const oggi = todayISO();
+  // ── Mese: serve SOLO alla vista agenda (telefono), che naviga mese-per-mese ──
   const [ym, setYm] = useState(() => oggi.slice(0, 7)); // 'YYYY-MM'
   const [y, mo] = ym.split('-').map(Number);
   const giorniMese = new Date(y, mo, 0).getDate();              // ultimo giorno del mese
   const meseInizio = `${ym}-01`;
   const meseFine   = `${ym}-${String(giorniMese).padStart(2, '0')}`;
-  const days = useMemo(() => Array.from({ length: giorniMese }, (_, i) => `${ym}-${String(i + 1).padStart(2, '0')}`), [ym, giorniMese]);
   const meseLabel = new Date(y, mo - 1, 1).toLocaleDateString('it-IT', { month: 'long', year: 'numeric' });
   const cambiaMese = (delta) => {
     const d = new Date(y, mo - 1 + delta, 1);
     setYm(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
   };
+
+  // ── Griglia (schermo grande): TIMELINE CONTINUA — si scorre fluido nel tempo,
+  // avanti e indietro, senza stacchi di mese (richiesta utente 10/6; sostituisce la
+  // paginazione mese-per-mese scelta il 7/6). Finestra −60/+240 giorni attorno a oggi,
+  // colonne a larghezza FISSA: lo scroll orizzontale (trascina/swipe/trackpad) è nativo.
+  const addGiorni = (iso, n) => { const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
+  const COL_W = 38, H_CAT = 26, H_ROW = 34; // altezze FISSE: colonna mezzi e tracce restano allineate
+  const winStart = useMemo(() => addGiorni(oggi, -60), [oggi]);
+  const winEnd   = useMemo(() => addGiorni(oggi, 240), [oggi]);
+  const days = useMemo(() => { const out = []; let c = winStart; while (c <= winEnd) { out.push(c); c = addGiorni(c, 1); } return out; }, [winStart, winEnd]);
+  const totalW = days.length * COL_W;
+  const mesiHeader = useMemo(() => {
+    const out = [];
+    days.forEach(d => { const k = d.slice(0, 7); const last = out[out.length - 1]; if (last && last.k === k) last.n++; else out.push({ k, n: 1, label: new Date(d + 'T12:00:00').toLocaleDateString('it-IT', { month: 'long', year: 'numeric' }) }); });
+    return out;
+  }, [days]);
 
   const [tipoFiltro, setTipoFiltro] = useState('');
   const tipi = useMemo(() => [...new Set(parco.map(m => m.tipo).filter(Boolean))].sort(), [parco]);
@@ -18094,15 +18110,15 @@ function CuoreCalendarioPage({ rentmeVehicles, targhe, fleet, prenotazioni, scad
     return [...map.values()];
   }, [mezziVisibili]);
 
-  // overlap con il mese + posizione barra (left%/width%) su un periodo
-  const inMese = (dal, al) => dal && al && dal <= meseFine && al >= meseInizio;
-  const idxOf = (iso) => parseInt(iso.slice(8, 10), 10) - 1;
+  // overlap con la finestra + posizione barra in PX sulla timeline
+  const inWin = (dal, al) => dal && al && dal <= winEnd && al >= winStart;
+  const idxOf = (iso) => Math.round((new Date(iso + 'T12:00:00') - new Date(winStart + 'T12:00:00')) / 86400000);
   const barStyle = (dal, al) => {
-    const sIso = dal < meseInizio ? meseInizio : dal;
-    const eIso = al > meseFine ? meseFine : al;
-    const s = idxOf(sIso), e = idxOf(eIso);
-    return { left: `${(s / giorniMese) * 100}%`, width: `${((e - s + 1) / giorniMese) * 100}%` };
+    const s = Math.max(0, idxOf(dal));
+    const e = Math.min(days.length - 1, idxOf(al));
+    return { left: s * COL_W, width: (e - s + 1) * COL_W };
   };
+  const oggiX = idxOf(oggi) * COL_W;
 
   // Barre per ogni mezzo (segmenti assegnati al suo numero) e per la fascia "da assegnare" (prenotazioni senza mezzo, per categoria)
   const barrePerNumero = useMemo(() => {
@@ -18110,21 +18126,21 @@ function CuoreCalendarioPage({ rentmeVehicles, targhe, fleet, prenotazioni, scad
     prenoNuove.forEach(p => {
       const segs = cuoreSegmenti(p);
       if (!segs.length) return;
-      segs.forEach(s => { if (inMese(s.dal, s.al)) { (m[String(s.numero)] ||= []).push({ p, dal: s.dal, al: s.al }); } });
+      segs.forEach(s => { if (inWin(s.dal, s.al)) { (m[String(s.numero)] ||= []).push({ p, dal: s.dal, al: s.al }); } });
     });
     return m;
-  }, [prenoNuove, ym]);
+  }, [prenoNuove, winStart, winEnd]);
 
   const daAssegnarePerCat = useMemo(() => {
     const m = {};
     prenoNuove.forEach(p => {
       if (cuoreSegmenti(p).length) return; // ha già un mezzo
-      if (!inMese(p.dal, p.al)) return;
+      if (!inWin(p.dal, p.al)) return;
       const k = `${canonicalTipo({ tipo: p.tipo })}|${String(p.categoria || '').toUpperCase()}`;
       (m[k] ||= []).push(p);
     });
     return m;
-  }, [prenoNuove, ym]);
+  }, [prenoNuove, winStart, winEnd]);
 
   const LABEL_W = 160;
   const cliente = (p) => `${p.clienteCognome || ''} ${p.clienteNome || ''}`.trim() || p.cliente || '—';
@@ -18136,48 +18152,65 @@ function CuoreCalendarioPage({ rentmeVehicles, targhe, fleet, prenotazioni, scad
     return `hsl(${h % 360}, 52%, 38%)`;
   };
 
-  // celle di sfondo (bordi, weekend, oggi)
-  const TrackBg = () => (
-    <div style={{ position: 'absolute', inset: 0, display: 'flex' }}>
-      {days.map((d, i) => {
-        const dow = new Date(d + 'T12:00:00').getDay();
-        const weekend = dow === 0 || dow === 6;
-        return <div key={i} style={{ flex: 1, borderRight: '1px solid var(--border)', background: d === oggi ? 'rgba(31,93,131,0.10)' : weekend ? 'var(--surface-2)' : 'transparent' }} />;
-      })}
-    </div>
-  );
+  // ── Sfondo delle tracce via GRADIENTI (1 div per riga invece di 300 celle: con 283
+  // mezzi la timeline resta fluida). Righe giorno + ombreggiatura weekend (2 strati con
+  // periodo settimanale, ancorati al giorno-della-settimana di inizio finestra).
+  const w0 = new Date(winStart + 'T12:00:00').getDay();
+  const iSab = (6 - w0 + 7) % 7, iDom = (7 - w0) % 7;
+  const trackBg = {
+    backgroundImage: `repeating-linear-gradient(90deg, var(--surface-2) 0, var(--surface-2) ${COL_W}px, transparent ${COL_W}px, transparent ${COL_W * 7}px), repeating-linear-gradient(90deg, var(--surface-2) 0, var(--surface-2) ${COL_W}px, transparent ${COL_W}px, transparent ${COL_W * 7}px), repeating-linear-gradient(90deg, transparent 0, transparent ${COL_W - 1}px, var(--border) ${COL_W - 1}px, var(--border) ${COL_W}px)`,
+    backgroundPosition: `${iSab * COL_W}px 0, ${iDom * COL_W}px 0, 0 0`,
+  };
 
   // ── Celle cliccabili (parità col vecchio): click su un giorno LIBERO di un mezzo →
   // Prenota (cuore) precompilato con mezzo+categoria+giorno (i due blocchi nel form).
+  // Il giorno si calcola dalla X del click (niente 300 div-cella per riga).
   const nuovaDaCella = (m, giorno) => {
     if (!setPage || !setCuorePrefill) return;
     setCuorePrefill({ tipo: m.tipo, categoria: m.categoria, numero: String(m.numero), dal: giorno, al: giorno });
     setPage('cuore_preno');
     pushToast && pushToast({ tone: 'info', title: 'Nuova prenotazione', message: `${m.modello || ''} ${m.targa || 'n.' + m.numero} · ${formatDate(giorno)} — allunga le date nel form` });
   };
-  const TrackCells = ({ m }) => (
-    <div style={{ position: 'absolute', inset: 0, display: 'flex' }}>
-      {days.map((d, i) => {
-        const dow = new Date(d + 'T12:00:00').getDay();
-        const weekend = dow === 0 || dow === 6;
-        return <div key={i} onClick={() => nuovaDaCella(m, d)} title={`${m.targa || 'n.' + m.numero} · ${formatDate(d)} — clicca per nuova prenotazione`}
-          style={{ flex: 1, borderRight: '1px solid var(--border)', cursor: (setPage && setCuorePrefill) ? 'pointer' : 'default', background: d === oggi ? 'rgba(31,93,131,0.10)' : weekend ? 'var(--surface-2)' : 'transparent' }} />;
-      })}
-    </div>
-  );
+  const clickTrack = (m) => (e) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const i = Math.floor((e.clientX - rect.left) / COL_W);
+    if (i >= 0 && i < days.length) nuovaDaCella(m, days[i]);
+  };
+
+  // ── Pannelli congelati SENZA position:sticky (vietato su Safari in overflow):
+  // colonna mezzi e testata seguono il corpo via sync JS dello scroll.
+  const headRef = useRef(null), labRef = useRef(null), bodyRef = useRef(null);
+  const [visMese, setVisMese] = useState(() => new Date(oggi + 'T12:00:00').toLocaleDateString('it-IT', { month: 'long', year: 'numeric' }));
+  // etichetta mese aggiornata a FINE scroll (debounce): niente re-render a ogni frame
+  // mentre si trascina (283 righe + barre = re-render costoso), e niente rAF (può non
+  // scattare in tab in background).
+  const visTimer = useRef(null);
+  const onBodyScroll = (e) => {
+    const el = e.currentTarget;
+    if (headRef.current) headRef.current.scrollLeft = el.scrollLeft;
+    if (labRef.current) labRef.current.scrollTop = el.scrollTop;
+    if (visTimer.current) clearTimeout(visTimer.current);
+    visTimer.current = setTimeout(() => {
+      const el2 = bodyRef.current; if (!el2) return;
+      const d = days[Math.min(days.length - 1, Math.max(0, Math.floor(el2.scrollLeft / COL_W) + 3))];
+      if (d) setVisMese(new Date(d + 'T12:00:00').toLocaleDateString('it-IT', { month: 'long', year: 'numeric' }));
+    }, 120);
+  };
+  const vaiA = (iso) => { const el = bodyRef.current; if (el) el.scrollTo({ left: Math.max(0, (idxOf(iso) - 2) * COL_W), behavior: 'smooth' }); };
+  const scorri = (giorni) => { const el = bodyRef.current; if (el) el.scrollBy({ left: giorni * COL_W, behavior: 'smooth' }); };
 
   // ── Fermi programmati visibili sulla riga del mezzo (contano già nella disponibilità:
   // qui si VEDONO, come nel vecchio calendario — barre grigie striate, niente click).
   const fermiPerNumero = useMemo(() => {
     const map = {};
     (fermiFlotta || []).forEach(f => {
-      if (!f || !f.vehicleId || !f.dal || !f.al || !inMese(f.dal, f.al)) return;
+      if (!f || !f.vehicleId || !f.dal || !f.al || !inWin(f.dal, f.al)) return;
       const n = cuoreRisolviNumero(f.vehicleId, parco);
       if (!n) return;
       (map[String(n)] = map[String(n)] || []).push(f);
     });
     return map;
-  }, [fermiFlotta, parco, meseInizio, meseFine]);
+  }, [fermiFlotta, parco, winStart, winEnd]);
 
   // ── Dettaglio prenotazione (click su una barra) ──
   const [dettaglio, setDettaglio] = useState(null); // { p, m }
@@ -18190,6 +18223,10 @@ function CuoreCalendarioPage({ rentmeVehicles, targhe, fleet, prenotazioni, scad
     mq.addEventListener('change', onR);
     return () => mq.removeEventListener('change', onR);
   }, []);
+  // al primo render della griglia: timeline posizionata su OGGI (2 colonne dal bordo)
+  useEffect(() => {
+    if (!isNarrow && bodyRef.current) bodyRef.current.scrollLeft = Math.max(0, (idxOf(oggi) - 2) * COL_W);
+  }, [isNarrow]);
   const mezzoDi = (p) => {
     const segs = cuoreSegmenti(p);
     if (!segs.length) return `${p.categoria || p.tipo} · da assegnare`;
@@ -18250,87 +18287,112 @@ function CuoreCalendarioPage({ rentmeVehicles, targhe, fleet, prenotazioni, scad
     <div>
       <div className="label" style={{ color: 'var(--sea)' }}>NUOVO CUORE · CALENDARIO (anteprima)</div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
-        <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: 22, letterSpacing: '-0.01em', margin: '2px 0', textTransform: 'capitalize' }}>{meseLabel}</h1>
+        <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: 22, letterSpacing: '-0.01em', margin: '2px 0', textTransform: 'capitalize' }}>{visMese}</h1>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <select value={tipoFiltro} onChange={e => setTipoFiltro(e.target.value)} style={{ padding: '5px 8px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 13 }}>
             <option value="">Tutti i tipi</option>
             {tipi.map(t => <option key={t} value={t}>{t}</option>)}
           </select>
-          <button type="button" onClick={() => cambiaMese(-1)} style={{ padding: '5px 12px', border: '1px solid var(--border)', borderRadius: 6, background: 'transparent', cursor: 'pointer' }}>‹</button>
-          <button type="button" onClick={() => setYm(oggi.slice(0, 7))} style={{ padding: '5px 12px', border: '1px solid var(--border)', borderRadius: 6, background: 'transparent', cursor: 'pointer', fontSize: 12 }}>Oggi</button>
-          <button type="button" onClick={() => cambiaMese(1)} style={{ padding: '5px 12px', border: '1px solid var(--border)', borderRadius: 6, background: 'transparent', cursor: 'pointer' }}>›</button>
+          <button type="button" onClick={() => scorri(-30)} style={{ padding: '5px 12px', border: '1px solid var(--border)', borderRadius: 6, background: 'transparent', cursor: 'pointer' }}>‹</button>
+          <button type="button" onClick={() => vaiA(oggi)} style={{ padding: '5px 12px', border: '1px solid var(--border)', borderRadius: 6, background: 'transparent', cursor: 'pointer', fontSize: 12 }}>Oggi</button>
+          <button type="button" onClick={() => scorri(30)} style={{ padding: '5px 12px', border: '1px solid var(--border)', borderRadius: 6, background: 'transparent', cursor: 'pointer' }}>›</button>
         </div>
       </div>
 
       <div className="card-paper" style={{ padding: 0, overflow: 'hidden' }}>
-        {/* testata giorni (sopra il corpo che scrolla — niente position:sticky, vietato su Safari in overflow) */}
+        {/* testata: angolo fisso + striscia mesi/giorni che SEGUE lo scroll del corpo
+            (sync JS — niente position:sticky, vietato su Safari in overflow) */}
         <div style={{ display: 'flex', background: '#16181d', color: '#d4cdc1' }}>
-          <div style={{ width: LABEL_W, flexShrink: 0, padding: '6px 10px', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em', borderRight: '1px solid #2c2e35' }}>Mezzo</div>
-          <div style={{ flex: 1, display: 'flex' }}>
-            {days.map((d, i) => {
-              const dd = new Date(d + 'T12:00:00');
-              const dow = dd.getDay();
-              return (
-                <div key={i} style={{ flex: 1, textAlign: 'center', padding: '4px 0', fontSize: 10, borderRight: '1px solid #2c2e35', background: d === oggi ? 'rgba(31,93,131,0.5)' : 'transparent' }}>
-                  <div style={{ fontFamily: 'var(--font-mono, monospace)', fontWeight: 700, color: '#f5f2ec' }}>{i + 1}</div>
-                  <div style={{ color: (dow === 0 || dow === 6) ? '#b06a5a' : '#8e887e' }}>{'DLMMGVS'[dow]}</div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* corpo: gruppi categoria → fascia "da assegnare" + righe mezzo */}
-        <div style={{ maxHeight: '64vh', overflowY: 'auto' }}>
-          {gruppi.map((g, gi) => {
-            const k = `${g.tipo}|${String(g.categoria || '').toUpperCase()}`;
-            const daAss = daAssegnarePerCat[k] || [];
-            return (
-              <div key={gi}>
-                {/* intestazione categoria + fascia da assegnare */}
-                <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', background: 'var(--surface-2)' }}>
-                  <div style={{ width: LABEL_W, flexShrink: 0, padding: '4px 10px', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.03em', color: 'var(--ink-2)' }}>
-                    {g.tipo} · {g.categoria || '—'}{daAss.length ? <span style={{ color: 'var(--accent, #c0392b)' }}> · {daAss.length} da assegnare</span> : ''}
-                  </div>
-                  <div style={{ flex: 1, position: 'relative', minHeight: daAss.length ? 26 : 0 }}>
-                    {daAss.length > 0 && <TrackBg />}
-                    {daAss.map((p, i) => (
-                      <div key={p.id} onClick={() => setPrenotazioni && setAssegna(p)} title={`${cliente(p)} · clicca per assegnare un mezzo`} style={{ position: 'absolute', top: 3, height: 20, ...barStyle(p.dal, p.al), background: 'repeating-linear-gradient(45deg,#c0392b,#c0392b 4px,#a93226 4px,#a93226 8px)', opacity: 0.85, borderRadius: 4, color: '#fff', fontSize: 10, padding: '2px 5px', overflow: 'hidden', whiteSpace: 'nowrap', cursor: setPrenotazioni ? 'pointer' : 'default' }}>{cliente(p)}</div>
-                    ))}
-                  </div>
-                </div>
-                {/* righe mezzo */}
-                {g.mezzi.map(m => {
-                  const barre = barrePerNumero[String(m.numero)] || [];
+          <div style={{ width: LABEL_W, flexShrink: 0, padding: '6px 10px', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em', borderRight: '1px solid #2c2e35', display: 'flex', alignItems: 'center' }}>Mezzo</div>
+          <div ref={headRef} style={{ flex: 1, overflow: 'hidden' }}>
+            <div style={{ width: totalW }}>
+              <div style={{ display: 'flex', borderBottom: '1px solid #2c2e35' }}>
+                {mesiHeader.map(mh => (
+                  <div key={mh.k} style={{ width: mh.n * COL_W, flexShrink: 0, padding: '3px 8px', fontSize: 10, fontWeight: 700, textTransform: 'capitalize', borderRight: '1px solid #2c2e35', overflow: 'hidden', whiteSpace: 'nowrap', color: '#f5f2ec', boxSizing: 'border-box' }}>{mh.label}</div>
+                ))}
+              </div>
+              <div style={{ display: 'flex' }}>
+                {days.map((d, i) => {
+                  const dow = new Date(d + 'T12:00:00').getDay();
                   return (
-                    <div key={m.numero} style={{ display: 'flex', borderBottom: '1px solid var(--border)', minHeight: 30 }}>
-                      <div style={{ width: LABEL_W, flexShrink: 0, padding: '4px 10px', borderRight: '1px solid var(--border)', fontSize: 12 }}>
-                        <div style={{ fontWeight: 600 }}>{m.modello || m.numero}</div>
-                        <div style={{ fontFamily: 'var(--font-mono, monospace)', fontSize: 10, color: m.targa ? 'var(--ink-2)' : (m.targaAttesa === false ? 'var(--muted)' : 'var(--accent, #c0392b)') }}>{m.targa || (m.targaAttesa === false ? '—' : '(manca)')} · n.{m.numero}</div>
-                      </div>
-                      <div style={{ flex: 1, position: 'relative', minHeight: 30 }}>
-                        <TrackCells m={m} />
-                        {(fermiPerNumero[String(m.numero)] || []).map((f, i) => (
-                          <div key={'f' + i} title={`🔧 Fermo${f.motivo ? ': ' + f.motivo : ''} · ${formatDate(f.dal)} → ${formatDate(f.al)}`} style={{ position: 'absolute', top: 4, height: 22, ...barStyle(f.dal, f.al), background: 'repeating-linear-gradient(45deg,#9a958c,#9a958c 4px,#7d786f 4px,#7d786f 8px)', borderRadius: 4, color: '#fff', fontSize: 10, padding: '3px 6px', overflow: 'hidden', whiteSpace: 'nowrap' }}>🔧 {f.motivo || 'fermo'}</div>
-                        ))}
-                        {barre.map((b, i) => (
-                          <div key={i} onClick={() => setDettaglio({ p: b.p, m })} title={`${cliente(b.p)} · ${b.dal} → ${b.al} — clicca per i dettagli`} style={{ position: 'absolute', top: 4, height: 22, ...barStyle(b.dal, b.al), background: coloreCliente(b.p), borderRadius: 4, color: '#fff', fontSize: 11, padding: '3px 6px', overflow: 'hidden', whiteSpace: 'nowrap', boxShadow: '0 1px 2px rgba(0,0,0,0.2)', cursor: 'pointer' }}>{cliente(b.p)}</div>
-                        ))}
-                      </div>
+                    <div key={i} style={{ width: COL_W, flexShrink: 0, boxSizing: 'border-box', textAlign: 'center', padding: '3px 0', fontSize: 10, borderRight: '1px solid #2c2e35', background: d === oggi ? 'rgba(31,93,131,0.5)' : 'transparent' }}>
+                      <div style={{ fontFamily: 'var(--font-mono, monospace)', fontWeight: 700, color: '#f5f2ec' }}>{parseInt(d.slice(8), 10)}</div>
+                      <div style={{ color: (dow === 0 || dow === 6) ? '#b06a5a' : '#8e887e' }}>{'DLMMGVS'[dow]}</div>
                     </div>
                   );
                 })}
               </div>
-            );
-          })}
-          {gruppi.length === 0 && <div style={{ padding: 24, textAlign: 'center', color: 'var(--ink-2)' }}>Nessun mezzo per questo filtro.</div>}
+            </div>
+          </div>
+        </div>
+
+        {/* corpo: colonna mezzi CONGELATA (segue lo scroll verticale) + tracce che
+            scorrono fluide in orizzontale (trascina/swipe) e verticale */}
+        <div style={{ display: 'flex', maxHeight: '64vh' }}>
+          <div ref={labRef} style={{ width: LABEL_W, flexShrink: 0, overflow: 'hidden', borderRight: '1px solid var(--border)' }}>
+            {gruppi.map((g, gi) => {
+              const k = `${g.tipo}|${String(g.categoria || '').toUpperCase()}`;
+              const daAss = daAssegnarePerCat[k] || [];
+              return (
+                <div key={gi}>
+                  <div style={{ height: H_CAT, boxSizing: 'border-box', padding: '5px 10px', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.03em', color: 'var(--ink-2)', background: 'var(--surface-2)', borderBottom: '1px solid var(--border)', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+                    {g.tipo} · {g.categoria || '—'}{daAss.length ? <span style={{ color: 'var(--accent, #c0392b)' }}> · {daAss.length}</span> : ''}
+                  </div>
+                  {g.mezzi.map(m => (
+                    <div key={m.numero} style={{ height: H_ROW, boxSizing: 'border-box', padding: '3px 10px', borderBottom: '1px solid var(--border)', fontSize: 12, overflow: 'hidden' }}>
+                      <div style={{ fontWeight: 600, lineHeight: '15px', whiteSpace: 'nowrap', overflow: 'hidden' }}>{m.modello || m.numero}</div>
+                      <div style={{ fontFamily: 'var(--font-mono, monospace)', fontSize: 10, lineHeight: '12px', whiteSpace: 'nowrap', color: m.targa ? 'var(--ink-2)' : (m.targaAttesa === false ? 'var(--muted)' : 'var(--accent, #c0392b)') }}>{m.targa || (m.targaAttesa === false ? '—' : '(manca)')} · n.{m.numero}</div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })}
+            <div style={{ height: 16 }} />{/* compensa la scrollbar orizzontale del corpo */}
+          </div>
+          <div ref={bodyRef} onScroll={onBodyScroll} style={{ flex: 1, overflow: 'auto' }}>
+            <div style={{ width: totalW }}>
+              {gruppi.map((g, gi) => {
+                const k = `${g.tipo}|${String(g.categoria || '').toUpperCase()}`;
+                const daAss = daAssegnarePerCat[k] || [];
+                return (
+                  <div key={gi}>
+                    {/* fascia categoria / "da assegnare" */}
+                    <div style={{ height: H_CAT, boxSizing: 'border-box', position: 'relative', background: 'var(--surface-2)', borderBottom: '1px solid var(--border)' }}>
+                      <div style={{ position: 'absolute', top: 0, bottom: 0, left: oggiX, width: COL_W, background: 'rgba(31,93,131,0.10)', pointerEvents: 'none' }} />
+                      {daAss.map(p => (
+                        <div key={p.id} onClick={() => setPrenotazioni && setAssegna(p)} title={`${cliente(p)} · clicca per assegnare un mezzo`} style={{ position: 'absolute', top: 3, height: 19, ...barStyle(p.dal, p.al), background: 'repeating-linear-gradient(45deg,#c0392b,#c0392b 4px,#a93226 4px,#a93226 8px)', opacity: 0.85, borderRadius: 4, color: '#fff', fontSize: 10, padding: '2px 5px', overflow: 'hidden', whiteSpace: 'nowrap', cursor: setPrenotazioni ? 'pointer' : 'default', boxSizing: 'border-box' }}>{cliente(p)}</div>
+                      ))}
+                    </div>
+                    {/* tracce mezzo */}
+                    {g.mezzi.map(m => {
+                      const barre = barrePerNumero[String(m.numero)] || [];
+                      return (
+                        <div key={m.numero} onClick={clickTrack(m)} title={`${m.targa || 'n.' + m.numero} — clicca un giorno libero per una nuova prenotazione`}
+                          style={{ height: H_ROW, boxSizing: 'border-box', position: 'relative', borderBottom: '1px solid var(--border)', cursor: (setPage && setCuorePrefill) ? 'pointer' : 'default', ...trackBg }}>
+                          <div style={{ position: 'absolute', top: 0, bottom: 0, left: oggiX, width: COL_W, background: 'rgba(31,93,131,0.10)', pointerEvents: 'none' }} />
+                          {(fermiPerNumero[String(m.numero)] || []).map((f, i) => (
+                            <div key={'f' + i} onClick={e => e.stopPropagation()} title={`🔧 Fermo${f.motivo ? ': ' + f.motivo : ''} · ${formatDate(f.dal)} → ${formatDate(f.al)}`} style={{ position: 'absolute', top: 5, height: 23, ...barStyle(f.dal, f.al), background: 'repeating-linear-gradient(45deg,#9a958c,#9a958c 4px,#7d786f 4px,#7d786f 8px)', borderRadius: 4, color: '#fff', fontSize: 10, padding: '4px 6px', overflow: 'hidden', whiteSpace: 'nowrap', boxSizing: 'border-box' }}>🔧 {f.motivo || 'fermo'}</div>
+                          ))}
+                          {barre.map((b, i) => (
+                            <div key={i} onClick={e => { e.stopPropagation(); setDettaglio({ p: b.p, m }); }} title={`${cliente(b.p)} · ${b.dal} → ${b.al} — clicca per i dettagli`} style={{ position: 'absolute', top: 5, height: 23, ...barStyle(b.dal, b.al), background: coloreCliente(b.p), borderRadius: 4, color: '#fff', fontSize: 11, padding: '4px 6px', overflow: 'hidden', whiteSpace: 'nowrap', boxShadow: '0 1px 2px rgba(0,0,0,0.2)', cursor: 'pointer', boxSizing: 'border-box' }}>{cliente(b.p)}</div>
+                          ))}
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+              {gruppi.length === 0 && <div style={{ padding: 24, textAlign: 'center', color: 'var(--ink-2)' }}>Nessun mezzo per questo filtro.</div>}
+            </div>
+          </div>
         </div>
       </div>
       <p style={{ fontSize: 11, color: 'var(--ink-2)', marginTop: 8 }}>
-        Mese intero · barre per <strong>numero</strong> (non spariscono) · targa dalla <strong>tabella</strong> ·
-        fascia <strong>"da assegnare"</strong> cliccabile → assegna il mezzo · <strong>clicca un giorno libero</strong> →
-        nuova prenotazione su quel mezzo · <strong>clicca una barra</strong> → dettagli · 🔧 fermi visibili (contano
-        nella disponibilità). Su smartphone: vista agenda.
+        <strong>Timeline continua</strong>: trascina/scorri i giorni avanti e indietro senza stacchi (‹ › = un mese,
+        "Oggi" ricentra) · barre per <strong>numero</strong> · targa dalla <strong>tabella</strong> · fascia
+        <strong> "da assegnare"</strong> cliccabile → assegna il mezzo · <strong>clicca un giorno libero</strong> →
+        nuova prenotazione su quel mezzo · <strong>clicca una barra</strong> → dettagli · 🔧 fermi visibili.
+        Su smartphone: vista agenda.
       </p>
 
       {assegna && (() => {
