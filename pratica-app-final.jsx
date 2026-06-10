@@ -17173,7 +17173,7 @@ export default function App() {
               {page === 'contracts'  && <ContractsList contracts={localContracts} operators={operators} onRetry={retryContract} onMarkReturned={markContractReturned} onSendPec={sendContractPec} pecStatus={pecStatus} online={online} />}
               {page === 'cuore' && cuoreNuovo && <CuoreAnteprimaPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} prenotazioni={prenotazioni} scadenze={scadenze} fermiFlotta={fermiFlotta} />}
               {page === 'cuore_oggi' && cuoreNuovo && <CuoreOggiPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPage={setPage} fermiFlotta={fermiFlotta} />}
-              {page === 'cuore_cal' && cuoreNuovo && <CuoreCalendarioPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} prenotazioni={prenotazioni} scadenze={scadenze} setPrenotazioni={setPrenotazioni} pushToast={pushToast} fermiFlotta={fermiFlotta} />}
+              {page === 'cuore_cal' && cuoreNuovo && <CuoreCalendarioPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} prenotazioni={prenotazioni} scadenze={scadenze} setPrenotazioni={setPrenotazioni} pushToast={pushToast} fermiFlotta={fermiFlotta} setPage={setPage} setCuorePrefill={setCuorePrefill} />}
               {page === 'cuore_preno' && cuoreNuovo && <CuorePrenotaPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} pushToast={pushToast} prefill={cuorePrefill} fermiFlotta={fermiFlotta} />}
               {page === 'cuore_banco' && cuoreNuovo && <CuoreBancoPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} listino={listino} pushToast={pushToast} operator={operator} fermiFlotta={fermiFlotta} />}
               {page === 'cuore_consegna' && cuoreNuovo && <CuoreConsegnaPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} pushToast={pushToast} operator={operator} fermiFlotta={fermiFlotta} />}
@@ -18057,7 +18057,7 @@ function CuoreOggiPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazioni, 
 // orizzontale su schermi larghi) · navigazione mese-per-mese.
 // ═══════════════════════════════════════════════════════════════════
 const CUORE_STATO_COLORE = { confermata: '#2e6e3e', in_corso: '#1f5d83', prorogata: '#7a5cc0', bozza: '#9a8c6a' };
-function CuoreCalendarioPage({ rentmeVehicles, targhe, fleet, prenotazioni, scadenze, setPrenotazioni, pushToast, fermiFlotta }) {
+function CuoreCalendarioPage({ rentmeVehicles, targhe, fleet, prenotazioni, scadenze, setPrenotazioni, pushToast, fermiFlotta, setPage, setCuorePrefill }) {
   const parco = useMemo(() => cuoreBuildParco(rentmeVehicles, { targhe, fleet, scadenze }), [rentmeVehicles, targhe, fleet, scadenze]);
   const [assegna, setAssegna] = useState(null); // prenotazione da assegnare
   const prenoNuove = useMemo(
@@ -18146,6 +18146,41 @@ function CuoreCalendarioPage({ rentmeVehicles, targhe, fleet, prenotazioni, scad
       })}
     </div>
   );
+
+  // ── Celle cliccabili (parità col vecchio): click su un giorno LIBERO di un mezzo →
+  // Prenota (cuore) precompilato con mezzo+categoria+giorno (i due blocchi nel form).
+  const nuovaDaCella = (m, giorno) => {
+    if (!setPage || !setCuorePrefill) return;
+    setCuorePrefill({ tipo: m.tipo, categoria: m.categoria, numero: String(m.numero), dal: giorno, al: giorno });
+    setPage('cuore_preno');
+    pushToast && pushToast({ tone: 'info', title: 'Nuova prenotazione', message: `${m.modello || ''} ${m.targa || 'n.' + m.numero} · ${formatDate(giorno)} — allunga le date nel form` });
+  };
+  const TrackCells = ({ m }) => (
+    <div style={{ position: 'absolute', inset: 0, display: 'flex' }}>
+      {days.map((d, i) => {
+        const dow = new Date(d + 'T12:00:00').getDay();
+        const weekend = dow === 0 || dow === 6;
+        return <div key={i} onClick={() => nuovaDaCella(m, d)} title={`${m.targa || 'n.' + m.numero} · ${formatDate(d)} — clicca per nuova prenotazione`}
+          style={{ flex: 1, borderRight: '1px solid var(--border)', cursor: (setPage && setCuorePrefill) ? 'pointer' : 'default', background: d === oggi ? 'rgba(31,93,131,0.10)' : weekend ? 'var(--surface-2)' : 'transparent' }} />;
+      })}
+    </div>
+  );
+
+  // ── Fermi programmati visibili sulla riga del mezzo (contano già nella disponibilità:
+  // qui si VEDONO, come nel vecchio calendario — barre grigie striate, niente click).
+  const fermiPerNumero = useMemo(() => {
+    const map = {};
+    (fermiFlotta || []).forEach(f => {
+      if (!f || !f.vehicleId || !f.dal || !f.al || !inMese(f.dal, f.al)) return;
+      const n = cuoreRisolviNumero(f.vehicleId, parco);
+      if (!n) return;
+      (map[String(n)] = map[String(n)] || []).push(f);
+    });
+    return map;
+  }, [fermiFlotta, parco, meseInizio, meseFine]);
+
+  // ── Dettaglio prenotazione (click su una barra) ──
+  const [dettaglio, setDettaglio] = useState(null); // { p, m }
 
   // ── Responsive: su smartphone (stretto) → vista AGENDA invece della griglia ──
   const [isNarrow, setIsNarrow] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 700px)').matches);
@@ -18274,9 +18309,12 @@ function CuoreCalendarioPage({ rentmeVehicles, targhe, fleet, prenotazioni, scad
                         <div style={{ fontFamily: 'var(--font-mono, monospace)', fontSize: 10, color: m.targa ? 'var(--ink-2)' : (m.targaAttesa === false ? 'var(--muted)' : 'var(--accent, #c0392b)') }}>{m.targa || (m.targaAttesa === false ? '—' : '(manca)')} · n.{m.numero}</div>
                       </div>
                       <div style={{ flex: 1, position: 'relative', minHeight: 30 }}>
-                        <TrackBg />
+                        <TrackCells m={m} />
+                        {(fermiPerNumero[String(m.numero)] || []).map((f, i) => (
+                          <div key={'f' + i} title={`🔧 Fermo${f.motivo ? ': ' + f.motivo : ''} · ${formatDate(f.dal)} → ${formatDate(f.al)}`} style={{ position: 'absolute', top: 4, height: 22, ...barStyle(f.dal, f.al), background: 'repeating-linear-gradient(45deg,#9a958c,#9a958c 4px,#7d786f 4px,#7d786f 8px)', borderRadius: 4, color: '#fff', fontSize: 10, padding: '3px 6px', overflow: 'hidden', whiteSpace: 'nowrap' }}>🔧 {f.motivo || 'fermo'}</div>
+                        ))}
                         {barre.map((b, i) => (
-                          <div key={i} title={`${cliente(b.p)} · ${b.dal} → ${b.al}`} style={{ position: 'absolute', top: 4, height: 22, ...barStyle(b.dal, b.al), background: coloreCliente(b.p), borderRadius: 4, color: '#fff', fontSize: 11, padding: '3px 6px', overflow: 'hidden', whiteSpace: 'nowrap', boxShadow: '0 1px 2px rgba(0,0,0,0.2)' }}>{cliente(b.p)}</div>
+                          <div key={i} onClick={() => setDettaglio({ p: b.p, m })} title={`${cliente(b.p)} · ${b.dal} → ${b.al} — clicca per i dettagli`} style={{ position: 'absolute', top: 4, height: 22, ...barStyle(b.dal, b.al), background: coloreCliente(b.p), borderRadius: 4, color: '#fff', fontSize: 11, padding: '3px 6px', overflow: 'hidden', whiteSpace: 'nowrap', boxShadow: '0 1px 2px rgba(0,0,0,0.2)', cursor: 'pointer' }}>{cliente(b.p)}</div>
                         ))}
                       </div>
                     </div>
@@ -18289,9 +18327,10 @@ function CuoreCalendarioPage({ rentmeVehicles, targhe, fleet, prenotazioni, scad
         </div>
       </div>
       <p style={{ fontSize: 11, color: 'var(--ink-2)', marginTop: 8 }}>
-        Anteprima del calendario nuovo: mese intero, barre agganciate al <strong>numero</strong> del mezzo (non spariscono),
-        targa dalla <strong>tabella</strong> ("(manca)" se non inserita), fascia <strong>"da assegnare"</strong> per categoria.
-        Su smartphone diventerà una vista <strong>agenda</strong> (in arrivo).
+        Mese intero · barre per <strong>numero</strong> (non spariscono) · targa dalla <strong>tabella</strong> ·
+        fascia <strong>"da assegnare"</strong> cliccabile → assegna il mezzo · <strong>clicca un giorno libero</strong> →
+        nuova prenotazione su quel mezzo · <strong>clicca una barra</strong> → dettagli · 🔧 fermi visibili (contano
+        nella disponibilità). Su smartphone: vista agenda.
       </p>
 
       {assegna && (() => {
@@ -18324,6 +18363,36 @@ function CuoreCalendarioPage({ rentmeVehicles, targhe, fleet, prenotazioni, scad
           </div>
         );
       })()}
+
+      {/* dettaglio prenotazione (click su una barra) */}
+      {dettaglio && (() => {
+        const { p, m } = dettaglio;
+        const ST = { attesa: 'In attesa', confermata: 'Confermata', in_corso: 'In corso', completata: 'Completata' };
+        const riga = (l, v) => (v == null || v === '') ? null : (
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, fontSize: 13, padding: '4px 0', borderBottom: '1px solid var(--border)' }}>
+            <span style={{ color: 'var(--ink-2)' }}>{l}</span><span style={{ fontWeight: 600, textAlign: 'right' }}>{v}</span>
+          </div>
+        );
+        return (
+          <div onClick={() => setDettaglio(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
+            <div onClick={e => e.stopPropagation()} className="card-paper" style={{ padding: 20, width: 380, maxWidth: '90vw' }}>
+              <h3 style={{ fontFamily: 'var(--font-serif)', fontSize: 18, marginBottom: 2 }}>{cliente(p)}</h3>
+              <p style={{ fontSize: 12, color: 'var(--ink-2)', marginBottom: 10 }}>{ST[String(p.stato)] || p.stato || '—'} · {p.fonte === 'rentme' ? 'da RentMe' : p.fonte === 'walk_in' ? 'walk-in' : 'manuale'}</p>
+              {riga('Mezzo', `${m.modello || ''} ${m.targa || 'n.' + m.numero}`.trim())}
+              {riga('Numero', 'n.' + m.numero)}
+              {riga('Dal', formatDate(p.dal))}
+              {riga('Al', formatDate(p.al))}
+              {riga('Prezzo', p.prezzo != null && p.prezzo !== '' ? `€${p.prezzo}` : null)}
+              {riga('Acconto', Number(p.acconto) > 0 ? `€${p.acconto}` : null)}
+              {riga('Telefono', p.clienteTel)}
+              {riga('Note', p.note)}
+              <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+                <button type="button" onClick={() => setDettaglio(null)} style={{ flex: 1, padding: '8px 14px', border: '1px solid var(--border)', borderRadius: 6, background: 'transparent', cursor: 'pointer', fontSize: 13 }}>Chiudi</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -18344,7 +18413,7 @@ function CuorePrenotaPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazion
   const [categoria, setCategoria] = useState(prefill?.categoria || '');
   const [dal, setDal] = useState(prefill?.dal || oggi);
   const [al, setAl] = useState(prefill?.al || oggi);
-  const [numero, setNumero] = useState('');      // mezzo preciso, facoltativo
+  const [numero, setNumero] = useState(prefill?.numero ? String(prefill.numero) : ''); // mezzo preciso, facoltativo (precompilato dal calendario)
   const [cognome, setCognome] = useState('');
   const [nome, setNome] = useState('');
 
