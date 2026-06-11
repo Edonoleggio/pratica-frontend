@@ -13309,14 +13309,21 @@ function useVoliFeed(enabled = true) {
   const [state, setState] = useState({ loading: true, data: null, error: null, at: null });
   const [now, setNow] = useState(() => Date.now());
   const mounted = useRef(true);
+  const retryRef = useRef(null);
   const load = useCallback(async () => {
     try {
-      const r = await fetch(`${getApiBase()}/voli/lampedusa`, { signal: AbortSignal.timeout(15000) });
+      // 60s: regge il risveglio di Render free (cold start 30-60s) — con 15s il
+      // primo colpo falliva SEMPRE a backend addormentato ("non funziona quasi mai").
+      const r = await fetch(`${getApiBase()}/voli/lampedusa`, { signal: AbortSignal.timeout(60000) });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const data = await r.json();
       if (mounted.current) setState({ loading: false, data, error: null, at: Date.now() });
     } catch (e) {
-      if (mounted.current) setState(s => ({ ...s, loading: false, error: e.message || 'errore', at: Date.now() }));
+      if (mounted.current) {
+        setState(s => ({ ...s, loading: false, error: e.message || 'errore', at: Date.now() }));
+        // il primo tentativo ha comunque svegliato il server: riprova tra 20s
+        if (!retryRef.current) retryRef.current = setTimeout(() => { retryRef.current = null; load(); }, 20000);
+      }
     }
   }, []);
   useEffect(() => {
@@ -13325,7 +13332,7 @@ function useVoliFeed(enabled = true) {
     load();
     const idLoad = setInterval(load, 90 * 1000);    // refresh dati ogni 90s (live)
     const idTick = setInterval(() => setNow(Date.now()), 30 * 1000); // countdown ogni 30s
-    return () => { mounted.current = false; clearInterval(idLoad); clearInterval(idTick); };
+    return () => { mounted.current = false; clearInterval(idLoad); clearInterval(idTick); if (retryRef.current) { clearTimeout(retryRef.current); retryRef.current = null; } };
   }, [enabled, load]);
   return { ...state, now, reload: load };
 }
@@ -13335,14 +13342,19 @@ function useNaviFeed(enabled = true) {
   const [state, setState] = useState({ loading: true, data: null, error: null, at: null });
   const [now, setNow] = useState(() => Date.now());
   const mounted = useRef(true);
+  const retryRef = useRef(null);
   const load = useCallback(async () => {
     try {
-      const r = await fetch(`${getApiBase()}/navi/lampedusa`, { signal: AbortSignal.timeout(15000) });
+      // 60s: regge il risveglio di Render free (vedi useVoliFeed).
+      const r = await fetch(`${getApiBase()}/navi/lampedusa`, { signal: AbortSignal.timeout(60000) });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const data = await r.json();
       if (mounted.current) setState({ loading: false, data, error: null, at: Date.now() });
     } catch (e) {
-      if (mounted.current) setState(s => ({ ...s, loading: false, error: e.message || 'errore', at: Date.now() }));
+      if (mounted.current) {
+        setState(s => ({ ...s, loading: false, error: e.message || 'errore', at: Date.now() }));
+        if (!retryRef.current) retryRef.current = setTimeout(() => { retryRef.current = null; load(); }, 20000);
+      }
     }
   }, []);
   useEffect(() => {
@@ -13351,7 +13363,7 @@ function useNaviFeed(enabled = true) {
     load();
     const idLoad = setInterval(load, 3 * 60 * 1000);
     const idTick = setInterval(() => setNow(Date.now()), 60 * 1000);
-    return () => { mounted.current = false; clearInterval(idLoad); clearInterval(idTick); };
+    return () => { mounted.current = false; clearInterval(idLoad); clearInterval(idTick); if (retryRef.current) { clearTimeout(retryRef.current); retryRef.current = null; } };
   }, [enabled, load]);
   return { ...state, now, reload: load };
 }
