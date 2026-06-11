@@ -18247,6 +18247,8 @@ function CuoreCalendarioPage({ rentmeVehicles, targhe, fleet, prenotazioni, scad
 
   // ── Dettaglio prenotazione (click su una barra) ──
   const [dettaglio, setDettaglio] = useState(null); // { p, m }
+  // ── Scheda mezzo (click sul mezzo nella colonna sinistra — parità col vecchio calendario) ──
+  const [schedaMezzo, setSchedaMezzo] = useState(null); // mezzo del parco
 
   // ── Responsive: su smartphone (stretto) → vista AGENDA invece della griglia ──
   const [isNarrow, setIsNarrow] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 700px)').matches);
@@ -18372,7 +18374,9 @@ function CuoreCalendarioPage({ rentmeVehicles, targhe, fleet, prenotazioni, scad
                     {g.tipo} · {g.categoria || '—'}{daAss.length ? <span style={{ color: 'var(--accent, #c0392b)' }}> · {daAss.length}</span> : ''}
                   </div>
                   {g.mezzi.map(m => (
-                    <div key={m.numero} style={{ height: H_ROW, boxSizing: 'border-box', padding: '3px 10px', borderBottom: '1px solid var(--border)', fontSize: 12, overflow: 'hidden' }}>
+                    <div key={m.numero} onClick={() => setSchedaMezzo(m)}
+                      title={`${m.modello || ''} ${m.targa || 'n.' + m.numero} — clicca per la scheda del mezzo`}
+                      style={{ height: H_ROW, boxSizing: 'border-box', padding: '3px 10px', borderBottom: '1px solid var(--border)', fontSize: 12, overflow: 'hidden', cursor: 'pointer' }}>
                       <div style={{ fontWeight: 600, lineHeight: '15px', whiteSpace: 'nowrap', overflow: 'hidden' }}>{m.modello || m.numero}</div>
                       <div style={{ fontFamily: 'var(--font-mono, monospace)', fontSize: 10, lineHeight: '12px', whiteSpace: 'nowrap', color: m.targa ? 'var(--ink-2)' : (m.targaAttesa === false ? 'var(--muted)' : 'var(--accent, #c0392b)') }}>{m.targa || (m.targaAttesa === false ? '—' : '(manca)')} · n.{m.numero}</div>
                     </div>
@@ -18424,7 +18428,8 @@ function CuoreCalendarioPage({ rentmeVehicles, targhe, fleet, prenotazioni, scad
         <strong>Timeline continua</strong>: trascina/scorri i giorni avanti e indietro senza stacchi (‹ › = un mese,
         "Oggi" ricentra) · barre per <strong>numero</strong> · targa dalla <strong>tabella</strong> · fascia
         <strong> "da assegnare"</strong> cliccabile → assegna il mezzo · <strong>clicca un giorno libero</strong> →
-        nuova prenotazione su quel mezzo · <strong>clicca una barra</strong> → dettagli · 🔧 fermi visibili.
+        nuova prenotazione su quel mezzo · <strong>clicca una barra</strong> → dettagli · <strong>clicca il
+        mezzo a sinistra</strong> → scheda (stato, scadenze, prenotazioni) · 🔧 fermi visibili.
         Su smartphone: vista agenda.
       </p>
 
@@ -18454,6 +18459,114 @@ function CuoreCalendarioPage({ rentmeVehicles, targhe, fleet, prenotazioni, scad
                 </div>
               )}
               <button type="button" onClick={() => setAssegna(null)} style={{ marginTop: 12, padding: '7px 14px', border: '1px solid var(--border)', borderRadius: 6, background: 'transparent', cursor: 'pointer', fontSize: 13 }}>Annulla</button>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* scheda mezzo (click sul mezzo nella colonna sinistra — parità col vecchio calendario) */}
+      {schedaMezzo && (() => {
+        const m = schedaMezzo;
+        // TUTTE le prenotazioni del mezzo (anche completate, per lo storico) — fuori solo le annullate.
+        const tutte = (prenotazioni || []).map(p => cuoreMigraPreno(p, parco))
+          .filter(p => p && String(p.stato || '') !== 'annullata' && String(p.stato || '') !== 'cancellata');
+        const mie = tutte
+          .map(p => { const seg = cuoreSegmenti(p).find(s => String(s.numero) === String(m.numero)); return seg ? { p, dal: seg.dal, al: seg.al } : null; })
+          .filter(Boolean)
+          .sort((a, b) => a.dal.localeCompare(b.dal));
+        const isAttiva = (x) => String(x.p.stato) === 'in_corso' || (String(x.p.stato) !== 'completata' && x.dal <= oggi && x.al >= oggi);
+        const attive  = mie.filter(isAttiva);
+        const future  = mie.filter(x => !isAttiva(x) && x.dal > oggi);
+        const passate = mie.filter(x => !isAttiva(x) && x.dal <= oggi);
+        const fermiMiei = (fermiPerNumero[String(m.numero)] || []);
+        const SC_LABEL = { revisione: 'Revisione', assicurazione: 'Assicurazione', tagliando: 'Tagliando', bollo: 'Bollo' };
+        const scads = Object.entries(m.scadenze || {}).filter(([, d]) => d).sort((a, b) => a[1].localeCompare(b[1]));
+        const statoBadge = m.stato === 'disponibile'
+          ? { label: 'Disponibile', bg: 'rgba(46,110,62,0.12)', fg: '#2e6e3e' }
+          : { label: m.stato, bg: 'rgba(192,57,50,0.12)', fg: 'var(--accent, #c0392b)' };
+        const rigaP = (x, color) => (
+          <button key={x.p.id + x.dal} type="button" onClick={() => { setSchedaMezzo(null); setDettaglio({ p: x.p, m }); }}
+            style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, width: '100%', textAlign: 'left',
+              padding: '6px 9px', border: '1px solid var(--border)', borderLeft: `3px solid ${color}`, borderRadius: 6,
+              background: 'transparent', cursor: 'pointer', fontSize: 12, marginBottom: 5 }}>
+            <span style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cliente(x.p)}</span>
+            <span style={{ flexShrink: 0, fontFamily: 'var(--font-mono, monospace)', fontSize: 11, color: 'var(--ink-2)' }}>{formatDate(x.dal)} → {formatDate(x.al)}</span>
+          </button>
+        );
+        const sTit = (t, color) => <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color, margin: '10px 0 6px' }}>{t}</div>;
+        // niente "Fiat Fiat Panda": se il modello inizia già con la marca, mostra solo il modello
+        const nomeMezzo = (m.modello && m.marca && m.modello.toLowerCase().startsWith(m.marca.toLowerCase()))
+          ? m.modello : (`${m.marca || ''} ${m.modello || ''}`.trim() || ('n.' + m.numero));
+        return (
+          <div onClick={() => setSchedaMezzo(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
+            <div onClick={e => e.stopPropagation()} className="card-paper" style={{ padding: 20, width: 420, maxWidth: '92vw', maxHeight: '88vh', overflowY: 'auto' }}>
+              <h3 style={{ fontFamily: 'var(--font-serif)', fontSize: 18, marginBottom: 2 }}>{nomeMezzo}</h3>
+              <p style={{ fontSize: 12, color: 'var(--ink-2)', marginBottom: 8, fontFamily: 'var(--font-mono, monospace)' }}>
+                {m.targa || (m.targaAttesa === false ? 'senza targa' : '(targa manca)')} · n.{m.numero}
+              </p>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
+                <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 10px', borderRadius: 20, textTransform: 'uppercase', letterSpacing: '0.05em', background: statoBadge.bg, color: statoBadge.fg }}>{statoBadge.label}</span>
+                <span style={{ fontSize: 10, fontWeight: 600, padding: '3px 10px', borderRadius: 20, textTransform: 'capitalize', border: '1px solid var(--border)', color: 'var(--ink-2)' }}>{m.tipo}{m.categoria ? ` · ${m.categoria}` : ''}</span>
+                {m.cc ? <span style={{ fontSize: 10, padding: '3px 10px', borderRadius: 20, border: '1px solid var(--border)', color: 'var(--muted)' }}>{m.cc}</span> : null}
+              </div>
+
+              {/* contatori come il vecchio: in corso / future / archivio */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+                {[
+                  { label: 'In corso', value: attive.length, color: '#1f5d83' },
+                  { label: 'Future', value: future.length, color: '#2e6e3e' },
+                  { label: 'Tot. archivio', value: mie.length, color: 'var(--muted)' },
+                ].map(s => (
+                  <div key={s.label} style={{ textAlign: 'center', padding: '8px 6px', borderRadius: 8, border: '1px solid var(--border)' }}>
+                    <div style={{ fontFamily: 'var(--font-mono, monospace)', fontSize: 20, fontWeight: 600, color: s.value > 0 ? s.color : 'var(--muted)', lineHeight: 1 }}>{s.value}</div>
+                    <div style={{ fontSize: 9, color: 'var(--muted)', marginTop: 3, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{s.label}</div>
+                  </div>
+                ))}
+              </div>
+
+              {scads.length > 0 && (<>
+                {sTit('Scadenze mezzo', '#b87333')}
+                {scads.map(([t, d]) => (
+                  <div key={t} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '3px 0', borderBottom: '1px solid var(--border)' }}>
+                    <span style={{ color: 'var(--ink-2)' }}>{SC_LABEL[t] || t}</span>
+                    <span style={{ fontFamily: 'var(--font-mono, monospace)', fontWeight: 600, color: d <= oggi ? 'var(--accent, #c0392b)' : 'var(--ink)' }}>{formatDate(d)}</span>
+                  </div>
+                ))}
+              </>)}
+
+              {fermiMiei.length > 0 && (<>
+                {sTit('Fermi programmati', '#7d786f')}
+                {fermiMiei.map((f, i) => (
+                  <div key={i} style={{ fontSize: 12, padding: '3px 0', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                    <span style={{ color: 'var(--ink-2)' }}>🔧 {f.motivo || 'fermo'}</span>
+                    <span style={{ fontFamily: 'var(--font-mono, monospace)' }}>{formatDate(f.dal)} → {formatDate(f.al)}</span>
+                  </div>
+                ))}
+              </>)}
+
+              {attive.length > 0 && (<>{sTit('In corso ora', '#1f5d83')}{attive.map(x => rigaP(x, '#1f5d83'))}</>)}
+              {future.length > 0 && (<>
+                {sTit('Prossime prenotazioni', '#2e6e3e')}
+                {future.slice(0, 8).map(x => rigaP(x, '#2e6e3e'))}
+                {future.length > 8 && <div style={{ fontSize: 11, color: 'var(--muted)', textAlign: 'center', marginBottom: 5 }}>+ altre {future.length - 8}</div>}
+              </>)}
+              {passate.length > 0 && (<>
+                {sTit('Storico recente', 'var(--muted)')}
+                {passate.slice(-3).reverse().map(x => rigaP(x, 'var(--border)'))}
+              </>)}
+              {mie.length === 0 && <div style={{ fontSize: 12, color: 'var(--muted)', textAlign: 'center', padding: '14px 0' }}>Nessuna prenotazione per questo mezzo</div>}
+
+              <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+                <button type="button" onClick={() => { setSchedaMezzo(null); nuovaDaCella(m, oggi); }}
+                  style={{ flex: 1, padding: '9px 14px', borderRadius: 7, border: 'none', background: 'var(--sea)', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: 12 }}>
+                  + Nuova prenotazione
+                </button>
+                <button type="button" onClick={() => { setSchedaMezzo(null); setPage && setPage('cuore_flotta'); }}
+                  style={{ padding: '9px 14px', borderRadius: 7, border: '1px solid var(--border)', background: 'transparent', color: 'var(--ink-2)', cursor: 'pointer', fontSize: 12 }}>
+                  Flotta →
+                </button>
+                <button type="button" onClick={() => setSchedaMezzo(null)} style={{ padding: '9px 12px', borderRadius: 7, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', fontSize: 12 }}>Chiudi</button>
+              </div>
             </div>
           </div>
         );
