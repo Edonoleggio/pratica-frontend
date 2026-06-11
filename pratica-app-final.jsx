@@ -13698,42 +13698,17 @@ function NaviLampedusaWidget({ feed } = {}) {
 }
 
 
-function OggiPage({ prenotazioni, setPrenotazioni, fleet, scadenze, customers, setPage, rentmeVehicles, setPrenotazioniPrefill, pushToast,
-  operator, fermiFlotta, rentmePush, rentmeConnected, manutenzioni, partners, targhe }) {
-  const [now, setNow] = useState(() => new Date());
-
-  // Orologio live — aggiorna ogni minuto
-  useEffect(() => {
-    const id = setInterval(() => setNow(new Date()), 60000);
-    return () => clearInterval(id);
-  }, []);
-
-  // todayISO() usa ora locale (fix timezone UTC): now aggiorna ogni minuto per l'orologio live
-  const today    = todayISO();          // data locale corrente (non UTC)
-  const tomorrow = localDateISO(1);     // domani in ora locale
-
-  // Walk-in inline: date e form
-  const [walkInDal, setWalkInDal] = useState(today);
-  const [walkInAl,  setWalkInAl]  = useState(today);
-  const [walkInForm, setWalkInForm] = useState(null); // null | prefillData
-
-  // Feed live condivisi (hero glance + lista al clic) e vista espansa
-  const voliFeed  = useVoliFeed();
-  const naviFeed  = useNaviFeed();
-  const meteoFeed = useMeteoFeed();
-  const [liveView, setLiveView] = useState(null); // null | 'voli' | 'navi'
-
-  const STATO_COLOR = {
-    confermata: '#2e6e3e', in_corso: '#1f5d83', attesa: '#b87333',
-    completata: '#888', annullata: '#c85050', cancellata: '#c85050',
-  };
-  const TIPO_EMOJI = { auto: '🚗', scooter: '🛵', quad: '🏎', ebike: '⚡', bici: '🚲' };
+// ═══════════════════════════════════════════════════════════════════
+// Pezzi CONDIVISI tra il vecchio Oggi e Oggi (cuore): una copia sola.
+// Quando la Fase 6 cancellerà la pagina vecchia, questi restano al nuovo.
+// ═══════════════════════════════════════════════════════════════════
 
   // ── Print helper ──────────────────────────────────────────────────
   function printConsegne(items, titolo) {
     const rows = items.map(p => `
       <tr>
         <td>${p.vehicleLabel || p.vehicleType || '—'}</td>
+        <td>${p.vehicleTarga || '—'}</td>
         <td>${p.clienteCognome || ''} ${p.clienteNome || ''}</td>
         <td>${p.clienteTel || '—'}</td>
         <td>${p.dal || '—'} → ${p.al || '—'}</td>
@@ -13758,7 +13733,7 @@ function OggiPage({ prenotazioni, setPrenotazioni, fleet, scadenze, customers, s
       <p>${new Date().toLocaleDateString('it-IT', { weekday:'long', day:'2-digit', month:'long', year:'numeric' })} · Edonoleggio Lampedusa</p>
       <table>
         <thead><tr>
-          <th>Veicolo</th><th>Cliente</th><th>Telefono</th><th>Periodo</th><th>Stato</th><th>Note</th>
+          <th>Veicolo</th><th>Targa</th><th>Cliente</th><th>Telefono</th><th>Periodo</th><th>Stato</th><th>Note</th>
         </tr></thead>
         <tbody>${rows}</tbody>
       </table>
@@ -13767,6 +13742,246 @@ function OggiPage({ prenotazioni, setPrenotazioni, fleet, scadenze, customers, s
     const w = window.open('', '_blank');
     if (w) { w.document.write(html); w.document.close(); }
   }
+
+
+  // Export ICS — scarica tutte le prenotazioni attive come calendario .ics
+  function exportPrenoICS(prenoList, today) {
+    function icsDate(iso) {
+      // YYYYMMDD (all-day event — no time needed)
+      return iso ? iso.replace(/-/g, '') : '';
+    }
+    function icsEsc(s) {
+      return (s || '').replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\n/g, '\\n');
+    }
+    const attive = prenoList.filter(p => p.stato !== 'annullata' && p.stato !== 'cancellata');
+    const events = attive.map(p => {
+      const uid    = `edo-${p.id}@edonoleggio.it`;
+      const dal    = icsDate(p.dal);
+      // ICS DTEND for all-day = day after last day
+      const alDate = p.al ? new Date(p.al + 'T12:00:00') : new Date();
+      alDate.setDate(alDate.getDate() + 1);
+      const al     = alDate.toISOString().slice(0,10).replace(/-/g,'');
+      const nome   = icsEsc([p.clienteCognome, p.clienteNome].filter(Boolean).join(' ') || 'Cliente');
+      const mezzo  = icsEsc(p.vehicleLabel || p.vehicleType || '');
+      const codice = p.codice ? ` [${p.codice}]` : '';
+      const note   = icsEsc([p.note, p.noteCliente, p.noteInterne].filter(Boolean).join(' · '));
+      const prezzo = p.prezzo != null ? ` €${p.prezzo}` : '';
+      return [
+        'BEGIN:VEVENT',
+        `UID:${uid}`,
+        `DTSTART;VALUE=DATE:${dal}`,
+        `DTEND;VALUE=DATE:${al}`,
+        `SUMMARY:${nome} — ${mezzo}${codice}${prezzo}`,
+        `DESCRIPTION:${note || mezzo}`,
+        `STATUS:CONFIRMED`,
+        'END:VEVENT',
+      ].join('\r\n');
+    });
+    const ics = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'PRODID:-//Edonoleggio Lampedusa//Pratica//IT',
+      'CALSCALE:GREGORIAN',
+      'METHOD:PUBLISH',
+      `X-WR-CALNAME:Edonoleggio ${today}`,
+      'X-WR-TIMEZONE:Europe/Rome',
+      ...events,
+      'END:VCALENDAR',
+    ].join('\r\n');
+    const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `edonoleggio-${today}.ics`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+
+  // Export CSV movimenti del giorno — partenze + rientri
+  function exportMovimentiCSV(partenze, rientri, today) {
+    const rows = [
+      ['Tipo','Cliente','Telefono','Mezzo','Targa','Dal','Al','Stato','Prezzo'],
+      ...partenze.map(p => ['Consegna',
+        `${p.clienteCognome||''} ${p.clienteNome||''}`.trim(), p.clienteTel||'',
+        p.vehicleLabel||'', p.vehicleTarga||'', p.dal, p.al, p.stato,
+        p.prezzo != null ? `€${p.prezzo}` : '']),
+      ...rientri.map(p => ['Rientro',
+        `${p.clienteCognome||''} ${p.clienteNome||''}`.trim(), p.clienteTel||'',
+        p.vehicleLabel||'', p.vehicleTarga||'', p.dal, p.al, p.stato,
+        p.prezzo != null ? `€${p.prezzo}` : '']),
+    ];
+    const csv = rows.map(r =>
+      r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')
+    ).join('\n');
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `movimenti-${today}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+
+// Cruscotto live del giorno: data + orologio · meteo · prossimo volo · prossima nave.
+// I riquadri volo/nave sono cliccabili (liveView/setLiveView del chiamante);
+// `actions` = colonna destra coi pulsanti specifici della pagina (Banco, CSV, .ics).
+function CruscottoLiveOggi({ voliFeed, naviFeed, meteoFeed, liveView, setLiveView, actions }) {
+  const [now, setNow] = useState(() => new Date());
+
+  // Orologio live — aggiorna ogni minuto
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 60000);
+    return () => clearInterval(id);
+  }, []);
+
+  // ── Helpers UI ───────────────────────────────────────────────────
+  const ore = now.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+  const dataLabel = now.toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+
+  // ── Riassunti per l'hero "colpo d'occhio" ─────────────────────────
+  const fmtHHMM = (iso) => { const d = new Date(iso); return isNaN(d) ? '—' : d.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }); };
+  // Voli: prossimo arrivo (non atterrato/cancellato, futuro) + conteggio
+  const _flights = voliFeed.data?.flights || [];
+  const _arrOf = (f) => f.actualArrival || f.estimatedArrival || f.scheduledArrival;
+  const _landed = (f) => f.status === 'landed' || !!f.actualArrival;
+  const nextFlight = _flights
+    .filter(f => !_landed(f) && f.status !== 'cancelled' && _arrOf(f) && new Date(_arrOf(f)) >= now)
+    .sort((a, b) => new Date(_arrOf(a)) - new Date(_arrOf(b)))[0] || null;
+  const flightsCount = _flights.length;
+  const voliConfigured = !voliFeed.data || voliFeed.data.configured !== false;
+  // Navi: prossima in avvicinamento/navigazione (escludi posizioni vecchie >24h)
+  const _vessels = (naviFeed.data?.vessels || []).filter(v => !(v.ageMin != null && v.ageMin > 24 * 60));
+  const nextShip = _vessels.find(v => v.ok && v.stato === 'in avvicinamento')
+    || _vessels.find(v => v.ok && !v.stale)
+    || _vessels[0] || null;
+  // Fallback orari: prossimo ARRIVO previsto oggi (da timetable backend)
+  const nextSchedArrival = (naviFeed.data?.schedule || [])
+    .filter(s => s.direction === 'arrivo' && s.arriveISO && new Date(s.arriveISO) >= now)
+    .sort((a, b) => new Date(a.arriveISO) - new Date(b.arriveISO))[0] || null;
+  // Meteo
+  const _mcur = meteoFeed.data?.meteo?.current;
+  const _wave = meteoFeed.data?.marine?.current?.wave_height;
+
+  return (
+      <div style={{
+        background: 'linear-gradient(135deg, var(--edo-sea) 0%, var(--edo-sea-deep) 100%)',
+        color: 'white', borderRadius: 'var(--radius-lg)', padding: '24px 28px',
+        position: 'relative', overflow: 'hidden', marginBottom: 18, boxShadow: 'var(--shadow-md)',
+      }}>
+        {/* Sole + onda decorativi */}
+        <div style={{ position: 'absolute', bottom: -40, right: -40, width: 180, height: 180, borderRadius: '50%', background: 'var(--edo-sun)', opacity: 0.32, filter: 'blur(2px)', pointerEvents: 'none' }} />
+        <div style={{ position: 'absolute', bottom: -12, right: -12, width: 92, height: 92, borderRadius: '50%', background: 'var(--edo-sun)', pointerEvents: 'none' }} />
+        <svg style={{ position: 'absolute', left: 0, bottom: 0, width: '100%', height: 80, opacity: 0.18, pointerEvents: 'none' }} viewBox="0 0 800 80" preserveAspectRatio="none">
+          <path d="M 0 40 Q 200 10 400 40 T 800 40 V 80 H 0 Z" fill="white" />
+        </svg>
+
+        {/* Riga alta: data · Lampedusa + orologio */}
+        <div style={{ position: 'relative', zIndex: 2, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, marginBottom: 16 }}>
+          <div className="label" style={{ color: 'rgba(255,255,255,0.72)' }}>{dataLabel} · Lampedusa</div>
+          <div className="mono" style={{ fontSize: 30, fontWeight: 600, color: 'white', lineHeight: 1, letterSpacing: '-0.02em' }}>{ore}</div>
+        </div>
+
+        {/* Colpo d'occhio live: meteo · prossimo volo · prossima nave + azioni */}
+        <div style={{ position: 'relative', zIndex: 2, display: 'grid', gridTemplateColumns: 'repeat(3, 1fr) auto', gap: 12, alignItems: 'stretch' }}>
+          {(() => {
+            const tileBase = {
+              background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.18)',
+              borderRadius: 11, padding: '12px 14px', minWidth: 0, textAlign: 'left', color: 'white',
+            };
+            const tl = { fontSize: 10, fontWeight: 700, letterSpacing: '.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.62)', marginBottom: 7, display: 'flex', alignItems: 'center', gap: 6 };
+            const big = { fontFamily: 'var(--font-mono)', fontSize: 25, fontWeight: 600, lineHeight: 1, letterSpacing: '-0.02em' };
+            const meta = { fontSize: 11, color: 'rgba(255,255,255,0.75)', marginTop: 5, lineHeight: 1.35, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' };
+            return (
+              <>
+                {/* METEO */}
+                <div style={tileBase}>
+                  <div style={tl}><Sun style={{ width: 13, height: 13, opacity: 0.85 }} /> Meteo</div>
+                  {_mcur ? (
+                    <>
+                      <div style={big}>{Math.round(_mcur.temperature_2m)}<span style={{ fontSize: 14, fontWeight: 500, opacity: 0.7 }}>°</span></div>
+                      <div style={meta}>
+                        vento <b style={{ color: '#fff', fontWeight: 600 }}>{Math.round(_mcur.windspeed_10m)} km/h</b> {degToDir(_mcur.winddirection_10m)}
+                        {_wave != null ? <> · onde <b style={{ color: '#fff', fontWeight: 600 }}>{_wave.toFixed(1)} m</b></> : null}
+                        {WMO_DESC[_mcur.weathercode] ? ` · ${WMO_DESC[_mcur.weathercode].toLowerCase()}` : ''}
+                      </div>
+                    </>
+                  ) : <div style={{ ...meta, marginTop: 0 }}>{meteoFeed.loading ? 'caricamento…' : 'non disponibile'}</div>}
+                </div>
+
+                {/* PROSSIMO VOLO — cliccabile → lista */}
+                <button type="button" onClick={() => setLiveView(v => v === 'voli' ? null : 'voli')}
+                  className="hero-tile" aria-expanded={liveView === 'voli'}
+                  style={{ ...tileBase, cursor: 'pointer', boxShadow: liveView === 'voli' ? '0 0 0 2px rgba(255,255,255,0.5) inset' : 'none' }}>
+                  <div style={tl}><Plane style={{ width: 13, height: 13, opacity: 0.85 }} /> Prossimo volo <ChevronDown style={{ width: 12, height: 12, marginLeft: 'auto', transform: liveView === 'voli' ? 'rotate(180deg)' : 'none', transition: 'transform .18s' }} /></div>
+                  {!voliConfigured ? <div style={{ ...meta, marginTop: 0 }}>sorgente non collegata</div>
+                    : nextFlight ? (
+                    <>
+                      <div style={big}>{fmtHHMM(_arrOf(nextFlight))}</div>
+                      <div style={meta}><b style={{ color: '#fff', fontWeight: 600 }}>{nextFlight.originName || nextFlight.originIata || '—'}</b> · {flightsCount} oggi</div>
+                    </>
+                  ) : <div style={{ ...meta, marginTop: 0 }}>{voliFeed.loading ? 'caricamento…' : `nessun arrivo · ${flightsCount} oggi`}</div>}
+                </button>
+
+                {/* PROSSIMA NAVE — cliccabile → lista */}
+                <button type="button" onClick={() => setLiveView(v => v === 'navi' ? null : 'navi')}
+                  className="hero-tile" aria-expanded={liveView === 'navi'}
+                  style={{ ...tileBase, cursor: 'pointer', boxShadow: liveView === 'navi' ? '0 0 0 2px rgba(255,255,255,0.5) inset' : 'none' }}>
+                  <div style={tl}><Ship style={{ width: 13, height: 13, opacity: 0.85 }} /> Prossima nave <ChevronDown style={{ width: 12, height: 12, marginLeft: 'auto', transform: liveView === 'navi' ? 'rotate(180deg)' : 'none', transition: 'transform .18s' }} /></div>
+                  {nextShip ? (
+                    <>
+                      <div style={{ ...big, fontSize: 18, textTransform: 'capitalize' }}>{(nextShip.name || `MMSI ${nextShip.mmsi}`).toLowerCase()}</div>
+                      <div style={meta}>{nextShip.stato || 'in mare'}{nextShip.etaAis && new Date(nextShip.etaAis) > now ? ` · ~${fmtHHMM(nextShip.etaAis)}` : ''}</div>
+                    </>
+                  ) : nextSchedArrival ? (
+                    <>
+                      <div style={{ ...big }}>{fmtHHMM(nextSchedArrival.arriveISO)}</div>
+                      <div style={meta}><b style={{ color: '#fff', fontWeight: 600, textTransform: 'capitalize' }}>{(nextSchedArrival.vessel || '').toLowerCase()}</b> · da {nextSchedArrival.fromName}{nextSchedArrival.indicative ? ' · orario indic.' : ''}</div>
+                    </>
+                  ) : <div style={{ ...meta, marginTop: 0 }}>{naviFeed.data?.rateLimited ? 'servizio al limite' : naviFeed.loading ? 'caricamento…' : 'nessuna in mare'}</div>}
+                </button>
+
+                {/* AZIONI (pulsanti specifici della pagina chiamante) */}
+                <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 8 }}>
+                  {actions}
+                </div>
+              </>
+            );
+          })()}
+        </div>
+      </div>
+
+  );
+}
+
+function OggiPage({ prenotazioni, setPrenotazioni, fleet, scadenze, customers, setPage, rentmeVehicles, setPrenotazioniPrefill, pushToast,
+  operator, fermiFlotta, rentmePush, rentmeConnected, manutenzioni, partners, targhe }) {
+
+  // todayISO() usa ora locale (fix timezone UTC)
+  const today    = todayISO();          // data locale corrente (non UTC)
+  const tomorrow = localDateISO(1);     // domani in ora locale
+
+  // Walk-in inline: date e form
+  const [walkInDal, setWalkInDal] = useState(today);
+  const [walkInAl,  setWalkInAl]  = useState(today);
+  const [walkInForm, setWalkInForm] = useState(null); // null | prefillData
+
+  // Feed live condivisi (hero glance + lista al clic) e vista espansa
+  const voliFeed  = useVoliFeed();
+  const naviFeed  = useNaviFeed();
+  const meteoFeed = useMeteoFeed();
+  const [liveView, setLiveView] = useState(null); // null | 'voli' | 'navi'
+
+  const STATO_COLOR = {
+    confermata: '#2e6e3e', in_corso: '#1f5d83', attesa: '#b87333',
+    completata: '#888', annullata: '#c85050', cancellata: '#c85050',
+  };
+  const TIPO_EMOJI = { auto: '🚗', scooter: '🛵', quad: '🏎', ebike: '⚡', bici: '🚲' };
 
   // ── Calcoli ──────────────────────────────────────────────────────
   const prenoList = prenotazioni || [];
@@ -13855,116 +14070,6 @@ function OggiPage({ prenotazioni, setPrenotazioni, fleet, scadenze, customers, s
   const domani = prenoList.filter(p => p.dal === tomorrow && p.stato !== 'annullata' && p.stato !== 'cancellata');
   // Rientri domani — per promemoria WhatsApp mattina
   const rientranoDomani = prenoList.filter(p => p.al === tomorrow && p.stato !== 'annullata' && p.stato !== 'cancellata');
-
-  // Export ICS — scarica tutte le prenotazioni attive come calendario .ics
-  function exportICS() {
-    function icsDate(iso) {
-      // YYYYMMDD (all-day event — no time needed)
-      return iso ? iso.replace(/-/g, '') : '';
-    }
-    function icsEsc(s) {
-      return (s || '').replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\n/g, '\\n');
-    }
-    const attive = prenoList.filter(p => p.stato !== 'annullata' && p.stato !== 'cancellata');
-    const events = attive.map(p => {
-      const uid    = `edo-${p.id}@edonoleggio.it`;
-      const dal    = icsDate(p.dal);
-      // ICS DTEND for all-day = day after last day
-      const alDate = p.al ? new Date(p.al + 'T12:00:00') : new Date();
-      alDate.setDate(alDate.getDate() + 1);
-      const al     = alDate.toISOString().slice(0,10).replace(/-/g,'');
-      const nome   = icsEsc([p.clienteCognome, p.clienteNome].filter(Boolean).join(' ') || 'Cliente');
-      const mezzo  = icsEsc(p.vehicleLabel || p.vehicleType || '');
-      const codice = p.codice ? ` [${p.codice}]` : '';
-      const note   = icsEsc([p.note, p.noteCliente, p.noteInterne].filter(Boolean).join(' · '));
-      const prezzo = p.prezzo != null ? ` €${p.prezzo}` : '';
-      return [
-        'BEGIN:VEVENT',
-        `UID:${uid}`,
-        `DTSTART;VALUE=DATE:${dal}`,
-        `DTEND;VALUE=DATE:${al}`,
-        `SUMMARY:${nome} — ${mezzo}${codice}${prezzo}`,
-        `DESCRIPTION:${note || mezzo}`,
-        `STATUS:CONFIRMED`,
-        'END:VEVENT',
-      ].join('\r\n');
-    });
-    const ics = [
-      'BEGIN:VCALENDAR',
-      'VERSION:2.0',
-      'PRODID:-//Edonoleggio Lampedusa//Pratica//IT',
-      'CALSCALE:GREGORIAN',
-      'METHOD:PUBLISH',
-      `X-WR-CALNAME:Edonoleggio ${today}`,
-      'X-WR-TIMEZONE:Europe/Rome',
-      ...events,
-      'END:VCALENDAR',
-    ].join('\r\n');
-    const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    a.href     = url;
-    a.download = `edonoleggio-${today}.ics`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }
-
-  // Export CSV movimenti del giorno — partenze + rientri
-  function exportMovimenti() {
-    const rows = [
-      ['Tipo','Cliente','Telefono','Mezzo','Targa','Dal','Al','Stato','Prezzo'],
-      ...partenze.map(p => ['Consegna',
-        `${p.clienteCognome||''} ${p.clienteNome||''}`.trim(), p.clienteTel||'',
-        p.vehicleLabel||'', p.vehicleTarga||'', p.dal, p.al, p.stato,
-        p.prezzo != null ? `€${p.prezzo}` : '']),
-      ...rientri.map(p => ['Rientro',
-        `${p.clienteCognome||''} ${p.clienteNome||''}`.trim(), p.clienteTel||'',
-        p.vehicleLabel||'', p.vehicleTarga||'', p.dal, p.al, p.stato,
-        p.prezzo != null ? `€${p.prezzo}` : '']),
-    ];
-    const csv = rows.map(r =>
-      r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')
-    ).join('\n');
-    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `movimenti-${today}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }
-
-  // ── Helpers UI ───────────────────────────────────────────────────
-  const ore = now.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
-  const dataLabel = now.toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-
-  // ── Riassunti per l'hero "colpo d'occhio" ─────────────────────────
-  const fmtHHMM = (iso) => { const d = new Date(iso); return isNaN(d) ? '—' : d.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }); };
-  // Voli: prossimo arrivo (non atterrato/cancellato, futuro) + conteggio
-  const _flights = voliFeed.data?.flights || [];
-  const _arrOf = (f) => f.actualArrival || f.estimatedArrival || f.scheduledArrival;
-  const _landed = (f) => f.status === 'landed' || !!f.actualArrival;
-  const nextFlight = _flights
-    .filter(f => !_landed(f) && f.status !== 'cancelled' && _arrOf(f) && new Date(_arrOf(f)) >= now)
-    .sort((a, b) => new Date(_arrOf(a)) - new Date(_arrOf(b)))[0] || null;
-  const flightsCount = _flights.length;
-  const voliConfigured = !voliFeed.data || voliFeed.data.configured !== false;
-  // Navi: prossima in avvicinamento/navigazione (escludi posizioni vecchie >24h)
-  const _vessels = (naviFeed.data?.vessels || []).filter(v => !(v.ageMin != null && v.ageMin > 24 * 60));
-  const nextShip = _vessels.find(v => v.ok && v.stato === 'in avvicinamento')
-    || _vessels.find(v => v.ok && !v.stale)
-    || _vessels[0] || null;
-  // Fallback orari: prossimo ARRIVO previsto oggi (da timetable backend)
-  const nextSchedArrival = (naviFeed.data?.schedule || [])
-    .filter(s => s.direction === 'arrivo' && s.arriveISO && new Date(s.arriveISO) >= now)
-    .sort((a, b) => new Date(a.arriveISO) - new Date(b.arriveISO))[0] || null;
-  // Meteo
-  const _mcur = meteoFeed.data?.meteo?.current;
-  const _wave = meteoFeed.data?.marine?.current?.wave_height;
 
   function clienteLabel(p) {
     return [p.clienteCognome, p.clienteNome].filter(Boolean).join(' ') || 'Cliente';
@@ -14081,86 +14186,10 @@ function OggiPage({ prenotazioni, setPrenotazioni, fleet, scadenze, customers, s
   return (
     <div style={{ padding: '28px 32px', maxWidth: 860, margin: '0 auto' }}>
 
-      {/* ── Hero del giorno ─────────────────────────────────────────── */}
-      <div style={{
-        background: 'linear-gradient(135deg, var(--edo-sea) 0%, var(--edo-sea-deep) 100%)',
-        color: 'white', borderRadius: 'var(--radius-lg)', padding: '24px 28px',
-        position: 'relative', overflow: 'hidden', marginBottom: 18, boxShadow: 'var(--shadow-md)',
-      }}>
-        {/* Sole + onda decorativi */}
-        <div style={{ position: 'absolute', bottom: -40, right: -40, width: 180, height: 180, borderRadius: '50%', background: 'var(--edo-sun)', opacity: 0.32, filter: 'blur(2px)', pointerEvents: 'none' }} />
-        <div style={{ position: 'absolute', bottom: -12, right: -12, width: 92, height: 92, borderRadius: '50%', background: 'var(--edo-sun)', pointerEvents: 'none' }} />
-        <svg style={{ position: 'absolute', left: 0, bottom: 0, width: '100%', height: 80, opacity: 0.18, pointerEvents: 'none' }} viewBox="0 0 800 80" preserveAspectRatio="none">
-          <path d="M 0 40 Q 200 10 400 40 T 800 40 V 80 H 0 Z" fill="white" />
-        </svg>
-
-        {/* Riga alta: data · Lampedusa + orologio */}
-        <div style={{ position: 'relative', zIndex: 2, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, marginBottom: 16 }}>
-          <div className="label" style={{ color: 'rgba(255,255,255,0.72)' }}>{dataLabel} · Lampedusa</div>
-          <div className="mono" style={{ fontSize: 30, fontWeight: 600, color: 'white', lineHeight: 1, letterSpacing: '-0.02em' }}>{ore}</div>
-        </div>
-
-        {/* Colpo d'occhio live: meteo · prossimo volo · prossima nave + azioni */}
-        <div style={{ position: 'relative', zIndex: 2, display: 'grid', gridTemplateColumns: 'repeat(3, 1fr) auto', gap: 12, alignItems: 'stretch' }}>
-          {(() => {
-            const tileBase = {
-              background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.18)',
-              borderRadius: 11, padding: '12px 14px', minWidth: 0, textAlign: 'left', color: 'white',
-            };
-            const tl = { fontSize: 10, fontWeight: 700, letterSpacing: '.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.62)', marginBottom: 7, display: 'flex', alignItems: 'center', gap: 6 };
-            const big = { fontFamily: 'var(--font-mono)', fontSize: 25, fontWeight: 600, lineHeight: 1, letterSpacing: '-0.02em' };
-            const meta = { fontSize: 11, color: 'rgba(255,255,255,0.75)', marginTop: 5, lineHeight: 1.35, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' };
-            return (
-              <>
-                {/* METEO */}
-                <div style={tileBase}>
-                  <div style={tl}><Sun style={{ width: 13, height: 13, opacity: 0.85 }} /> Meteo</div>
-                  {_mcur ? (
-                    <>
-                      <div style={big}>{Math.round(_mcur.temperature_2m)}<span style={{ fontSize: 14, fontWeight: 500, opacity: 0.7 }}>°</span></div>
-                      <div style={meta}>
-                        vento <b style={{ color: '#fff', fontWeight: 600 }}>{Math.round(_mcur.windspeed_10m)} km/h</b> {degToDir(_mcur.winddirection_10m)}
-                        {_wave != null ? <> · onde <b style={{ color: '#fff', fontWeight: 600 }}>{_wave.toFixed(1)} m</b></> : null}
-                        {WMO_DESC[_mcur.weathercode] ? ` · ${WMO_DESC[_mcur.weathercode].toLowerCase()}` : ''}
-                      </div>
-                    </>
-                  ) : <div style={{ ...meta, marginTop: 0 }}>{meteoFeed.loading ? 'caricamento…' : 'non disponibile'}</div>}
-                </div>
-
-                {/* PROSSIMO VOLO — cliccabile → lista */}
-                <button type="button" onClick={() => setLiveView(v => v === 'voli' ? null : 'voli')}
-                  className="hero-tile" aria-expanded={liveView === 'voli'}
-                  style={{ ...tileBase, cursor: 'pointer', boxShadow: liveView === 'voli' ? '0 0 0 2px rgba(255,255,255,0.5) inset' : 'none' }}>
-                  <div style={tl}><Plane style={{ width: 13, height: 13, opacity: 0.85 }} /> Prossimo volo <ChevronDown style={{ width: 12, height: 12, marginLeft: 'auto', transform: liveView === 'voli' ? 'rotate(180deg)' : 'none', transition: 'transform .18s' }} /></div>
-                  {!voliConfigured ? <div style={{ ...meta, marginTop: 0 }}>sorgente non collegata</div>
-                    : nextFlight ? (
-                    <>
-                      <div style={big}>{fmtHHMM(_arrOf(nextFlight))}</div>
-                      <div style={meta}><b style={{ color: '#fff', fontWeight: 600 }}>{nextFlight.originName || nextFlight.originIata || '—'}</b> · {flightsCount} oggi</div>
-                    </>
-                  ) : <div style={{ ...meta, marginTop: 0 }}>{voliFeed.loading ? 'caricamento…' : `nessun arrivo · ${flightsCount} oggi`}</div>}
-                </button>
-
-                {/* PROSSIMA NAVE — cliccabile → lista */}
-                <button type="button" onClick={() => setLiveView(v => v === 'navi' ? null : 'navi')}
-                  className="hero-tile" aria-expanded={liveView === 'navi'}
-                  style={{ ...tileBase, cursor: 'pointer', boxShadow: liveView === 'navi' ? '0 0 0 2px rgba(255,255,255,0.5) inset' : 'none' }}>
-                  <div style={tl}><Ship style={{ width: 13, height: 13, opacity: 0.85 }} /> Prossima nave <ChevronDown style={{ width: 12, height: 12, marginLeft: 'auto', transform: liveView === 'navi' ? 'rotate(180deg)' : 'none', transition: 'transform .18s' }} /></div>
-                  {nextShip ? (
-                    <>
-                      <div style={{ ...big, fontSize: 18, textTransform: 'capitalize' }}>{(nextShip.name || `MMSI ${nextShip.mmsi}`).toLowerCase()}</div>
-                      <div style={meta}>{nextShip.stato || 'in mare'}{nextShip.etaAis && new Date(nextShip.etaAis) > now ? ` · ~${fmtHHMM(nextShip.etaAis)}` : ''}</div>
-                    </>
-                  ) : nextSchedArrival ? (
-                    <>
-                      <div style={{ ...big }}>{fmtHHMM(nextSchedArrival.arriveISO)}</div>
-                      <div style={meta}><b style={{ color: '#fff', fontWeight: 600, textTransform: 'capitalize' }}>{(nextSchedArrival.vessel || '').toLowerCase()}</b> · da {nextSchedArrival.fromName}{nextSchedArrival.indicative ? ' · orario indic.' : ''}</div>
-                    </>
-                  ) : <div style={{ ...meta, marginTop: 0 }}>{naviFeed.data?.rateLimited ? 'servizio al limite' : naviFeed.loading ? 'caricamento…' : 'nessuna in mare'}</div>}
-                </button>
-
-                {/* AZIONI */}
-                <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 8 }}>
+      {/* ── Hero del giorno (cruscotto live condiviso con Oggi cuore) ── */}
+      <CruscottoLiveOggi voliFeed={voliFeed} naviFeed={naviFeed} meteoFeed={meteoFeed}
+        liveView={liveView} setLiveView={setLiveView}
+        actions={<>
                   <button type="button" onClick={() => setPage('banco')}
                     style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, height: 38, padding: '0 16px', borderRadius: 8,
                       border: 'none', background: 'var(--edo-sun)', color: 'var(--ink)', fontWeight: 700, fontSize: 13, cursor: 'pointer',
@@ -14169,24 +14198,20 @@ function OggiPage({ prenotazioni, setPrenotazioni, fleet, scadenze, customers, s
                   </button>
                   <div style={{ display: 'flex', gap: 6 }}>
                     {(partenze.length > 0 || rientri.length > 0) && (
-                      <button type="button" onClick={exportMovimenti} title="Esporta movimenti del giorno (CSV)"
+                      <button type="button" onClick={() => exportMovimentiCSV(partenze, rientri, today)} title="Esporta movimenti del giorno (CSV)"
                         style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 9px', borderRadius: 6,
                           border: '1px solid rgba(255,255,255,0.35)', background: 'rgba(255,255,255,0.10)', color: 'white', fontSize: 11, cursor: 'pointer' }}>
                         <Download style={{ width: 11, height: 11 }} /> CSV
                       </button>
                     )}
-                    <button type="button" onClick={exportICS} title="Scarica tutte le prenotazioni come calendario .ics"
+                    <button type="button" onClick={() => exportPrenoICS(prenoList, today)} title="Scarica tutte le prenotazioni come calendario .ics"
                       style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 9px', borderRadius: 6,
                         border: '1px solid rgba(255,255,255,0.35)', background: 'rgba(255,255,255,0.10)', color: 'white', fontSize: 11, cursor: 'pointer' }}>
                       <Download style={{ width: 11, height: 11 }} /> .ics
                     </button>
                   </div>
-                </div>
-              </>
-            );
-          })()}
-        </div>
-      </div>
+                </>}
+      />
 
       {/* ── KPI del giorno (dati reali) ─────────────────────────────── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 24 }}>
@@ -17205,7 +17230,7 @@ export default function App() {
               {page === 'prenotazioni' && <PrenotazioniPage prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} setCassa={setCassa} fleet={fleet} rentmeVehicles={rentmeVehicles} customers={customers} partners={partners} operator={operator} onOpenWizard={openWizard} pushToast={pushToast} prefill={prenotazioniPrefill} onClearPrefill={() => setPrenotazioniPrefill(null)} fermiFlotta={fermiFlotta} rentmePush={rentmeSync.pushBooking} rentmeConnected={rentmeSync.status === 'ok'} agency={agency} targhe={targhe} />}
               {page === 'contracts'  && <ContractsList contracts={localContracts} operators={operators} onRetry={retryContract} onMarkReturned={markContractReturned} onSendPec={sendContractPec} pecStatus={pecStatus} online={online} />}
               {page === 'cuore' && cuoreNuovo && <CuoreAnteprimaPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} prenotazioni={prenotazioni} scadenze={scadenze} fermiFlotta={fermiFlotta} />}
-              {page === 'cuore_oggi' && cuoreNuovo && <CuoreOggiPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPage={setPage} fermiFlotta={fermiFlotta} />}
+              {page === 'cuore_oggi' && cuoreNuovo && <CuoreOggiPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} listino={listino} pushToast={pushToast} operator={operator} setPage={setPage} fermiFlotta={fermiFlotta} />}
               {page === 'cuore_cal' && cuoreNuovo && <CuoreCalendarioPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} prenotazioni={prenotazioni} scadenze={scadenze} setPrenotazioni={setPrenotazioni} pushToast={pushToast} fermiFlotta={fermiFlotta} setPage={setPage} setCuorePrefill={setCuorePrefill} />}
               {page === 'cuore_preno' && cuoreNuovo && <CuorePrenotaPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} pushToast={pushToast} prefill={cuorePrefill} fermiFlotta={fermiFlotta} />}
               {page === 'cuore_banco' && cuoreNuovo && <CuoreBancoPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} listino={listino} pushToast={pushToast} operator={operator} fermiFlotta={fermiFlotta} />}
@@ -17968,12 +17993,20 @@ function CuoreAnteprimaPage({ rentmeVehicles, targhe, fleet, prenotazioni, scade
 // categoria calcolate dalla STESSA regola di prenotazioni/calendario (zero traduttori),
 // + agenda di oggi (consegne da fare, rientri/scaduti) con scorciatoie alle pagine.
 // ═══════════════════════════════════════════════════════════════════
-function CuoreOggiPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazioni, setPage, fermiFlotta }) {
+function CuoreOggiPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazioni, setPrenotazioni, listino, pushToast, operator, setPage, fermiFlotta }) {
   const parco = useMemo(() => cuoreBuildParco(rentmeVehicles, { targhe, fleet, scadenze }), [rentmeVehicles, targhe, fleet, scadenze]);
   const prenoNuove = useMemo(() => (prenotazioni || []).map(p => cuoreMigraPreno(p, parco)), [prenotazioni, parco]);
   const prenoConFermi = useMemo(() => [...prenoNuove, ...cuoreFermiToPreno(fermiFlotta, parco)], [prenoNuove, fermiFlotta, parco]);
   const oggi = todayISO();
   const cliente = (p) => `${p.clienteCognome || ''} ${p.clienteNome || ''}`.trim() || p.cliente || '—';
+
+  // Feed live condivisi col vecchio Oggi (stessi hook, stesse fonti) + vista espansa
+  const voliFeed = useVoliFeed();
+  const naviFeed = useNaviFeed();
+  const meteoFeed = useMeteoFeed();
+  const [liveView, setLiveView] = useState(null); // null | 'voli' | 'navi'
+  const domani = localDateISO(1);
+  const parcoByNum = useMemo(() => new Map(parco.map(m => [String(m.numero), m])), [parco]);
 
   // Fotografia flotta ORA (oggi) — stessi primitivi della regola, applicati globalmente.
   const snap = useMemo(() => {
@@ -18009,7 +18042,41 @@ function CuoreOggiPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazioni, 
     [prenoNuove, oggi]);
   const rientriScaduti = rientriOggi.filter(p => p.al < oggi).length;
 
-  const dataLunga = (() => { try { return new Date(oggi + 'T12:00:00').toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' }); } catch { return oggi; } })();
+  // Consegne di domani (anticipo, come nel vecchio Oggi).
+  const consegneDomani = useMemo(() => prenoNuove.filter(p =>
+    p && !CUORE_PRENO_FUORI.has(String(p.stato || '')) && String(p.stato || '') !== 'in_corso' && p.dal === domani),
+    [prenoNuove, domani]);
+
+  // Mezzo assegnato (targa SEMPRE dalla tabella) — per righe, stampa PDF e CSV.
+  const mezzoAssegnato = (p) => {
+    const num = (p.assegnazioni && p.assegnazioni[0] && p.assegnazioni[0].numero) ?? p.vehicleId;
+    return (num != null && num !== '') ? (parcoByNum.get(String(num)) || null) : null;
+  };
+  const stampabili = (items) => items.map(p => {
+    const m = mezzoAssegnato(p);
+    return m
+      ? { ...p, vehicleLabel: m.modello || m.tipo || p.vehicleLabel || '', vehicleTarga: m.targa || ('n.' + m.numero) }
+      : { ...p, vehicleLabel: p.vehicleLabel || p.tipo || p.vehicleType || 'da assegnare', vehicleTarga: p.vehicleTarga || '' };
+  });
+  const rigaPreno = (p, tone, pagina) => {
+    const m = mezzoAssegnato(p);
+    return (
+      <button key={p.id} type="button" onClick={() => setPage && setPage(pagina)}
+        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, width: '100%', textAlign: 'left',
+          padding: '8px 10px', background: 'var(--bg)', border: '1px solid var(--border)', borderLeft: `3px solid ${tone}`,
+          borderRadius: 8, cursor: 'pointer' }}>
+        <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--ink)' }}>{cliente(p)}</span>
+          <span style={{ fontSize: 12, color: 'var(--ink-2)', marginLeft: 8 }}>
+            {m ? (m.targa || ('n.' + m.numero)) : 'da assegnare'}{m && m.modello ? ` · ${m.modello}` : ''}
+          </span>
+        </span>
+        <span style={{ fontSize: 11, color: 'var(--muted)', flexShrink: 0, fontFamily: 'var(--font-mono, monospace)' }}>
+          {formatDate(p.dal)} → {formatDate(p.al)}
+        </span>
+      </button>
+    );
+  };
 
   const kpi = (label, val, color) => (
     <div className="card-paper" style={{ padding: 14, borderTop: `3px solid ${color}` }}>
@@ -18034,8 +18101,35 @@ function CuoreOggiPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazioni, 
 
   return (
     <div style={{ maxWidth: 1000, margin: '0 auto' }}>
-      <div className="label" style={{ color: 'var(--sea)' }}>NUOVO CUORE · OGGI (anteprima)</div>
-      <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: 22, letterSpacing: '-0.01em', margin: '2px 0 4px', textTransform: 'capitalize' }}>{dataLunga}</h1>
+      <div className="label" style={{ color: 'var(--sea)', marginBottom: 8 }}>NUOVO CUORE · OGGI (anteprima)</div>
+
+      {/* Cruscotto live condiviso (stesso componente del vecchio Oggi) */}
+      <CruscottoLiveOggi voliFeed={voliFeed} naviFeed={naviFeed} meteoFeed={meteoFeed}
+        liveView={liveView} setLiveView={setLiveView}
+        actions={<>
+          <button type="button" onClick={() => setPage && setPage('cuore_banco')}
+            style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, height: 38, padding: '0 16px', borderRadius: 8,
+              border: 'none', background: 'var(--edo-sun)', color: 'var(--ink)', fontWeight: 700, fontSize: 13, cursor: 'pointer',
+              boxShadow: 'var(--shadow-inset)', whiteSpace: 'nowrap' }}>
+            Banco rapido →
+          </button>
+          <div style={{ display: 'flex', gap: 6 }}>
+            {(consegneOggi.length > 0 || rientriOggi.length > 0) && (
+              <button type="button" onClick={() => exportMovimentiCSV(stampabili(consegneOggi), stampabili(rientriOggi), oggi)} title="Esporta movimenti del giorno (CSV)"
+                style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 9px', borderRadius: 6,
+                  border: '1px solid rgba(255,255,255,0.35)', background: 'rgba(255,255,255,0.10)', color: 'white', fontSize: 11, cursor: 'pointer' }}>
+                <Download style={{ width: 11, height: 11 }} /> CSV
+              </button>
+            )}
+            <button type="button" onClick={() => exportPrenoICS(prenotazioni || [], oggi)} title="Scarica tutte le prenotazioni come calendario .ics"
+              style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 9px', borderRadius: 6,
+                border: '1px solid rgba(255,255,255,0.35)', background: 'rgba(255,255,255,0.10)', color: 'white', fontSize: 11, cursor: 'pointer' }}>
+              <Download style={{ width: 11, height: 11 }} /> .ics
+            </button>
+          </div>
+        </>}
+      />
+
       <p style={{ fontSize: 13, color: 'var(--ink-2)', marginBottom: 16 }}>
         La situazione di oggi dal <strong>motore unico</strong>: gli stessi numeri di prenotazioni, calendario e disponibilità.
       </p>
@@ -18048,11 +18142,71 @@ function CuoreOggiPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazioni, 
         {kpi('In manutenzione', snap.manutenzione.length, 'var(--accent, #c0392b)')}
       </div>
 
+      {/* Dettaglio live (espanso al clic su volo/nave nell'hero) */}
+      {liveView && (
+        <div className="oggi-live-zone" style={{ marginBottom: 16 }}>
+          <div className="oggi-section-head">
+            <span className="eb">In tempo reale</span>
+            <span className="ttl">{liveView === 'voli' ? 'Voli di oggi' : 'Collegamenti via mare'}</span>
+            <span className="ln" aria-hidden="true" />
+            <button type="button" onClick={() => setLiveView(null)}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 4, border: '1px solid var(--border)', background: 'transparent',
+                borderRadius: 6, padding: '4px 9px', cursor: 'pointer', color: 'var(--muted)', fontSize: 11, fontWeight: 600 }}>
+              <X style={{ width: 12, height: 12 }} /> Chiudi
+            </button>
+          </div>
+          {liveView === 'voli'
+            ? <VoliLampedusaWidget feed={voliFeed} />
+            : <NaviLampedusaWidget feed={naviFeed} />}
+        </div>
+      )}
+
       {/* Agenda di oggi */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12, marginBottom: 24 }}>
         {agendaCard('Consegne da fare', consegneOggi.length, consegneOggi.length === 1 ? 'ritiro' : 'ritiri', 'cuore_consegna', 'var(--sea)')}
         {agendaCard('Rientri di oggi', rientriOggi.length, rientriScaduti > 0 ? `${rientriScaduti} scaduti` : 'in scadenza', 'cuore_rientro', rientriScaduti > 0 ? 'var(--accent, #c0392b)' : 'var(--sea)')}
         {agendaCard('Calendario', '', 'vedi il mese', 'cuore_cal', 'var(--ink-2)')}
+      </div>
+
+      {/* ── Movimenti del giorno: liste con stampa PDF (parità col vecchio Oggi) ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(290px, 1fr))', gap: 14, marginBottom: 24 }}>
+        {[
+          { titolo: 'Consegne da fare', items: consegneOggi, tone: '#2e6e3e', pagina: 'cuore_consegna', vuoto: 'Nessuna consegna da fare' },
+          { titolo: 'Consegne domani', items: consegneDomani, tone: '#b87333', pagina: 'cuore_cal', vuoto: 'Nessuna consegna domani' },
+          { titolo: 'Rientri di oggi', items: rientriOggi, tone: '#6a3d8f', pagina: 'cuore_rientro', vuoto: 'Nessun rientro oggi' },
+        ].map(sez => (
+          <div key={sez.titolo} style={{ border: `2px solid ${sez.tone}`, borderRadius: 10, overflow: 'hidden' }}>
+            <div style={{ background: sez.tone, padding: '9px 13px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                <span style={{ fontFamily: 'var(--font-serif)', fontWeight: 600, fontSize: 14, color: '#fff' }}>{sez.titolo}</span>
+                <span style={{ fontSize: 12, fontWeight: 700, color: '#fff', background: 'rgba(255,255,255,.25)', borderRadius: 12, padding: '1px 8px' }}>{sez.items.length}</span>
+              </div>
+              {sez.items.length > 0 && (
+                <button type="button" onClick={() => printConsegne(stampabili(sez.items), sez.titolo)}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, padding: '3px 8px', borderRadius: 5, border: '1px solid rgba(255,255,255,.5)', background: 'transparent', color: '#fff', cursor: 'pointer' }}>
+                  <Printer style={{ width: 10, height: 10 }} /> PDF
+                </button>
+              )}
+            </div>
+            <div style={{ padding: '8px 10px', background: 'var(--bg)', minHeight: 56, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {sez.items.length === 0
+                ? <div style={{ fontSize: 12, color: 'var(--muted)', padding: '6px 0' }}>{sez.vuoto}</div>
+                : sez.items.map(p => rigaPreno(p, sez.tone, sez.pagina))}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* ── Walk-in rapido: stesso componente del Banco (cuore), una copia sola ── */}
+      <div className="oggi-section-head" style={{ marginBottom: 12 }}>
+        <span className="eb">Operatività</span>
+        <span className="ttl">Walk-in rapido</span>
+        <span className="ln" aria-hidden="true" />
+      </div>
+      <div style={{ marginBottom: 24 }}>
+        <CuoreWalkIn rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze}
+          prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} listino={listino}
+          pushToast={pushToast} operator={operator} fermiFlotta={fermiFlotta} />
       </div>
 
       {/* Disponibilità per categoria ORA */}
@@ -18860,7 +19014,8 @@ function CuoreConsegnaPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazio
 // "consegna subito" la prenotazione nasce già in_corso con la targa dalla TABELLA.
 // Stessa regola di disponibilità di tutte le altre pagine: zero traduttori.
 // ═══════════════════════════════════════════════════════════════════
-function CuoreBancoPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazioni, setPrenotazioni, listino, pushToast, operator, fermiFlotta }) {
+// Walk-in sul motore unico — componente RIUSABILE: pagina Banco (cuore) e sezione di Oggi (cuore).
+function CuoreWalkIn({ rentmeVehicles, targhe, fleet, scadenze, prenotazioni, setPrenotazioni, listino, pushToast, operator, fermiFlotta }) {
   const parco = useMemo(() => cuoreBuildParco(rentmeVehicles, { targhe, fleet, scadenze }), [rentmeVehicles, targhe, fleet, scadenze]);
   const prenoNuove = useMemo(() => (prenotazioni || []).map(p => cuoreMigraPreno(p, parco)), [prenotazioni, parco]);
   const prenoConFermi = useMemo(() => [...prenoNuove, ...cuoreFermiToPreno(fermiFlotta, parco)], [prenoNuove, fermiFlotta, parco]);
@@ -18952,13 +19107,7 @@ function CuoreBancoPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazioni,
   const lbl = { fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--ink-2)', display: 'block', marginBottom: 4 };
 
   return (
-    <div style={{ maxWidth: 1000, margin: '0 auto' }}>
-      <div className="label" style={{ color: 'var(--sea)' }}>NUOVO CUORE · BANCO RAPIDO (anteprima)</div>
-      <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: 22, letterSpacing: '-0.01em', margin: '2px 0 4px' }}>Banco rapido</h1>
-      <p style={{ fontSize: 13, color: 'var(--ink-2)', marginBottom: 16 }}>
-        Walk-in sul <strong>motore unico</strong>: categorie con liberi reali e prezzo del periodo; un tap →
-        mezzo (solo i liberi) + cognome → con <strong>consegna subito</strong> nasce già in corso, targa dalla <strong>tabella</strong>.
-      </p>
+    <>
 
       <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', marginBottom: 16, flexWrap: 'wrap' }}>
         <label style={{ fontSize: 12, color: 'var(--ink-2)' }}>Dal<br /><input type="date" value={dal} onChange={e => { setDal(e.target.value); if (e.target.value > al) setAl(e.target.value); }} style={{ padding: 6, border: '1px solid var(--border)', borderRadius: 6 }} /></label>
@@ -19057,6 +19206,20 @@ function CuoreBancoPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazioni,
           </div>
         );
       })()}
+    </>
+  );
+}
+
+function CuoreBancoPage(props) {
+  return (
+    <div style={{ maxWidth: 1000, margin: '0 auto' }}>
+      <div className="label" style={{ color: 'var(--sea)' }}>NUOVO CUORE · BANCO RAPIDO (anteprima)</div>
+      <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: 22, letterSpacing: '-0.01em', margin: '2px 0 4px' }}>Banco rapido</h1>
+      <p style={{ fontSize: 13, color: 'var(--ink-2)', marginBottom: 16 }}>
+        Walk-in sul <strong>motore unico</strong>: categorie con liberi reali e prezzo del periodo; un tap →
+        mezzo (solo i liberi) + cognome → con <strong>consegna subito</strong> nasce già in corso, targa dalla <strong>tabella</strong>.
+      </p>
+      <CuoreWalkIn {...props} />
     </div>
   );
 }
