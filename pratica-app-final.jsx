@@ -18169,6 +18169,34 @@ function CuoreOggiPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazioni, 
       ? { ...p, vehicleLabel: m.modello || m.tipo || p.vehicleLabel || '', vehicleTarga: m.targa || ('n.' + m.numero) }
       : { ...p, vehicleLabel: p.vehicleLabel || p.tipo || p.vehicleType || 'da assegnare', vehicleTarga: p.vehicleTarga || '' };
   });
+  // ── Abbinamento VOLO ↔ prenotazione: se nelle note c'è un numero volo presente
+  // nel feed di oggi (es. 'arriva col W66343'), la riga mostra lo stato reale del
+  // volo: in ritardo/atterrato/in volo. Vale oro per le consegne in aeroporto.
+  const voloDi = (p) => {
+    const flights = voliFeed.data?.flights || [];
+    if (!flights.length) return null;
+    const txt = `${p.note || ''} ${p.noteCliente || ''} ${p.noteInterne || ''}`.toUpperCase().replace(/\s/g, '');
+    if (!txt) return null;
+    return flights.find(f => f.flightNumber && String(f.flightNumber).length >= 4 && txt.includes(String(f.flightNumber).toUpperCase())) || null;
+  };
+  const badgeVolo = (p) => {
+    const v = voloDi(p);
+    if (!v) return null;
+    const hhmm = (iso) => { const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }); };
+    const sched = v.scheduledArrival ? new Date(v.scheduledArrival) : null;
+    const eff = v.actualArrival || v.estimatedArrival;
+    const ritardoMin = (sched && eff && !isNaN(new Date(eff))) ? Math.round((new Date(eff) - sched) / 60000) : 0;
+    let testo, colore;
+    if (v.status === 'cancelled') { testo = `✈ ${v.flightNumber} CANCELLATO`; colore = 'var(--accent, #c0392b)'; }
+    else if (v.status === 'landed') { testo = `✈ ${v.flightNumber} atterrato ${hhmm(eff || v.scheduledArrival)}`; colore = '#2e6e3e'; }
+    else if (ritardoMin >= 10) { testo = `✈ ${v.flightNumber} in ritardo · arrivo ~${hhmm(eff)}`; colore = '#b87333'; }
+    else { testo = `✈ ${v.flightNumber} ${v.status === 'enroute' ? 'in volo' : 'previsto'} · ${hhmm(eff || v.scheduledArrival)}`; colore = 'var(--sea)'; }
+    return (
+      <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 10, marginLeft: 8,
+        background: colore + '18', color: colore, whiteSpace: 'nowrap' }}>{testo}</span>
+    );
+  };
+
   const rigaPreno = (p, tone, pagina) => {
     const m = mezzoAssegnato(p);
     return (
@@ -18181,6 +18209,7 @@ function CuoreOggiPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazioni, 
           <span style={{ fontSize: 12, color: 'var(--ink-2)', marginLeft: 8 }}>
             {m ? (m.targa || ('n.' + m.numero)) : 'da assegnare'}{m && m.modello ? ` · ${m.modello}` : ''}
           </span>
+          {badgeVolo(p)}
         </span>
         <span style={{ fontSize: 11, color: 'var(--muted)', flexShrink: 0, fontFamily: 'var(--font-mono, monospace)' }}>
           {formatDate(p.dal)} → {formatDate(p.al)}
