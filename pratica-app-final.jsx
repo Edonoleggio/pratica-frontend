@@ -17233,9 +17233,9 @@ export default function App() {
               {page === 'cuore_oggi' && cuoreNuovo && <CuoreOggiPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} listino={listino} pushToast={pushToast} operator={operator} setPage={setPage} fermiFlotta={fermiFlotta} customers={customers} manutenzioni={manutenzioni} />}
               {page === 'cuore_prenotazioni' && cuoreNuovo && <CuorePrenotazioniPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} setCassa={setCassa} pushToast={pushToast} operator={operator} setPage={setPage} setCuorePrefill={setCuorePrefill} fermiFlotta={fermiFlotta} customers={customers} partners={partners} agency={agency} />}
               {page === 'cuore_cal' && cuoreNuovo && <CuoreCalendarioPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} prenotazioni={prenotazioni} scadenze={scadenze} setPrenotazioni={setPrenotazioni} pushToast={pushToast} fermiFlotta={fermiFlotta} setPage={setPage} setCuorePrefill={setCuorePrefill} />}
-              {page === 'cuore_preno' && cuoreNuovo && <CuorePrenotaPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} pushToast={pushToast} prefill={cuorePrefill} fermiFlotta={fermiFlotta} />}
+              {page === 'cuore_preno' && cuoreNuovo && <CuorePrenotaPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} pushToast={pushToast} prefill={cuorePrefill} fermiFlotta={fermiFlotta} listino={listino} setCassa={setCassa} operator={operator} partners={partners} />}
               {page === 'cuore_banco' && cuoreNuovo && <CuoreBancoPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} listino={listino} pushToast={pushToast} operator={operator} fermiFlotta={fermiFlotta} />}
-              {page === 'cuore_consegna' && cuoreNuovo && <CuoreConsegnaPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} pushToast={pushToast} operator={operator} fermiFlotta={fermiFlotta} />}
+              {page === 'cuore_consegna' && cuoreNuovo && <CuoreConsegnaPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} pushToast={pushToast} operator={operator} fermiFlotta={fermiFlotta} partners={partners} />}
               {page === 'cuore_rientro' && cuoreNuovo && <CuoreRientroPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} pushToast={pushToast} setCassa={setCassa} operator={operator} />}
               {page === 'cuore_prev' && cuoreNuovo && <CuorePreventiviPage listino={listino} fleet={fleet} rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} targhe={targhe} scadenze={scadenze} setPage={setPage} setCuorePrefill={setCuorePrefill} pushToast={pushToast} fermiFlotta={fermiFlotta} />}
               {page === 'cuore_flotta' && cuoreNuovo && <CuoreFlottaPage rentmeVehicles={rentmeVehicles} targhe={targhe} setTarghe={setTarghe} fleet={fleet} scadenze={scadenze} admin={admin} />}
@@ -18999,7 +18999,7 @@ function CuoreCalendarioPage({ rentmeVehicles, targhe, fleet, prenotazioni, scad
 // Categoria esaurita → bloccato. Mezzo già occupato → bloccato. Scrive il nuovo
 // modello {tipo,categoria,assegnazioni} + rispecchia i campi vecchi per compatibilità.
 // ═══════════════════════════════════════════════════════════════════
-function CuorePrenotaPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazioni, setPrenotazioni, pushToast, prefill, fermiFlotta }) {
+function CuorePrenotaPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazioni, setPrenotazioni, pushToast, prefill, fermiFlotta, listino, setCassa, operator, partners }) {
   const parco = useMemo(() => cuoreBuildParco(rentmeVehicles, { targhe, fleet, scadenze }), [rentmeVehicles, targhe, fleet, scadenze]);
   const prenoNuove = useMemo(() => (prenotazioni || []).map(p => cuoreMigraPreno(p, parco)), [prenotazioni, parco]);
   const prenoConFermi = useMemo(() => [...prenoNuove, ...cuoreFermiToPreno(fermiFlotta, parco)], [prenoNuove, fermiFlotta, parco]);
@@ -19013,12 +19013,32 @@ function CuorePrenotaPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazion
   const [numero, setNumero] = useState(prefill?.numero ? String(prefill.numero) : ''); // mezzo preciso, facoltativo (precompilato dal calendario)
   const [cognome, setCognome] = useState(prefill?.cognome || '');
   const [nome, setNome] = useState(prefill?.nome || '');
+  const [telefono, setTelefono] = useState('');
+  const [prezzo, setPrezzo] = useState('');           // precompilato dal listino, modificabile
+  const [prezzoTouched, setPrezzoTouched] = useState(false);
+  const [acconto, setAcconto] = useState('');
+  const [metodoPagamento, setMetodoPagamento] = useState('contanti');
+  const [note, setNote] = useState('');
+  const [consegnaStruttura, setConsegnaStruttura] = useState('');
+  const [consegnaIndirizzo, setConsegnaIndirizzo] = useState('');
 
   const tipi = useMemo(() => [...new Set(parco.map(m => m.tipo).filter(Boolean))].sort(), [parco]);
   const categorieDelTipo = useMemo(() => {
     if (!tipo) return [];
     return [...new Set(parco.filter(m => canonicalTipo({ tipo: m.tipo }) === canonicalTipo({ tipo })).map(m => m.categoria).filter(Boolean))].sort();
   }, [parco, tipo]);
+
+  // Prezzo del periodo dal LISTINO (stesso matching di Banco/Preventivi cuore) — precompila, resta modificabile.
+  const prezzoListino = useMemo(() => {
+    if (!tipo || !dal || !al || al < dal) return null;
+    const userPriceMap = Object.fromEntries((listino || []).map(c => [c.id, c]));
+    const cats = LISTINO.map(mm => { const s = userPriceMap[mm.id]; return s ? { ...s, nome: mm.nome, tipo: mm.tipo, categoria: mm.categoria } : mm; });
+    const cat = cats.find(c => canonicalTipo({ tipo: c.tipo }) === canonicalTipo({ tipo }) && String(c.categoria || '').toUpperCase() === String(categoria || '').toUpperCase());
+    if (!cat) return null;
+    const prev = calcPreventivo(cat, dal, al);
+    return prev ? prev.totale : null;
+  }, [listino, tipo, categoria, dal, al]);
+  useEffect(() => { if (!prezzoTouched) setPrezzo(prezzoListino != null ? String(prezzoListino) : ''); }, [prezzoListino, prezzoTouched]);
 
   // disponibilità della categoria scelta (la regola, una sola funzione — fermi inclusi)
   const disp = useMemo(() => {
@@ -19047,6 +19067,12 @@ function CuorePrenotaPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazion
       fonte: 'manuale',
       clienteCognome: cognome.trim(),
       clienteNome: nome.trim(),
+      clienteTel: telefono.trim(),
+      prezzo: prezzo !== '' ? Number(prezzo) : null,
+      acconto: Number(acconto) > 0 ? Number(acconto) : 0,
+      metodoPagamento,
+      note: note.trim(),
+      consegnaStruttura, consegnaIndirizzo,
       dal, al,
       // ── modello NUOVO ──
       tipo, categoria,
@@ -19059,8 +19085,24 @@ function CuorePrenotaPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazion
       vehicleLabel: mezzo ? (mezzo.modello || mezzo.numero) : '',
     };
     setPrenotazioni(prev => [...(prev || []), nuova]);
-    pushToast && pushToast({ tone: 'success', title: 'Prenotazione creata (cuore)', message: `${cognome} · ${tipo} ${categoria || ''} · ${dal}→${al}${mezzo ? ' · n.' + mezzo.numero : ' · da assegnare'}` });
-    setCognome(''); setNome(''); setNumero('');
+    if (setCassa && Number(acconto) > 0) {
+      setCassa(prev => [{
+        id: 'cassa_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+        createdAt: new Date().toISOString(),
+        data: todayISO(),
+        clienteNome: [nuova.clienteCognome, nuova.clienteNome].filter(Boolean).join(' '),
+        prenotazioneId: nuova.id,
+        vehicleLabel: nuova.vehicleLabel || '',
+        importo: Number(acconto),
+        metodo: metodoPagamento || 'contanti',
+        tipo: 'acconto',
+        nota: `Acconto pren. ${formatDate(dal)}→${formatDate(al)}`,
+        operatorId: operator?.id || '', operatorName: operator?.nome || '',
+      }, ...(prev || [])]);
+    }
+    pushToast && pushToast({ tone: 'success', title: 'Prenotazione creata (cuore)', message: `${cognome} · ${tipo} ${categoria || ''} · ${dal}→${al}${mezzo ? ' · n.' + mezzo.numero : ' · da assegnare'}${Number(acconto) > 0 ? ` · acconto €${acconto} in cassa` : ''}` });
+    setCognome(''); setNome(''); setNumero(''); setTelefono(''); setAcconto(''); setNote('');
+    setPrezzoTouched(false); setConsegnaStruttura(''); setConsegnaIndirizzo('');
   }
 
   const inp = { padding: '7px 9px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 13, width: '100%' };
@@ -19119,10 +19161,33 @@ function CuorePrenotaPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazion
           {numeroOccupato && <div style={{ color: 'var(--accent, #c0392b)', fontSize: 12, marginTop: 3 }}>⛔ Questo mezzo è già occupato in queste date</div>}
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
           <div><label style={lbl}>Cognome cliente</label><input style={inp} value={cognome} onChange={e => setCognome(e.target.value)} placeholder="Rossi" /></div>
           <div><label style={lbl}>Nome</label><input style={inp} value={nome} onChange={e => setNome(e.target.value)} placeholder="Mario" /></div>
+          <div><label style={lbl}>Telefono <span style={{ textTransform: 'none', color: 'var(--muted)' }}>(facolt.)</span></label><input type="tel" style={inp} value={telefono} onChange={e => setTelefono(e.target.value)} placeholder="333 1234567" /></div>
         </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1.5fr', gap: 12 }}>
+          <div><label style={lbl}>Prezzo €{prezzoListino != null && !prezzoTouched ? <span style={{ textTransform: 'none', color: 'var(--muted)' }}> (dal listino)</span> : null}</label>
+            <input type="number" inputMode="decimal" min="0" style={inp} value={prezzo}
+              onChange={e => { setPrezzo(e.target.value); setPrezzoTouched(true); }} placeholder="—" /></div>
+          <div><label style={lbl}>Acconto € <span style={{ textTransform: 'none', color: 'var(--muted)' }}>(facolt.)</span></label>
+            <input type="number" inputMode="decimal" min="0" style={inp} value={acconto} onChange={e => setAcconto(e.target.value)} placeholder="0" /></div>
+          <div><label style={lbl}>Metodo acconto</label>
+            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+              {[{ v: 'contanti', l: '💵 Contanti' }, { v: 'carta', l: '💳 Carta' }, { v: 'bonifico', l: '🏦 Bonifico' }].map(x => (
+                <button key={x.v} type="button" onClick={() => setMetodoPagamento(x.v)} disabled={!(Number(acconto) > 0)}
+                  style={{ padding: '6px 8px', fontSize: 11, borderRadius: 6, cursor: Number(acconto) > 0 ? 'pointer' : 'not-allowed', opacity: Number(acconto) > 0 ? 1 : 0.45, border: `1px solid ${metodoPagamento === x.v ? 'var(--sea)' : 'var(--border)'}`, background: metodoPagamento === x.v ? 'rgba(31,93,131,0.08)' : 'transparent', fontWeight: metodoPagamento === x.v ? 700 : 400 }}>{x.l}</button>
+              ))}
+            </div></div>
+        </div>
+
+        <StructureSelect label="Luogo di consegna (facolt. — dove va il mezzo)" partners={partners || []}
+          structureId={consegnaStruttura} onStructureChange={setConsegnaStruttura}
+          freeText={consegnaIndirizzo} onFreeTextChange={setConsegnaIndirizzo} />
+
+        <div><label style={lbl}>Note <span style={{ textTransform: 'none', color: 'var(--muted)' }}>(facolt.)</span></label>
+          <input style={inp} value={note} onChange={e => setNote(e.target.value)} placeholder="" /></div>
 
         <button type="button" onClick={conferma} disabled={!puoConfermare}
           style={{ padding: '10px 16px', borderRadius: 8, border: 'none', fontWeight: 700, fontSize: 14,
@@ -19143,7 +19208,7 @@ function CuorePrenotaPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazion
 // DUE BLOCCHI del motore unico) e la porta a "in_corso". La targa viene presa dalla
 // TABELLA (Parco Mezzi = fonte unica) → il contratto la legge giusta (chiude pezza 2-bis).
 // ═══════════════════════════════════════════════════════════════════
-function CuoreConsegnaDialog({ preno, parco, prenoNuove, onConfirm, onClose }) {
+function CuoreConsegnaDialog({ preno, parco, prenoNuove, partners, onConfirm, onClose }) {
   const segNum = (cuoreSegmenti(preno)[0] || {}).numero;
   // mezzi liberi della categoria del noleggio nelle sue date (escludendo sé stessa →
   // il mezzo eventualmente già pre-assegnato resta scegliibile se nessun ALTRO lo occupa).
@@ -19157,6 +19222,8 @@ function CuoreConsegnaDialog({ preno, parco, prenoNuove, onConfirm, onClose }) {
   const [km, setKm] = useState(preno.kmPartenza ?? '');
   const [carburante, setCarburante] = useState(preno.carburante || '');
   const [note, setNote] = useState(preno.noteConsegna || '');
+  const [struttura, setStruttura] = useState(preno.consegnaStruttura || '');
+  const [indirizzo, setIndirizzo] = useState(preno.consegnaIndirizzo || '');
   const cliente = `${preno.clienteCognome || ''} ${preno.clienteNome || ''}`.trim() || '—';
   const FUEL = [{ v: '100', l: '🟢 Pieno' }, { v: '75', l: '🟡 3/4' }, { v: '50', l: '🟠 Metà' }, { v: '25', l: '🔴 1/4' }];
   const inp = { padding: '7px 9px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 13, width: '100%', boxSizing: 'border-box' };
@@ -19212,8 +19279,14 @@ function CuoreConsegnaDialog({ preno, parco, prenoNuove, onConfirm, onClose }) {
           <input style={inp} value={note} onChange={e => setNote(e.target.value)} placeholder="graffio paraurti, ecc." />
         </div>
 
+        <div style={{ marginTop: 12 }}>
+          <StructureSelect label="Luogo di consegna (facolt. — dove va il mezzo)" partners={partners || []}
+            structureId={struttura} onStructureChange={setStruttura}
+            freeText={indirizzo} onFreeTextChange={setIndirizzo} />
+        </div>
+
         <div style={{ display: 'flex', gap: 8, marginTop: 18 }}>
-          <button type="button" onClick={() => numero && onConfirm({ numero, km, carburante, note })} disabled={!numero}
+          <button type="button" onClick={() => numero && onConfirm({ numero, km, carburante, note, struttura, indirizzo })} disabled={!numero}
             style={{ flex: 1, padding: '10px 16px', borderRadius: 8, border: 'none', fontWeight: 700, fontSize: 14, cursor: numero ? 'pointer' : 'not-allowed', background: numero ? 'var(--sea)' : 'var(--surface-2)', color: numero ? '#fff' : 'var(--ink-2)' }}>
             🚗 Conferma consegna
           </button>
@@ -19224,7 +19297,7 @@ function CuoreConsegnaDialog({ preno, parco, prenoNuove, onConfirm, onClose }) {
   );
 }
 
-function CuoreConsegnaPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazioni, setPrenotazioni, pushToast, operator, fermiFlotta }) {
+function CuoreConsegnaPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazioni, setPrenotazioni, pushToast, operator, fermiFlotta, partners }) {
   const parco = useMemo(() => cuoreBuildParco(rentmeVehicles, { targhe, fleet, scadenze }), [rentmeVehicles, targhe, fleet, scadenze]);
   const prenoNuove = useMemo(() => (prenotazioni || []).map(p => cuoreMigraPreno(p, parco)), [prenotazioni, parco]);
   const prenoConFermi = useMemo(() => [...prenoNuove, ...cuoreFermiToPreno(fermiFlotta, parco)], [prenoNuove, fermiFlotta, parco]);
@@ -19251,7 +19324,7 @@ function CuoreConsegnaPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazio
 
   const mezzoDi = (p) => { const s = cuoreSegmenti(p)[0]; return s ? parcoByNum.get(String(s.numero)) : null; };
 
-  function confermaConsegna({ numero, km, carburante, note }) {
+  function confermaConsegna({ numero, km, carburante, note, struttura, indirizzo }) {
     const preno = target;
     const mezzo = parcoByNum.get(String(numero));
     if (!preno || !mezzo) return;
@@ -19268,6 +19341,8 @@ function CuoreConsegnaPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazio
       kmPartenza: (km !== '' && km != null) ? Number(km) : (x.kmPartenza ?? null),
       carburante: carburante || x.carburante || null,
       noteConsegna: note || x.noteConsegna || '',
+      consegnaStruttura: struttura || x.consegnaStruttura || '',
+      consegnaIndirizzo: indirizzo || x.consegnaIndirizzo || '',
       consegnaAt: new Date().toISOString(),
       consegnaOperatore: operator?.nome || x.consegnaOperatore || '',
       updatedAt: new Date().toISOString(),
@@ -19345,6 +19420,7 @@ function CuoreConsegnaPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazio
       {target && (
         <CuoreConsegnaDialog
           preno={target}
+          partners={partners}
           parco={parco}
           prenoNuove={prenoConFermi}
           onConfirm={confermaConsegna}
