@@ -17231,6 +17231,7 @@ export default function App() {
               {page === 'contracts'  && <ContractsList contracts={localContracts} operators={operators} onRetry={retryContract} onMarkReturned={markContractReturned} onSendPec={sendContractPec} pecStatus={pecStatus} online={online} />}
               {page === 'cuore' && cuoreNuovo && <CuoreAnteprimaPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} prenotazioni={prenotazioni} scadenze={scadenze} fermiFlotta={fermiFlotta} />}
               {page === 'cuore_oggi' && cuoreNuovo && <CuoreOggiPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} listino={listino} pushToast={pushToast} operator={operator} setPage={setPage} fermiFlotta={fermiFlotta} customers={customers} manutenzioni={manutenzioni} />}
+              {page === 'cuore_prenotazioni' && cuoreNuovo && <CuorePrenotazioniPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} setCassa={setCassa} pushToast={pushToast} operator={operator} setPage={setPage} setCuorePrefill={setCuorePrefill} fermiFlotta={fermiFlotta} customers={customers} partners={partners} agency={agency} />}
               {page === 'cuore_cal' && cuoreNuovo && <CuoreCalendarioPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} prenotazioni={prenotazioni} scadenze={scadenze} setPrenotazioni={setPrenotazioni} pushToast={pushToast} fermiFlotta={fermiFlotta} setPage={setPage} setCuorePrefill={setCuorePrefill} />}
               {page === 'cuore_preno' && cuoreNuovo && <CuorePrenotaPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} pushToast={pushToast} prefill={cuorePrefill} fermiFlotta={fermiFlotta} />}
               {page === 'cuore_banco' && cuoreNuovo && <CuoreBancoPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} listino={listino} pushToast={pushToast} operator={operator} fermiFlotta={fermiFlotta} />}
@@ -19010,8 +19011,8 @@ function CuorePrenotaPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazion
   const [dal, setDal] = useState(prefill?.dal || oggi);
   const [al, setAl] = useState(prefill?.al || oggi);
   const [numero, setNumero] = useState(prefill?.numero ? String(prefill.numero) : ''); // mezzo preciso, facoltativo (precompilato dal calendario)
-  const [cognome, setCognome] = useState('');
-  const [nome, setNome] = useState('');
+  const [cognome, setCognome] = useState(prefill?.cognome || '');
+  const [nome, setNome] = useState(prefill?.nome || '');
 
   const tipi = useMemo(() => [...new Set(parco.map(m => m.tipo).filter(Boolean))].sort(), [parco]);
   const categorieDelTipo = useMemo(() => {
@@ -19810,6 +19811,394 @@ function CuoreRientroPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazion
 }
 
 // ═══════════════════════════════════════════════════════════════════
+// 🫀 PRENOTAZIONI (cuore) — la LISTA con tutte le azioni, sul motore unico.
+// Era il bloccante della Fase 6: ricerca/filtri · dettaglio · modifica date
+// (proroga inclusa) coi 2 blocchi · cambia mezzo · SOSTITUZIONE da una data
+// (assegnazioni multi-segmento native, niente vehicleSchedule) · saldo in
+// cassa (formato handleSaldoRapido) · duplica → Prenota prefill · WhatsApp ·
+// contratto (STESSO ContractPdfModal del vecchio) · annulla/elimina.
+// ═══════════════════════════════════════════════════════════════════
+function CuorePrenotazioniPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazioni, setPrenotazioni, setCassa, pushToast, operator, setPage, setCuorePrefill, fermiFlotta, customers, partners, agency }) {
+  const parco = useMemo(() => cuoreBuildParco(rentmeVehicles, { targhe, fleet, scadenze }), [rentmeVehicles, targhe, fleet, scadenze]);
+  const parcoByNum = useMemo(() => new Map(parco.map(m => [String(m.numero), m])), [parco]);
+  const prenoTutte = useMemo(() => (prenotazioni || []).map(p => cuoreMigraPreno(p, parco)).filter(Boolean), [prenotazioni, parco]);
+  const prenoAttive = useMemo(() => prenoTutte.filter(p => !CUORE_PRENO_FUORI.has(String(p.stato || ''))), [prenoTutte]);
+  const prenoConFermi = useMemo(() => [...prenoAttive, ...cuoreFermiToPreno(fermiFlotta, parco)], [prenoAttive, fermiFlotta, parco]);
+  const oggi = todayISO();
+
+  const [q, setQ] = useState('');
+  const [fStato, setFStato] = useState('attive'); // attive | tutte | attesa | confermata | in_corso | completata | annullata
+  const [fTipo, setFTipo] = useState('');
+  const [limite, setLimite] = useState(100);
+  const [sel, setSel] = useState(null);        // prenotazione aperta nel dettaglio (id)
+  const [azione, setAzione] = useState(null);  // 'date' | 'mezzo' | 'sostituzione' | 'saldo' | 'elimina' | null
+  const [contratto, setContratto] = useState(null);
+
+  const tipi = useMemo(() => [...new Set(parco.map(m => m.tipo).filter(Boolean))].sort(), [parco]);
+  const STATO_LBL = { attesa: 'In attesa', confermata: 'Confermata', in_corso: 'In corso', completata: 'Completata', annullata: 'Annullata', cancellata: 'Annullata' };
+  const STATO_COL = { attesa: '#b87333', confermata: '#2e6e3e', in_corso: '#1f5d83', completata: '#888', annullata: '#c85050', cancellata: '#c85050' };
+
+  const mezzoDi = (p) => {
+    const segs = cuoreSegmenti(p);
+    if (!segs.length) return null;
+    return parcoByNum.get(String(segs[segs.length - 1].numero)) || null;
+  };
+  const mezzoLabel = (p) => {
+    const m = mezzoDi(p);
+    if (m) return `${m.targa || ('n.' + m.numero)}${m.modello ? ' · ' + m.modello : ''}`;
+    return `${p.tipo || p.vehicleType || '?'} ${p.categoria || ''} · da assegnare`.trim();
+  };
+  const clienteDi = (p) => `${p.clienteCognome || ''} ${p.clienteNome || ''}`.trim() || p.cliente || '—';
+
+  // ── Lista filtrata ──
+  const filtrate = useMemo(() => {
+    const term = q.trim().toLowerCase();
+    let out = prenoTutte.filter(p => {
+      if (fStato === 'attive') { if (CUORE_PRENO_FUORI.has(String(p.stato || ''))) return false; }
+      else if (fStato !== 'tutte' && String(p.stato || '') !== fStato) return false;
+      if (fTipo && canonicalTipo({ tipo: p.tipo || p.vehicleType }) !== fTipo) return false;
+      if (term) {
+        const m = mezzoDi(p);
+        const hay = [clienteDi(p), p.codice, p.clienteTel, m?.targa, m?.modello, p.vehicleLabel, p.vehicleTarga].filter(Boolean).join(' ').toLowerCase();
+        if (!hay.includes(term)) return false;
+      }
+      return true;
+    });
+    // ordina: prossime/in corso prima (per dal crescente da oggi), poi passate per dal decrescente
+    const fut = out.filter(p => (p.al || p.dal || '') >= oggi).sort((a, b) => (a.dal || '').localeCompare(b.dal || ''));
+    const pas = out.filter(p => (p.al || p.dal || '') < oggi).sort((a, b) => (b.dal || '').localeCompare(a.dal || ''));
+    return [...fut, ...pas];
+  }, [prenoTutte, q, fStato, fTipo, oggi]);
+
+  const visibili = filtrate.slice(0, limite);
+  const selPreno = sel ? prenoTutte.find(p => p.id === sel) : null;
+
+  // ── Aggiorna una prenotazione (modello nuovo + specchio campi vecchi) ──
+  function aggiorna(id, patch) {
+    setPrenotazioni(prev => (prev || []).map(x => x.id === id ? { ...x, ...patch, updatedAt: new Date().toISOString() } : x));
+  }
+  function specchioMezzo(mezzo) {
+    return mezzo
+      ? { vehicleId: String(mezzo.numero), vehicleTarga: mezzo.targa || '', vehicleLabel: mezzo.modello || String(mezzo.numero) }
+      : { vehicleId: null, vehicleTarga: '', vehicleLabel: '' };
+  }
+
+  // mezzo libero per un numero in una finestra (escludendo la preno stessa)?
+  function numeroLibero(numero, dal, al, excludeId) {
+    if (!numero) return true;
+    for (const p of prenoConFermi) {
+      if (!p || p.id === excludeId) continue;
+      for (const s of cuoreSegmenti(p)) {
+        if (String(s.numero) === String(numero) && cuoreOverlaps(s.dal, s.al, dal, al)) return false;
+      }
+    }
+    return true;
+  }
+
+  // ── Saldo in cassa (stesso formato di handleSaldoRapido; NON cambia lo stato:
+  //    a completare la prenotazione ci pensa il Rientro, una responsabilità sola) ──
+  function registraSaldo(p, importo, metodo) {
+    const record = {
+      id: 'cassa_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+      createdAt: new Date().toISOString(),
+      data: todayISO(),
+      clienteNome: clienteDi(p),
+      prenotazioneId: p.id,
+      vehicleLabel: (mezzoDi(p)?.modello) || p.vehicleLabel || '',
+      importo, metodo, tipo: 'saldo',
+      nota: `Saldo · ${formatDate(p.dal)}→${formatDate(p.al)}`,
+      operatorId: operator?.id || '', operatorName: operator?.nome || '',
+    };
+    setCassa && setCassa(prev => [record, ...(prev || [])]);
+    aggiorna(p.id, { saldoRegistrato: true, saldato: importo });
+    pushToast && pushToast({ tone: 'success', title: 'Saldo registrato', message: `€${importo} · ${metodo}` });
+    setAzione(null);
+  }
+
+  const inp = { padding: '7px 9px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 13, boxSizing: 'border-box' };
+  const lbl = { fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--ink-2)', display: 'block', marginBottom: 4 };
+  const btnSec = { padding: '8px 12px', border: '1px solid var(--border)', borderRadius: 7, background: 'transparent', cursor: 'pointer', fontSize: 12, color: 'var(--ink)' };
+
+  return (
+    <div style={{ maxWidth: 1080, margin: '0 auto' }}>
+      <div className="label" style={{ color: 'var(--sea)' }}>NUOVO CUORE · PRENOTAZIONI (anteprima)</div>
+      <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: 22, letterSpacing: '-0.01em', margin: '2px 0 4px' }}>Prenotazioni</h1>
+      <p style={{ fontSize: 13, color: 'var(--ink-2)', marginBottom: 14 }}>
+        La lista completa sul <strong>motore unico</strong>: targa dalla tabella, modifiche coi due blocchi
+        anti-overbooking, sostituzione mezzo nativa (segmenti), saldo, contratto, WhatsApp.
+      </p>
+
+      {/* filtri */}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
+        <input style={{ ...inp, minWidth: 220 }} placeholder="Cerca cliente, codice, targa…" value={q} onChange={e => { setQ(e.target.value); setLimite(100); }} />
+        <select style={inp} value={fStato} onChange={e => { setFStato(e.target.value); setLimite(100); }}>
+          <option value="attive">Attive (no annullate/completate)</option>
+          <option value="tutte">Tutte</option>
+          <option value="attesa">In attesa</option>
+          <option value="confermata">Confermate</option>
+          <option value="in_corso">In corso</option>
+          <option value="completata">Completate</option>
+          <option value="annullata">Annullate</option>
+        </select>
+        <select style={inp} value={fTipo} onChange={e => { setFTipo(e.target.value); setLimite(100); }}>
+          <option value="">Tutti i tipi</option>
+          {tipi.map(t => <option key={t} value={t}>{t}</option>)}
+        </select>
+        <span style={{ fontSize: 12, color: 'var(--muted)' }}>{filtrate.length} trovate</span>
+        <span style={{ flex: 1 }} />
+        <button type="button" style={{ ...btnSec, background: 'var(--sea)', color: '#fff', border: 'none', fontWeight: 700 }}
+          onClick={() => { setCuorePrefill && setCuorePrefill({ dal: oggi, al: oggi }); setPage && setPage('cuore_preno'); }}>
+          + Nuova prenotazione
+        </button>
+      </div>
+
+      {/* lista */}
+      <div className="card-paper" style={{ padding: 0, overflow: 'hidden' }}>
+        {visibili.map(p => {
+          const m = mezzoDi(p);
+          const st = String(p.stato || '');
+          return (
+            <button key={p.id} type="button" onClick={() => { setSel(p.id); setAzione(null); }}
+              style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', padding: '9px 13px',
+                background: 'transparent', border: 'none', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}>
+              <span style={{ width: 86, flexShrink: 0, fontFamily: 'var(--font-mono, monospace)', fontSize: 11, color: 'var(--muted)' }}>{p.codice || p.id.slice(0, 8)}</span>
+              <span style={{ flex: '1 1 160px', minWidth: 0, fontWeight: 600, fontSize: 13, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{clienteDi(p)}</span>
+              <span style={{ flex: '1 1 180px', minWidth: 0, fontSize: 12, color: 'var(--ink-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {m ? <><b style={{ fontFamily: 'var(--font-mono, monospace)', fontWeight: 600 }}>{m.targa || ('n.' + m.numero)}</b>{m.modello ? ` · ${m.modello}` : ''}</> : <em style={{ color: 'var(--accent, #c0392b)' }}>da assegnare · {p.tipo || ''} {p.categoria || ''}</em>}
+              </span>
+              <span style={{ width: 150, flexShrink: 0, fontFamily: 'var(--font-mono, monospace)', fontSize: 11, color: 'var(--ink-2)' }}>{formatDate(p.dal)} → {formatDate(p.al)}</span>
+              <span style={{ width: 64, flexShrink: 0, fontSize: 12, textAlign: 'right', fontFamily: 'var(--font-mono, monospace)', color: 'var(--ink)' }}>{p.prezzo != null && p.prezzo !== '' ? `€${p.prezzo}` : ''}</span>
+              <span style={{ width: 84, flexShrink: 0, textAlign: 'center', fontSize: 10, padding: '2px 0', borderRadius: 10, fontWeight: 600, background: (STATO_COL[st] || '#888') + '22', color: STATO_COL[st] || 'var(--muted)' }}>{STATO_LBL[st] || st || '—'}</span>
+            </button>
+          );
+        })}
+        {visibili.length === 0 && <div style={{ padding: 24, textAlign: 'center', color: 'var(--ink-2)', fontSize: 13 }}>Nessuna prenotazione per questi filtri.</div>}
+      </div>
+      {filtrate.length > limite && (
+        <button type="button" onClick={() => setLimite(l => l + 200)} style={{ ...btnSec, marginTop: 10 }}>
+          Mostra altre {Math.min(200, filtrate.length - limite)} (su {filtrate.length - limite} rimanenti)
+        </button>
+      )}
+
+      {/* ── DETTAGLIO ── */}
+      {selPreno && (() => {
+        const p = selPreno;
+        const m = mezzoDi(p);
+        const st = String(p.stato || '');
+        const attiva = !CUORE_PRENO_FUORI.has(st);
+        const residuo = Math.max(0, (Number(p.prezzo) || 0) - (Number(p.acconto) || 0));
+        const tel = (p.clienteTel || '').replace(/\D/g, '');
+        const riga = (l, v) => (v == null || v === '') ? null : (
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, fontSize: 13, padding: '4px 0', borderBottom: '1px solid var(--border)' }}>
+            <span style={{ color: 'var(--ink-2)' }}>{l}</span><span style={{ fontWeight: 600, textAlign: 'right' }}>{v}</span>
+          </div>
+        );
+        return (
+          <div onClick={() => { setSel(null); setAzione(null); }} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
+            <div onClick={e => e.stopPropagation()} className="card-paper" style={{ padding: 20, width: 480, maxWidth: '94vw', maxHeight: '90vh', overflowY: 'auto' }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
+                <h3 style={{ fontFamily: 'var(--font-serif)', fontSize: 18, marginBottom: 2 }}>{clienteDi(p)}</h3>
+                <span style={{ fontSize: 10, padding: '2px 9px', borderRadius: 10, fontWeight: 700, background: (STATO_COL[st] || '#888') + '22', color: STATO_COL[st] || 'var(--muted)' }}>{STATO_LBL[st] || st}</span>
+              </div>
+              <p style={{ fontSize: 12, color: 'var(--ink-2)', marginBottom: 10, fontFamily: 'var(--font-mono, monospace)' }}>
+                {p.codice || p.id} · {p.fonte === 'rentme' ? 'da RentMe' : p.fonte === 'walk_in' ? 'walk-in' : 'manuale'}
+              </p>
+              {riga('Mezzo', m ? `${m.modello || ''} ${m.targa || 'n.' + m.numero}`.trim() : `${p.tipo || ''} ${p.categoria || ''} — da assegnare`)}
+              {riga('Periodo', `${formatDate(p.dal)} → ${formatDate(p.al)}`)}
+              {riga('Telefono', p.clienteTel)}
+              {riga('Prezzo', p.prezzo != null && p.prezzo !== '' ? `€${p.prezzo}` : null)}
+              {riga('Acconto', Number(p.acconto) > 0 ? `€${p.acconto}` : null)}
+              {riga('Saldo', p.saldoRegistrato ? `✓ registrato (€${p.saldato ?? ''})` : (residuo > 0 ? `residuo €${residuo}` : null))}
+              {riga('Note', p.note || p.noteCliente)}
+              {cuoreSegmenti(p).length > 1 && riga('Segmenti', cuoreSegmenti(p).map(s => `n.${s.numero} ${formatDate(s.dal)}→${formatDate(s.al)}`).join(' · '))}
+
+              {/* azioni principali */}
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 14 }}>
+                {attiva && <button type="button" style={btnSec} onClick={() => setAzione(azione === 'date' ? null : 'date')}>Date / proroga</button>}
+                {attiva && <button type="button" style={btnSec} onClick={() => setAzione(azione === 'mezzo' ? null : 'mezzo')}>{m ? 'Cambia mezzo' : 'Assegna mezzo'}</button>}
+                {st === 'in_corso' && m && <button type="button" style={btnSec} onClick={() => setAzione(azione === 'sostituzione' ? null : 'sostituzione')}>Sostituzione guasto</button>}
+                {attiva && !p.saldoRegistrato && (Number(p.prezzo) || 0) > 0 && <button type="button" style={btnSec} onClick={() => setAzione(azione === 'saldo' ? null : 'saldo')}>Saldo in cassa</button>}
+                <button type="button" style={btnSec} onClick={() => setContratto(p)}>Contratto</button>
+                <button type="button" style={btnSec} onClick={() => { setCuorePrefill && setCuorePrefill({ tipo: canonicalTipo({ tipo: p.tipo || p.vehicleType }), categoria: p.categoria || '', dal: p.dal, al: p.al, cognome: p.clienteCognome || '', nome: p.clienteNome || '' }); setSel(null); setPage && setPage('cuore_preno'); }}>Duplica</button>
+                {tel && <a href={`https://wa.me/${tel}`} target="_blank" rel="noreferrer" style={{ ...btnSec, textDecoration: 'none', background: 'rgba(37,211,102,0.13)', color: '#25d366', border: 'none', fontWeight: 700, display: 'inline-flex', alignItems: 'center' }}>WA</a>}
+              </div>
+
+              {/* pannelli azione */}
+              {azione === 'date' && <CuoreEditDate p={p} m={m} oggi={oggi} numeroLibero={numeroLibero} parco={parco} prenoConFermi={prenoConFermi}
+                onSave={(dal, al) => {
+                  const segs = cuoreSegmenti(p);
+                  const patch = { dal, al };
+                  if (segs.length === 1) patch.assegnazioni = [{ numero: segs[0].numero, dal, al }];
+                  else if (segs.length > 1) patch.assegnazioni = segs.map((s, i) => ({ ...s, dal: i === 0 ? dal : s.dal, al: i === segs.length - 1 ? al : s.al }));
+                  aggiorna(p.id, patch);
+                  pushToast && pushToast({ tone: 'success', title: 'Date aggiornate', message: `${formatDate(dal)} → ${formatDate(al)}` });
+                  setAzione(null);
+                }} />}
+              {azione === 'mezzo' && (() => {
+                const a = cuoreAvailability(parco, prenoConFermi, { tipo: canonicalTipo({ tipo: p.tipo || p.vehicleType }), categoria: p.categoria || '', dal: p.dal, al: p.al, excludeId: p.id });
+                return (
+                  <div style={{ marginTop: 12 }}>
+                    <label style={lbl}>Mezzi liberi {formatDate(p.dal)} → {formatDate(p.al)} ({a.mezziLiberi.length})</label>
+                    {a.mezziLiberi.length === 0 ? <div style={{ fontSize: 12, color: 'var(--accent, #c0392b)', fontWeight: 600 }}>⛔ Nessun mezzo libero in queste date</div> : (
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(135px, 1fr))', gap: 6, maxHeight: '26vh', overflowY: 'auto' }}>
+                        {a.mezziLiberi.map(x => (
+                          <button key={x.numero} type="button" onClick={() => {
+                            aggiorna(p.id, { assegnazioni: [{ numero: String(x.numero), dal: p.dal, al: p.al }], ...specchioMezzo(x) });
+                            pushToast && pushToast({ tone: 'success', title: m ? 'Mezzo cambiato' : 'Mezzo assegnato', message: `${x.modello || ''} ${x.targa || 'n.' + x.numero}` });
+                            setAzione(null);
+                          }} style={{ textAlign: 'left', padding: '7px 9px', border: '1px solid var(--border)', borderRadius: 7, background: 'transparent', cursor: 'pointer' }}>
+                            <div style={{ fontFamily: 'var(--font-mono, monospace)', fontWeight: 700, fontSize: 12 }}>{x.targa || ('n.' + x.numero)}</div>
+                            <div style={{ fontSize: 10, color: 'var(--ink-2)' }}>{x.modello || x.tipo} · n.{x.numero}</div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+              {azione === 'sostituzione' && (() => {
+                // guasto OGGI: il segmento corrente si chiude a ieri (il mezzo guasto si libera),
+                // il nuovo mezzo prende da oggi fino ad al. Storia completa nei segmenti.
+                const ieri = (() => { const d = new Date(oggi + 'T12:00:00'); d.setDate(d.getDate() - 1); return d.toISOString().slice(0, 10); })();
+                const a = cuoreAvailability(parco, prenoConFermi, { tipo: canonicalTipo({ tipo: p.tipo || p.vehicleType }), categoria: p.categoria || '', dal: oggi, al: p.al, excludeId: p.id });
+                const candidati = a.mezziLiberi.filter(x => String(x.numero) !== String(m?.numero));
+                return (
+                  <div style={{ marginTop: 12 }}>
+                    <label style={lbl}>Sostituzione da OGGI — il {m?.targa || ('n.' + m?.numero)} si ferma, serve un mezzo per {formatDate(oggi)} → {formatDate(p.al)} ({candidati.length} liberi)</label>
+                    {candidati.length === 0 ? <div style={{ fontSize: 12, color: 'var(--accent, #c0392b)', fontWeight: 600 }}>⛔ Nessun mezzo libero per il resto del periodo</div> : (
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(135px, 1fr))', gap: 6, maxHeight: '26vh', overflowY: 'auto' }}>
+                        {candidati.map(x => (
+                          <button key={x.numero} type="button" onClick={() => {
+                            const tenuti = [];
+                            cuoreSegmenti(p).forEach(s => {
+                              if (s.al < oggi) tenuti.push(s);
+                              else if (s.dal < oggi) tenuti.push({ ...s, al: ieri });
+                            });
+                            tenuti.push({ numero: String(x.numero), dal: oggi, al: p.al });
+                            aggiorna(p.id, { assegnazioni: tenuti, ...specchioMezzo(x), noteInterne: `${p.noteInterne ? p.noteInterne + ' · ' : ''}Sostituzione ${formatDate(oggi)}: ${m?.targa || m?.numero} → ${x.targa || x.numero}` });
+                            pushToast && pushToast({ tone: 'success', title: 'Mezzo sostituito', message: `${x.modello || ''} ${x.targa || 'n.' + x.numero} da ${formatDate(oggi)}` });
+                            setAzione(null);
+                          }} style={{ textAlign: 'left', padding: '7px 9px', border: '1px solid var(--border)', borderRadius: 7, background: 'transparent', cursor: 'pointer' }}>
+                            <div style={{ fontFamily: 'var(--font-mono, monospace)', fontWeight: 700, fontSize: 12 }}>{x.targa || ('n.' + x.numero)}</div>
+                            <div style={{ fontSize: 10, color: 'var(--ink-2)' }}>{x.modello || x.tipo} · n.{x.numero}</div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+              {azione === 'saldo' && <CuoreSaldoForm residuo={residuo} onConfirm={(importo, metodo) => registraSaldo(p, importo, metodo)} />}
+
+              {/* azioni distruttive + chiudi */}
+              <div style={{ display: 'flex', gap: 8, marginTop: 16, alignItems: 'center' }}>
+                {attiva && (azione === 'elimina'
+                  ? <>
+                      <span style={{ fontSize: 12, color: 'var(--accent, #c0392b)', fontWeight: 600 }}>Confermi?</span>
+                      <button type="button" style={{ ...btnSec, borderColor: 'var(--accent, #c0392b)', color: 'var(--accent, #c0392b)', fontWeight: 700 }}
+                        onClick={() => { aggiorna(p.id, { stato: 'annullata' }); pushToast && pushToast({ tone: 'info', title: 'Prenotazione annullata' }); setAzione(null); }}>
+                        Annulla prenotazione
+                      </button>
+                      <button type="button" style={btnSec} onClick={() => setAzione(null)}>No</button>
+                    </>
+                  : <button type="button" style={{ ...btnSec, color: 'var(--accent, #c0392b)', borderColor: 'transparent' }} onClick={() => setAzione('elimina')}>Annulla prenotazione…</button>
+                )}
+                <span style={{ flex: 1 }} />
+                <button type="button" style={btnSec} onClick={() => { setSel(null); setAzione(null); }}>Chiudi</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* contratto — STESSO modale del vecchio (prova legale identica) */}
+      {contratto && (
+        <ContractPdfModal
+          data={prenoToContractData(contratto, fleet, customers, targhe, rentmeVehicles)}
+          operator={operator}
+          partners={partners || []}
+          agency={agency}
+          contractId={`EDO-${new Date(contratto.dal || Date.now()).getFullYear()}-${contratto.codice || '?'}`}
+          contractDate={formatDate(contratto.dal)}
+          onClose={() => setContratto(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+// editor date/proroga della lista cuore (componente separato per stato locale pulito)
+function CuoreEditDate({ p, m, oggi, numeroLibero, parco, prenoConFermi, onSave }) {
+  const [dal, setDal] = useState(p.dal);
+  const [al, setAl] = useState(p.al);
+  const plusG = (n) => { const d = new Date((p.al || oggi) + 'T12:00:00'); d.setDate(d.getDate() + n); setAl(d.toISOString().slice(0, 10)); };
+  const segs = cuoreSegmenti(p);
+  // verifica: ogni mezzo dei segmenti deve essere libero nella nuova finestra (fuori dai propri segmenti);
+  // se non c'è mezzo, verifica la categoria.
+  let ok = true, motivo = '';
+  if (dal && al && al >= dal) {
+    if (segs.length) {
+      const numeri = [...new Set(segs.map(s => String(s.numero)))];
+      for (const n of numeri) {
+        if (!numeroLibero(n, dal, al, p.id)) { ok = false; motivo = `il mezzo n.${n} è occupato nel nuovo periodo`; break; }
+      }
+    } else {
+      const a = cuoreAvailability(parco, prenoConFermi, { tipo: canonicalTipo({ tipo: p.tipo || p.vehicleType }), categoria: p.categoria || '', dal, al, excludeId: p.id });
+      if (a.liberi <= 0) { ok = false; motivo = 'nessun mezzo libero in categoria nel nuovo periodo'; }
+    }
+  } else { ok = false; motivo = 'date non valide'; }
+  const lbl = { fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--ink-2)', display: 'block', marginBottom: 4 };
+  const inp = { padding: '7px 9px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 13 };
+  return (
+    <div style={{ marginTop: 12 }}>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+        <div><label style={lbl}>Dal</label><input type="date" style={inp} value={dal} onChange={e => { setDal(e.target.value); if (e.target.value > al) setAl(e.target.value); }} /></div>
+        <div><label style={lbl}>Al</label><input type="date" style={inp} value={al} min={dal} onChange={e => setAl(e.target.value)} /></div>
+        <div style={{ display: 'flex', gap: 4 }}>
+          {[1, 2, 3].map(n => <button key={n} type="button" onClick={() => plusG(n)} style={{ padding: '6px 9px', fontSize: 11, border: '1px solid var(--border)', borderRadius: 12, background: 'transparent', cursor: 'pointer', color: 'var(--ink-2)' }}>proroga +{n}g</button>)}
+        </div>
+      </div>
+      {!ok && <div style={{ fontSize: 12, color: 'var(--accent, #c0392b)', fontWeight: 600, marginTop: 8 }}>⛔ {motivo}</div>}
+      <button type="button" disabled={!ok || (dal === p.dal && al === p.al)} onClick={() => ok && onSave(dal, al)}
+        style={{ marginTop: 10, padding: '8px 16px', borderRadius: 7, border: 'none', fontWeight: 700, fontSize: 13,
+          cursor: (ok && !(dal === p.dal && al === p.al)) ? 'pointer' : 'not-allowed',
+          background: (ok && !(dal === p.dal && al === p.al)) ? 'var(--sea)' : 'var(--surface-2)',
+          color: (ok && !(dal === p.dal && al === p.al)) ? '#fff' : 'var(--ink-2)' }}>
+        Salva nuove date
+      </button>
+    </div>
+  );
+}
+
+// mini-form saldo della lista cuore
+function CuoreSaldoForm({ residuo, onConfirm }) {
+  const [importo, setImporto] = useState(residuo > 0 ? String(residuo) : '');
+  const [metodo, setMetodo] = useState('contanti');
+  const METODI = [{ v: 'contanti', l: '💵 Contanti' }, { v: 'carta', l: '💳 Carta' }, { v: 'bonifico', l: '🏦 Bonifico' }, { v: 'altro', l: 'Altro' }];
+  const lbl = { fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--ink-2)', display: 'block', marginBottom: 4 };
+  const inp = { padding: '7px 9px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 13, width: '100%', boxSizing: 'border-box' };
+  const ok = Number(importo) > 0;
+  return (
+    <div style={{ marginTop: 12, padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 8 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '110px 1fr', gap: 12 }}>
+        <div><label style={lbl}>Importo €</label><input type="number" inputMode="decimal" min="0" style={inp} value={importo} onChange={e => setImporto(e.target.value)} /></div>
+        <div><label style={lbl}>Metodo</label>
+          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+            {METODI.map(x => (
+              <button key={x.v} type="button" onClick={() => setMetodo(x.v)}
+                style={{ padding: '6px 8px', fontSize: 11, borderRadius: 6, cursor: 'pointer', border: `1px solid ${metodo === x.v ? 'var(--sea)' : 'var(--border)'}`, background: metodo === x.v ? 'rgba(31,93,131,0.08)' : 'transparent', fontWeight: metodo === x.v ? 700 : 400 }}>{x.l}</button>
+            ))}
+          </div></div>
+      </div>
+      <button type="button" disabled={!ok} onClick={() => ok && onConfirm(Number(importo), metodo)}
+        style={{ marginTop: 10, padding: '8px 16px', borderRadius: 7, border: 'none', fontWeight: 700, fontSize: 13, cursor: ok ? 'pointer' : 'not-allowed', background: ok ? 'var(--sea)' : 'var(--surface-2)', color: ok ? '#fff' : 'var(--ink-2)' }}>
+        Registra saldo
+      </button>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
 // 🫀 FLOTTA NUOVA (Fase 4) — il Parco Mezzi (lista unica) con modifica TARGA.
 // Targa = una fonte sola (la tabella). "(manca)" evidenziato. Sistema qui le
 // targhe mancanti (mxu 167, panda 350…). Stato/scadenze read-only per ora.
@@ -20001,6 +20390,7 @@ function Sidebar({ page, setPage, onNew, online, agency, rentmeSyncStatus, rentm
     items.push({ id: 'cuore_oggi', label: 'Oggi (cuore)', icon: Sparkles });
     items.push({ id: 'cuore_cal', label: 'Calendario nuovo', icon: Sparkles });
     items.push({ id: 'cuore_preno', label: 'Prenota (cuore)', icon: Sparkles });
+    items.push({ id: 'cuore_prenotazioni', label: 'Prenotazioni (cuore)', icon: Sparkles });
     items.push({ id: 'cuore_banco', label: 'Banco (cuore)', icon: Sparkles });
     items.push({ id: 'cuore_consegna', label: 'Consegna (cuore)', icon: Sparkles });
     items.push({ id: 'cuore_rientro', label: 'Rientro (cuore)', icon: Sparkles });
