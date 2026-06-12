@@ -13576,6 +13576,26 @@ function NaviLampedusaWidget({ feed } = {}) {
     return <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 9px', borderRadius: 999, background: t.bg, color: t.fg, whiteSpace: 'nowrap', textTransform: 'capitalize' }}>{v.stato}</span>;
   };
 
+  // ── Avvisi LIVE Liberty Lines (corse sospese/variazioni che toccano le Pelagie) ──
+  const avvisi = data?.avvisi || [];
+  const avvisiBlock = avvisi.length > 0 && (
+    <div style={{ marginBottom: 12 }}>
+      {avvisi.map((a, i) => (
+        <a key={a.url || i} href={a.url} target="_blank" rel="noreferrer"
+          style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '9px 12px', marginBottom: 6,
+            background: 'rgba(208,152,48,0.10)', border: '1.5px solid #d09830', borderRadius: 8,
+            textDecoration: 'none', color: 'inherit' }}>
+          <AlertTriangle style={{ width: 14, height: 14, flexShrink: 0, marginTop: 1, color: '#b87333' }} />
+          <span style={{ minWidth: 0, fontSize: 12, lineHeight: 1.45 }}>
+            <strong style={{ color: '#9a6a1a' }}>{a.title}</strong>
+            {a.excerpt ? <span style={{ color: 'var(--ink-2)' }}> — {a.excerpt.slice(0, 170)}</span> : null}
+            <span style={{ color: 'var(--muted)' }}> · {a.operator || 'Liberty Lines'} · apri ↗</span>
+          </span>
+        </a>
+      ))}
+    </div>
+  );
+
   const Card = ({ children }) => (
     <div className="card-paper" style={{ padding: '14px 16px', marginBottom: 24 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
@@ -13588,6 +13608,9 @@ function NaviLampedusaWidget({ feed } = {}) {
             style={{ border: '1px solid var(--border)', background: 'transparent', borderRadius: 6, padding: '3px 7px', cursor: 'pointer', color: 'var(--muted)', fontSize: 11 }}>↻</button>
         </div>
       </div>
+
+      {/* banner avvisi live (corse sospese) — sopra a tutto */}
+      {avvisiBlock}
       {children}
     </div>
   );
@@ -13932,7 +13955,7 @@ function CruscottoLiveOggi({ voliFeed, naviFeed, meteoFeed, liveView, setLiveVie
                 <button type="button" onClick={() => setLiveView(v => v === 'navi' ? null : 'navi')}
                   className="hero-tile" aria-expanded={liveView === 'navi'}
                   style={{ ...tileBase, cursor: 'pointer', boxShadow: liveView === 'navi' ? '0 0 0 2px rgba(255,255,255,0.5) inset' : 'none' }}>
-                  <div style={tl}><Ship style={{ width: 13, height: 13, opacity: 0.85 }} /> Prossima nave <ChevronDown style={{ width: 12, height: 12, marginLeft: 'auto', transform: liveView === 'navi' ? 'rotate(180deg)' : 'none', transition: 'transform .18s' }} /></div>
+                  <div style={tl}><Ship style={{ width: 13, height: 13, opacity: 0.85 }} /> Prossima nave {(naviFeed.data?.avvisi?.length > 0) ? <AlertTriangle style={{ width: 12, height: 12, color: '#ffd27a' }} /> : null}<ChevronDown style={{ width: 12, height: 12, marginLeft: 'auto', transform: liveView === 'navi' ? 'rotate(180deg)' : 'none', transition: 'transform .18s' }} /></div>
                   {nextShip ? (
                     <>
                       <div style={{ ...big, fontSize: 18, textTransform: 'capitalize' }}>{(nextShip.name || `MMSI ${nextShip.mmsi}`).toLowerCase()}</div>
