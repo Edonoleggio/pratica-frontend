@@ -16157,6 +16157,29 @@ export default function App() {
   const [fleet,        setFleet,        fleetSync]     = usePersistentState('edo:v1:fleet',     [],                      { ...sharedOpts, migrate: migrateFleet });
   const [customers,    setCustomers,    customersSync] = usePersistentState('edo:v1:customers', INITIAL_CUSTOMERS,       sharedOpts);
   const [partners,     setPartners,     partnersSync]  = usePersistentState('edo:v1:partners',  INITIAL_PARTNERS,        { ...sharedOpts, migrate: migratePartners });
+
+  // ── Strutture ← Google My Maps: sync AUTOMATICO una volta al giorno (additivo,
+  // silenzioso: toast solo se ci sono novità; mappa non configurata → riprova domani). ──
+  useEffect(() => {
+    const KEY = 'edo:v1:mymapsAutoAt';
+    let last = 0; try { last = Number(JSON.parse(localStorage.getItem(KEY) || '0')) || 0; } catch { /* riprova */ }
+    if (Date.now() - last < 20 * 60 * 60 * 1000) return;
+    (async () => {
+      try {
+        const places = await fetchMyMapsPlaces();
+        if (!places.length) return;
+        setPartners(prev => {
+          const { merged, aggiunte, aggiornate } = mergeStrutture(prev, places);
+          if (aggiunte || aggiornate) {
+            pushToast && pushToast({ tone: 'info', title: 'Strutture da My Maps', message: `${aggiunte} nuove · ${aggiornate} aggiornate` });
+            return merged;
+          }
+          return prev;
+        });
+      } catch { /* non configurata/offline → in silenzio */ }
+      finally { try { localStorage.setItem(KEY, JSON.stringify(Date.now())); } catch { /* pieno */ } }
+    })();
+  }, []);
   const [operators,    setOperators,    operatorsSync] = usePersistentState('edo:v1:operators', MOCK_OPERATORS,          { ...sharedOpts, migrate: migrateOperators });
   const [cargosConfig, setCargosConfig, cargosSync]    = usePersistentState('edo:v1:cargos',    INITIAL_CARGOS_CONFIG,   { ...sharedOpts, migrate: migrateCargos });
   const [agency,       setAgency,       agencySync]    = usePersistentState('edo:v1:agency',    INITIAL_AGENCY,          { ...sharedOpts, migrate: migrateAgency });
@@ -17274,7 +17297,7 @@ export default function App() {
                   <StagioniEditor stagioni={stagioni} onSave={(s)=>{setStagioni(s); pushToast && pushToast({tone:'success',title:'Stagioni aggiornate',message:'Configurazione stagionale salvata'});}} />
                 </div>
               </div>}
-              {page === 'settings'   && <SettingsPage operator={operator} operators={operators} admin={admin} cargosConfig={cargosConfig} backendStatus={backendStatus} lastCheck={lastCheck} apiBaseUrl={apiBaseUrl} syncStatus={allSyncStatus} agency={agency} customers={customers} contracts={localContracts} onSyncAll={syncAll} onExportBackup={exportBackup} onImportBackup={importBackup} pushToast={pushToast} onAddOperator={() => setModal('newOperator')} onEditOperator={(o) => setModal({ type: 'editOperator', operator: o })} onDeleteOperator={requestDeleteOperator} onEditCargos={() => setModal('cargosConfig')} onEditApiBase={() => setModal('apiBase')} onEditAgency={() => setModal('agency')} onResetCustomers={requestResetCustomers} onResetContracts={requestResetContracts} onResetEverything={requestResetEverything} onImportFleetFromRentMe={requestImportFleetFromRentMe} rentmeConfig={rentmeConfig} setRentmeConfig={setRentmeConfig} rentmeSync={rentmeSync} rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} appUsers={appUsers} setAppUsers={setAppUsers} onLogout={handleLogout} driveClientId={driveClientId} setDriveClientId={setDriveClientId} driveLastBackup={driveLastBackup} onDriveBackup={driveBackup} driveAutoEnabled={driveAutoEnabled} setDriveAutoEnabled={setDriveAutoEnabled} renderLastBackup={renderLastBackup} onRenderBackup={backupToRender} backupToken={backupToken} setBackupToken={setBackupToken} pecStatus={pecStatus} onPecVerify={verifyPecConnection} cuoreNuovo={cuoreNuovo} setCuoreNuovo={setCuoreNuovo} onImportStorico={({ prenotazioni: newP, clienti: newC }) => {
+              {page === 'settings'   && <SettingsPage operator={operator} operators={operators} admin={admin} cargosConfig={cargosConfig} backendStatus={backendStatus} lastCheck={lastCheck} apiBaseUrl={apiBaseUrl} syncStatus={allSyncStatus} agency={agency} customers={customers} contracts={localContracts} onSyncAll={syncAll} onExportBackup={exportBackup} onImportBackup={importBackup} pushToast={pushToast} onAddOperator={() => setModal('newOperator')} onEditOperator={(o) => setModal({ type: 'editOperator', operator: o })} onDeleteOperator={requestDeleteOperator} onEditCargos={() => setModal('cargosConfig')} onEditApiBase={() => setModal('apiBase')} onEditAgency={() => setModal('agency')} onResetCustomers={requestResetCustomers} onResetContracts={requestResetContracts} onResetEverything={requestResetEverything} onImportFleetFromRentMe={requestImportFleetFromRentMe} rentmeConfig={rentmeConfig} setRentmeConfig={setRentmeConfig} rentmeSync={rentmeSync} rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} appUsers={appUsers} setAppUsers={setAppUsers} onLogout={handleLogout} driveClientId={driveClientId} setDriveClientId={setDriveClientId} driveLastBackup={driveLastBackup} onDriveBackup={driveBackup} driveAutoEnabled={driveAutoEnabled} setDriveAutoEnabled={setDriveAutoEnabled} renderLastBackup={renderLastBackup} onRenderBackup={backupToRender} backupToken={backupToken} setBackupToken={setBackupToken} pecStatus={pecStatus} onPecVerify={verifyPecConnection} cuoreNuovo={cuoreNuovo} setCuoreNuovo={setCuoreNuovo} partners={partners} setPartners={setPartners} onImportStorico={({ prenotazioni: newP, clienti: newC }) => {
                 setPrenotazioni(prev => {
                   const existKeys = new Set(prev.map(p => p.id));
                   return [...prev, ...newP.filter(p => !existKeys.has(p.id))];
@@ -23073,7 +23096,128 @@ function SecuritySection({ appUsers, setAppUsers, onLogout, pushToast }) {
   );
 }
 
-function SettingsPage({ operator, operators, cargosConfig, admin, backendStatus, lastCheck, apiBaseUrl, syncStatus, agency, onSyncAll, onExportBackup, onImportBackup, pushToast, onAddOperator, onEditOperator, onDeleteOperator, onEditCargos, onEditApiBase, onEditAgency, onResetCustomers, onResetContracts, onResetEverything, onImportFleetFromRentMe, customers, contracts, rentmeConfig, setRentmeConfig, rentmeSync, rentmeVehicles, prenotazioni, onImportStorico, appUsers, setAppUsers, onLogout, driveClientId, setDriveClientId, driveLastBackup, onDriveBackup, driveAutoEnabled, setDriveAutoEnabled, renderLastBackup, onRenderBackup, backupToken, setBackupToken, pecStatus, onPecVerify, cuoreNuovo, setCuoreNuovo }) {
+// ═══════════════════════════════════════════════════════════════════
+// STRUTTURE PARTNER — import/export CSV + sync da Google My Maps.
+// Il merge è SEMPRE ADDITIVO (match per nome, case-insensitive): aggiunge e
+// aggiorna, NON cancella mai — le strutture sono citate nei contratti.
+// ═══════════════════════════════════════════════════════════════════
+function parseCSVRighe(text) {
+  // mini-parser CSV con virgolette; separatore auto (; o ,)
+  const sep = (text.split(';').length >= text.split(',').length) ? ';' : ',';
+  const rows = [];
+  let row = [], cur = '', inQ = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inQ) {
+      if (ch === '"') { if (text[i + 1] === '"') { cur += '"'; i++; } else inQ = false; }
+      else cur += ch;
+    } else if (ch === '"') inQ = true;
+    else if (ch === sep) { row.push(cur); cur = ''; }
+    else if (ch === '\n' || ch === '\r') {
+      if (ch === '\r' && text[i + 1] === '\n') i++;
+      row.push(cur); cur = '';
+      if (row.some(c => c.trim() !== '')) rows.push(row);
+      row = [];
+    } else cur += ch;
+  }
+  row.push(cur);
+  if (row.some(c => c.trim() !== '')) rows.push(row);
+  return rows;
+}
+
+function parseStruttureCSV(text) {
+  const rows = parseCSVRighe(String(text || '').replace(/^\uFEFF/, ''));
+  if (!rows.length) return [];
+  const header = rows[0].map(h => h.trim().toLowerCase());
+  const idx = (names) => header.findIndex(h => names.includes(h));
+  const iNome = idx(['nome', 'name', 'struttura']);
+  if (iNome === -1) return []; // intestazione "nome" obbligatoria
+  const iTipo = idx(['tipo', 'type']);
+  const iInd = idx(['indirizzo', 'address']);
+  const iLat = idx(['lat', 'latitudine', 'latitude']);
+  const iLng = idx(['lng', 'lon', 'longitudine', 'longitude']);
+  return rows.slice(1).map(r => {
+    const nome = (r[iNome] || '').trim();
+    if (!nome) return null;
+    // attenzione: Number('') === 0 → cella vuota diventerebbe lat/lng 0,0 (oceano!)
+    const rawLat = iLat >= 0 ? String(r[iLat] ?? '').trim() : '';
+    const rawLng = iLng >= 0 ? String(r[iLng] ?? '').trim() : '';
+    const lat = rawLat ? Number(rawLat.replace(',', '.')) : NaN;
+    const lng = rawLng ? Number(rawLng.replace(',', '.')) : NaN;
+    return {
+      nome,
+      tipo: iTipo >= 0 ? (r[iTipo] || '').trim().toLowerCase() : '',
+      indirizzo: iInd >= 0 ? (r[iInd] || '').trim() : '',
+      lat: Number.isFinite(lat) ? lat : null,
+      lng: Number.isFinite(lng) ? lng : null,
+    };
+  }).filter(Boolean);
+}
+
+function mergeStrutture(partners, places) {
+  const byNome = new Map((partners || []).map(p => [String(p.nome || '').trim().toLowerCase(), p]));
+  let aggiunte = 0, aggiornate = 0;
+  const merged = [...(partners || [])];
+  places.forEach((pl, i) => {
+    const key = String(pl.nome || '').trim().toLowerCase();
+    if (!key) return;
+    const ex = byNome.get(key);
+    if (ex) {
+      const patch = {};
+      if (pl.indirizzo && pl.indirizzo !== ex.indirizzo) patch.indirizzo = pl.indirizzo;
+      if (pl.tipo && pl.tipo !== ex.tipo) patch.tipo = pl.tipo;
+      if (pl.lat != null && pl.lng != null && (pl.lat !== ex.lat || pl.lng !== ex.lng)) { patch.lat = pl.lat; patch.lng = pl.lng; }
+      if (Object.keys(patch).length) {
+        const j = merged.findIndex(x => x.id === ex.id);
+        merged[j] = { ...ex, ...patch };
+        byNome.set(key, merged[j]);
+        aggiornate++;
+      }
+    } else {
+      const nuovo = {
+        id: 'p' + Date.now().toString(36) + i.toString(36),
+        nome: pl.nome,
+        tipo: pl.tipo || 'altro',
+        indirizzo: pl.indirizzo || pl.descrizione || '',
+        ...(pl.lat != null && pl.lng != null ? { lat: pl.lat, lng: pl.lng } : {}),
+      };
+      merged.push(nuovo);
+      byNome.set(key, nuovo);
+      aggiunte++;
+    }
+  });
+  return { merged, aggiunte, aggiornate };
+}
+
+function exportStruttureCSV(partners) {
+  const esc = (v) => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+  const rows = [
+    ['nome', 'tipo', 'indirizzo', 'lat', 'lng'],
+    ...(partners || []).map(p => [p.nome, p.tipo || '', p.indirizzo || '', p.lat ?? '', p.lng ?? '']),
+  ];
+  const csv = rows.map(r => r.map(esc).join(';')).join('\n');
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'strutture-' + todayISO() + '.csv';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+async function fetchMyMapsPlaces() {
+  const base = getApiBase();
+  if (!base) throw new Error('backend non configurato (API base vuota)');
+  // NB: getApiBase() include già '/api' (convenzione di tutti i feed)
+  const res = await fetch(base + '/strutture/mymaps', { headers: { accept: 'application/json' } });
+  const data = await res.json();
+  if (!data.ok) throw new Error(data.error === 'not_configured'
+    ? 'mappa non collegata: imposta MYMAPS_MID sul server (Render)'
+    : (data.detail || data.error || 'errore lettura mappa'));
+  // la descrizione del segnaposto fa da indirizzo di ripiego
+  return (data.places || []).map(pl => ({ nome: pl.nome, tipo: '', indirizzo: '', descrizione: pl.descrizione || '', lat: pl.lat, lng: pl.lng }));
+}
+
+function SettingsPage({ operator, operators, cargosConfig, admin, backendStatus, lastCheck, apiBaseUrl, syncStatus, agency, onSyncAll, onExportBackup, onImportBackup, pushToast, onAddOperator, onEditOperator, onDeleteOperator, onEditCargos, onEditApiBase, onEditAgency, onResetCustomers, onResetContracts, onResetEverything, onImportFleetFromRentMe, customers, contracts, rentmeConfig, setRentmeConfig, rentmeSync, rentmeVehicles, prenotazioni, onImportStorico, appUsers, setAppUsers, onLogout, driveClientId, setDriveClientId, driveLastBackup, onDriveBackup, driveAutoEnabled, setDriveAutoEnabled, renderLastBackup, onRenderBackup, backupToken, setBackupToken, pecStatus, onPecVerify, cuoreNuovo, setCuoreNuovo, partners, setPartners }) {
   const importInputRef = useRef();
   const [showCargosSecrets, setShowCargosSecrets] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -23476,6 +23620,56 @@ function SettingsPage({ operator, operators, cargosConfig, admin, backendStatus,
             Importa backup JSON
           </button>
         </div>
+      </section>
+
+      {/* ── Strutture partner: CSV + Google My Maps ─────────────────── */}
+      <section className="card-paper p-6 mt-4" aria-labelledby="strutture-heading">
+        <div className="flex items-center gap-2 mb-2">
+          <MapPin className="w-4 h-4" style={{ color: 'var(--edo-sea)' }} />
+          <span className="font-semibold text-sm" id="strutture-heading">Strutture partner ({(partners || []).length})</span>
+        </div>
+        <p className="text-xs mb-3" style={{ color: 'var(--muted)', lineHeight: 1.5 }}>
+          Aggiorna l'elenco (hotel, residence, punti di consegna con posizione GPS) via CSV o dalla mappa
+          <strong> Google My Maps</strong> aziendale. L'aggiornamento è sempre <strong>additivo</strong>:
+          aggiunge e aggiorna per nome, non cancella mai. CSV: colonne <code>nome;tipo;indirizzo;lat;lng</code> (obbligatoria solo "nome").
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={() => exportStruttureCSV(partners)}
+            className="btn-ghost px-3 py-2 rounded border text-xs" style={{ borderColor: 'var(--border)' }}>
+            <Download className="w-3.5 h-3.5 inline mr-1" />Esporta CSV
+          </button>
+          <label className="btn-ghost px-3 py-2 rounded border text-xs cursor-pointer" style={{ borderColor: 'var(--border)' }}>
+            <Upload className="w-3.5 h-3.5 inline mr-1" />Importa CSV
+            <input type="file" accept=".csv,text/csv" className="hidden" onChange={e => {
+              const f = e.target.files?.[0]; e.target.value = '';
+              if (!f || !setPartners) return;
+              const reader = new FileReader();
+              reader.onload = () => {
+                const places = parseStruttureCSV(String(reader.result || ''));
+                if (!places.length) { pushToast?.({ tone: 'warning', title: 'CSV non valido', message: 'Serve la colonna "nome" nell\'intestazione' }); return; }
+                const { merged, aggiunte, aggiornate } = mergeStrutture(partners, places);
+                if (aggiunte || aggiornate) setPartners(merged);
+                pushToast?.({ tone: 'success', title: 'Strutture aggiornate', message: `${aggiunte} nuove · ${aggiornate} aggiornate · ${places.length} nel file` });
+              };
+              reader.readAsText(f);
+            }} />
+          </label>
+          <button type="button" onClick={async () => {
+            try {
+              const places = await fetchMyMapsPlaces();
+              const { merged, aggiunte, aggiornate } = mergeStrutture(partners, places);
+              if ((aggiunte || aggiornate) && setPartners) setPartners(merged);
+              pushToast?.({ tone: 'success', title: 'My Maps sincronizzata', message: `${places.length} segnaposto · ${aggiunte} nuove · ${aggiornate} aggiornate` });
+            } catch (err) {
+              pushToast?.({ tone: 'warning', title: 'My Maps non disponibile', message: err.message });
+            }
+          }} className="btn-ghost px-3 py-2 rounded border text-xs" style={{ borderColor: 'var(--border)' }}>
+            <RefreshCw className="w-3.5 h-3.5 inline mr-1" />Aggiorna da My Maps
+          </button>
+        </div>
+        <p className="text-xs mt-2" style={{ color: 'var(--muted)' }}>
+          Con la mappa collegata (env <code>MYMAPS_MID</code> sul server) l'app si aggiorna anche da sola una volta al giorno.
+        </p>
       </section>
 
       {/* ── Backup automatico sul server Render ─────────────────────── */}
