@@ -17230,7 +17230,7 @@ export default function App() {
               {page === 'prenotazioni' && <PrenotazioniPage prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} setCassa={setCassa} fleet={fleet} rentmeVehicles={rentmeVehicles} customers={customers} partners={partners} operator={operator} onOpenWizard={openWizard} pushToast={pushToast} prefill={prenotazioniPrefill} onClearPrefill={() => setPrenotazioniPrefill(null)} fermiFlotta={fermiFlotta} rentmePush={rentmeSync.pushBooking} rentmeConnected={rentmeSync.status === 'ok'} agency={agency} targhe={targhe} />}
               {page === 'contracts'  && <ContractsList contracts={localContracts} operators={operators} onRetry={retryContract} onMarkReturned={markContractReturned} onSendPec={sendContractPec} pecStatus={pecStatus} online={online} />}
               {page === 'cuore' && cuoreNuovo && <CuoreAnteprimaPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} prenotazioni={prenotazioni} scadenze={scadenze} fermiFlotta={fermiFlotta} />}
-              {page === 'cuore_oggi' && cuoreNuovo && <CuoreOggiPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} listino={listino} pushToast={pushToast} operator={operator} setPage={setPage} fermiFlotta={fermiFlotta} />}
+              {page === 'cuore_oggi' && cuoreNuovo && <CuoreOggiPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} listino={listino} pushToast={pushToast} operator={operator} setPage={setPage} fermiFlotta={fermiFlotta} customers={customers} manutenzioni={manutenzioni} />}
               {page === 'cuore_cal' && cuoreNuovo && <CuoreCalendarioPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} prenotazioni={prenotazioni} scadenze={scadenze} setPrenotazioni={setPrenotazioni} pushToast={pushToast} fermiFlotta={fermiFlotta} setPage={setPage} setCuorePrefill={setCuorePrefill} />}
               {page === 'cuore_preno' && cuoreNuovo && <CuorePrenotaPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} pushToast={pushToast} prefill={cuorePrefill} fermiFlotta={fermiFlotta} />}
               {page === 'cuore_banco' && cuoreNuovo && <CuoreBancoPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} listino={listino} pushToast={pushToast} operator={operator} fermiFlotta={fermiFlotta} />}
@@ -17993,7 +17993,7 @@ function CuoreAnteprimaPage({ rentmeVehicles, targhe, fleet, prenotazioni, scade
 // categoria calcolate dalla STESSA regola di prenotazioni/calendario (zero traduttori),
 // + agenda di oggi (consegne da fare, rientri/scaduti) con scorciatoie alle pagine.
 // ═══════════════════════════════════════════════════════════════════
-function CuoreOggiPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazioni, setPrenotazioni, listino, pushToast, operator, setPage, fermiFlotta }) {
+function CuoreOggiPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazioni, setPrenotazioni, listino, pushToast, operator, setPage, fermiFlotta, customers, manutenzioni }) {
   const parco = useMemo(() => cuoreBuildParco(rentmeVehicles, { targhe, fleet, scadenze }), [rentmeVehicles, targhe, fleet, scadenze]);
   const prenoNuove = useMemo(() => (prenotazioni || []).map(p => cuoreMigraPreno(p, parco)), [prenotazioni, parco]);
   const prenoConFermi = useMemo(() => [...prenoNuove, ...cuoreFermiToPreno(fermiFlotta, parco)], [prenoNuove, fermiFlotta, parco]);
@@ -18046,6 +18046,65 @@ function CuoreOggiPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazioni, 
   const consegneDomani = useMemo(() => prenoNuove.filter(p =>
     p && !CUORE_PRENO_FUORI.has(String(p.stato || '')) && String(p.stato || '') !== 'in_corso' && p.dal === domani),
     [prenoNuove, domani]);
+
+  // ── Parità completa col vecchio Oggi ("tutto e meglio", 11/6) ──────────────
+  // Rientrano domani: noleggi già iniziati che riconsegnano domani → promemoria WhatsApp.
+  const rientriDomani = useMemo(() => prenoNuove.filter(p =>
+    p && !CUORE_PRENO_FUORI.has(String(p.stato || '')) && p.al === domani && p.dal <= oggi),
+    [prenoNuove, domani, oggi]);
+
+  // Documenti clienti per le consegne di oggi: scaduti o in scadenza entro 30 giorni.
+  const docAlerts = useMemo(() => {
+    const lim = localDateISO(30);
+    const out = [];
+    consegneOggi.forEach(p => {
+      if (!p.clienteCognome) return;
+      const c = (customers || []).find(c =>
+        c.cognome?.toLowerCase() === p.clienteCognome?.toLowerCase() &&
+        c.nome?.toLowerCase() === (p.clienteNome || '').toLowerCase());
+      if (!c || !c.docScadenza) return;
+      const stato = c.docScadenza < oggi ? 'scaduto' : c.docScadenza <= lim ? 'in_scadenza' : null;
+      if (stato) out.push({ preno: p, cliente: c, scad: c.docScadenza, stato });
+    });
+    return out;
+  }, [consegneOggi, customers, oggi]);
+
+  // Scadenze mezzi scadute o entro domani — dal PARCO (targa dalla tabella, chiave = numero).
+  const SCAD_LABEL = { revisione: 'Revisione', assicurazione: 'Assicurazione', tagliando: 'Tagliando', bollo: 'Bollo' };
+  const scadenzeAlert = useMemo(() => {
+    const out = [];
+    parco.forEach(m => Object.entries(m.scadenze || {}).forEach(([t, d]) => {
+      if (!d) return;
+      const stato = d <= oggi ? 'scaduta' : d <= domani ? 'urgente' : null;
+      if (stato) out.push({ m, tipo: t, data: d, stato });
+    }));
+    return out.sort((a, b) => a.data.localeCompare(b.data));
+  }, [parco, oggi, domani]);
+
+  // Manutenzioni programmate non completate in scadenza entro 30 giorni.
+  const manutenzioniAlert = useMemo(() => {
+    const lim = localDateISO(30);
+    return (manutenzioni || [])
+      .filter(x => !x.completata && x.dataScadenza && x.dataScadenza <= lim)
+      .sort((a, b) => a.dataScadenza.localeCompare(b.dataScadenza));
+  }, [manutenzioni]);
+
+  // Situazione flotta per TIPO — derivata dalla stessa fotografia `snap` (nessuna seconda regola).
+  const perTipo = useMemo(() => {
+    const occ = new Set(snap.occupati.map(m => String(m.numero)));
+    const man = new Set(snap.manutenzione.map(m => String(m.numero)));
+    const map = new Map();
+    parco.forEach(m => {
+      const t = m.tipo || 'auto';
+      const e = map.get(t) || { tipo: t, tot: 0, liberi: 0, fuori: 0, manut: 0 };
+      e.tot++;
+      if (man.has(String(m.numero))) e.manut++;
+      else if (occ.has(String(m.numero))) e.fuori++;
+      else e.liberi++;
+      map.set(t, e);
+    });
+    return [...map.values()].sort((a, b) => a.tipo.localeCompare(b.tipo));
+  }, [parco, snap]);
 
   // Mezzo assegnato (targa SEMPRE dalla tabella) — per righe, stampa PDF e CSV.
   const mezzoAssegnato = (p) => {
@@ -18168,6 +18227,34 @@ function CuoreOggiPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazioni, 
         {agendaCard('Calendario', '', 'vedi il mese', 'cuore_cal', 'var(--ink-2)')}
       </div>
 
+      {/* ── Documenti clienti delle consegne di oggi: scaduti / in scadenza ── */}
+      {docAlerts.length > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          {docAlerts.map(({ preno, cliente: c, scad, stato }) => (
+            <div key={preno.id} style={{ display: 'flex', alignItems: 'center', gap: 10,
+              background: stato === 'scaduto' ? 'rgba(192,57,50,0.08)' : 'rgba(208,152,48,0.10)',
+              border: `1.5px solid ${stato === 'scaduto' ? 'var(--accent, #c0392b)' : '#d09830'}`,
+              borderRadius: 8, padding: '10px 14px', marginBottom: 6, fontSize: 12 }}>
+              <AlertTriangle style={{ width: 15, height: 15, flexShrink: 0, color: stato === 'scaduto' ? 'var(--accent, #c0392b)' : '#b87333' }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <span style={{ fontWeight: 700, color: stato === 'scaduto' ? 'var(--accent, #c0392b)' : '#b87333', marginRight: 6 }}>
+                  {stato === 'scaduto' ? 'DOCUMENTO SCADUTO' : 'Documento in scadenza'}
+                </span>
+                <span style={{ fontWeight: 600 }}>{c.cognome} {c.nome}</span>
+                {' · '}<span style={{ fontFamily: 'var(--font-mono, monospace)' }}>{formatDate(scad)}</span>
+                {' · '}<span style={{ color: 'var(--muted)' }}>consegna oggi: {(mezzoAssegnato(preno)?.targa) || preno.vehicleLabel || preno.tipo || ''}</span>
+              </div>
+              {c.tel && (
+                <a href={`https://wa.me/${(c.tel || '').replace(/\D/g, '')}`} target="_blank" rel="noreferrer"
+                  style={{ fontSize: 11, padding: '3px 8px', borderRadius: 5, background: 'rgba(37,211,102,0.13)', color: '#25d366', fontWeight: 700, textDecoration: 'none', flexShrink: 0 }}>
+                  WA
+                </a>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* ── Movimenti del giorno: liste con stampa PDF (parità col vecchio Oggi) ── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(290px, 1fr))', gap: 14, marginBottom: 24 }}>
         {[
@@ -18197,6 +18284,44 @@ function CuoreOggiPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazioni, 
         ))}
       </div>
 
+      {/* ── Rientrano domani — promemoria WhatsApp (mezzo e targa dalla tabella) ── */}
+      {rientriDomani.length > 0 && (
+        <div style={{ marginBottom: 24 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+            <span style={{ fontFamily: 'var(--font-serif)', fontWeight: 600, fontSize: 14 }}>
+              Rientrano domani
+              <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 700, color: '#fff', background: '#0d7a5e', borderRadius: 12, padding: '1px 8px', verticalAlign: '1px' }}>{rientriDomani.length}</span>
+            </span>
+            <span style={{ fontSize: 11, color: 'var(--muted)', fontStyle: 'italic' }}>invia promemoria WhatsApp</span>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {rientriDomani.map(p => {
+              const m = mezzoAssegnato(p);
+              const nome = [p.clienteNome, p.clienteCognome].filter(Boolean).join(' ') || 'Cliente';
+              const mezzoTxt = m ? `${m.modello || m.tipo}${m.targa ? ' (' + m.targa + ')' : ''}` : (p.vehicleLabel || p.vehicleType || 'mezzo');
+              const tel = (p.clienteTel || '').replace(/\D/g, '');
+              const msg = encodeURIComponent(`Gentile ${nome}, le ricordiamo che domani ${formatDate(p.al)} è prevista la riconsegna di: ${mezzoTxt}.\nLa aspettiamo con piacere! — Edonoleggio Lampedusa 🌊`);
+              return (
+                <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'var(--bg)', border: '1px solid var(--border)', borderLeft: '3px solid #0d7a5e', borderRadius: 8, padding: '9px 12px' }}>
+                  <div style={{ flex: 1, minWidth: 0, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--ink)' }}>{nome}</span>
+                    <span style={{ color: 'var(--ink-2)', marginLeft: 8 }}>{mezzoTxt}</span>
+                    <span style={{ color: 'var(--muted)', marginLeft: 8 }}>rientro {formatDate(p.al)}</span>
+                    {p.clienteTel && <a href={`tel:${p.clienteTel}`} onClick={e => e.stopPropagation()} style={{ color: 'var(--muted)', marginLeft: 8, textDecoration: 'none' }}>{p.clienteTel}</a>}
+                  </div>
+                  {tel ? (
+                    <a href={`https://wa.me/${tel}?text=${msg}`} target="_blank" rel="noreferrer"
+                      style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700, background: '#25d366', color: '#fff', textDecoration: 'none', flexShrink: 0 }}>
+                      WA
+                    </a>
+                  ) : <span style={{ fontSize: 11, color: 'var(--muted)', fontStyle: 'italic', flexShrink: 0 }}>nessun tel.</span>}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* ── Walk-in rapido: stesso componente del Banco (cuore), una copia sola ── */}
       <div className="oggi-section-head" style={{ marginBottom: 12 }}>
         <span className="eb">Operatività</span>
@@ -18208,6 +18333,52 @@ function CuoreOggiPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazioni, 
           prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} listino={listino}
           pushToast={pushToast} operator={operator} fermiFlotta={fermiFlotta} />
       </div>
+
+      {/* ── Situazione flotta ora per TIPO + chip mezzi liberi (targa dalla tabella) ── */}
+      <div className="oggi-section-head" style={{ marginBottom: 12 }}>
+        <span className="eb">Flotta</span>
+        <span className="ttl">Situazione ora</span>
+        <span className="ln" aria-hidden="true" />
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(132px, 1fr))', gap: 8, marginBottom: 14 }}>
+        {perTipo.map(t => {
+          const pct = t.tot > 0 ? t.liberi / t.tot : 0;
+          const barColor = pct > 0.5 ? '#27ae60' : pct > 0.15 ? '#e67e22' : 'var(--accent, #c0392b)';
+          return (
+            <div key={t.tipo} style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 7 }}>
+                <span style={{ display: 'inline-flex', color: 'var(--sea)' }}><VehicleIcon type={t.tipo} className="w-4 h-4" /></span>
+                <span style={{ fontSize: 11, fontWeight: 600, textTransform: 'capitalize', color: 'var(--ink)' }}>{t.tipo}</span>
+              </div>
+              <div style={{ display: 'flex', gap: 8, fontSize: 11, marginBottom: 7, flexWrap: 'wrap' }}>
+                <span style={{ color: '#27ae60', fontWeight: 700 }}>{t.liberi} liberi</span>
+                <span style={{ color: '#1f5d83', fontWeight: 700 }}>{t.fuori} fuori</span>
+                {t.manut > 0 && <span style={{ color: '#b87333', fontWeight: 700 }}>{t.manut} in officina</span>}
+              </div>
+              <div style={{ height: 3, background: 'var(--surface-2)', borderRadius: 2, overflow: 'hidden' }}>
+                <div style={{ height: '100%', width: `${Math.round(pct * 100)}%`, background: barColor, borderRadius: 2 }} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {snap.liberi.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 24 }}>
+          {snap.liberi.map(m => {
+            const alert = Object.values(m.scadenze || {}).some(d => d && d <= domani);
+            return (
+              <span key={m.numero} title={`${m.modello || m.tipo} · n.${m.numero}${alert ? ' — scadenze da controllare' : ''}`}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 10px', borderRadius: 20,
+                  border: `1px solid ${alert ? '#d09830' : 'var(--border)'}`, background: 'var(--surface-2)', fontSize: 12, color: 'var(--ink-2)' }}>
+                <span style={{ display: 'inline-flex', color: 'var(--muted)' }}><VehicleIcon type={m.tipo} className="w-3.5 h-3.5" /></span>
+                <span style={{ fontWeight: 600, fontFamily: 'var(--font-mono, monospace)', fontSize: 11, color: 'var(--ink)' }}>{m.targa || ('n.' + m.numero)}</span>
+                {m.modello && <span style={{ color: 'var(--muted)' }}>{m.modello}</span>}
+                {alert && <AlertTriangle style={{ width: 12, height: 12, color: '#b87333' }} />}
+              </span>
+            );
+          })}
+        </div>
+      )}
 
       {/* Disponibilità per categoria ORA */}
       <div className="card-paper" style={{ padding: 0, overflow: 'hidden' }}>
@@ -18228,6 +18399,69 @@ function CuoreOggiPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazioni, 
           </tbody>
         </table>
       </div>
+
+      {/* ── Scadenze urgenti / scadute dei mezzi (dal Parco, targa dalla tabella) ── */}
+      {scadenzeAlert.length > 0 && (
+        <div style={{ marginTop: 20 }}>
+          <div style={{ fontFamily: 'var(--font-serif)', fontWeight: 600, fontSize: 14, marginBottom: 8 }}>
+            Scadenze urgenti / scadute
+            <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 700, color: '#fff', background: 'var(--accent, #c0392b)', borderRadius: 12, padding: '1px 8px', verticalAlign: '1px' }}>{scadenzeAlert.length}</span>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {scadenzeAlert.slice(0, 8).map(({ m, tipo, data, stato }) => (
+              <div key={`${m.numero}:${tipo}`} style={{ display: 'flex', alignItems: 'center', gap: 10,
+                background: stato === 'scaduta' ? 'rgba(192,57,50,0.08)' : 'rgba(208,152,48,0.10)',
+                border: `1px solid ${stato === 'scaduta' ? 'var(--accent, #c0392b)' : '#d09830'}`,
+                borderRadius: 6, padding: '8px 12px', fontSize: 12 }}>
+                <span style={{ fontWeight: 700, color: stato === 'scaduta' ? 'var(--accent, #c0392b)' : '#b87333', minWidth: 64 }}>{stato.toUpperCase()}</span>
+                <span style={{ fontWeight: 600, fontFamily: 'var(--font-mono, monospace)', color: 'var(--ink)' }}>{m.targa || ('n.' + m.numero)}</span>
+                <span style={{ color: 'var(--ink-2)' }}>{m.modello || ''}</span>
+                <span style={{ color: 'var(--muted)', flex: 1 }}>{SCAD_LABEL[tipo] || tipo}</span>
+                <span style={{ fontFamily: 'var(--font-mono, monospace)', fontWeight: 600, color: 'var(--ink)' }}>{formatDate(data)}</span>
+              </div>
+            ))}
+            {scadenzeAlert.length > 8 && (
+              <div style={{ fontSize: 12, color: 'var(--muted)', textAlign: 'center' }}>
+                + altre {scadenzeAlert.length - 8} — dettaglio in Flotta (cuore)
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Manutenzioni programmate in scadenza (mezzo risolto per numero) ── */}
+      {manutenzioniAlert.length > 0 && (
+        <div style={{ marginTop: 20 }}>
+          <div style={{ fontFamily: 'var(--font-serif)', fontWeight: 600, fontSize: 14, marginBottom: 8 }}>
+            Manutenzioni programmate
+            <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 700, color: '#fff', background: '#b87333', borderRadius: 12, padding: '1px 8px', verticalAlign: '1px' }}>{manutenzioniAlert.length}</span>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {manutenzioniAlert.slice(0, 6).map(x => {
+              const m = parcoByNum.get(String(x.vehicleId));
+              const scaduta = x.dataScadenza < oggi;
+              return (
+                <div key={x.id} style={{ display: 'flex', alignItems: 'center', gap: 10,
+                  background: scaduta ? 'rgba(192,57,50,0.08)' : 'rgba(208,152,48,0.10)',
+                  border: `1px solid ${scaduta ? 'var(--accent, #c0392b)' : '#d09830'}`,
+                  borderRadius: 6, padding: '8px 12px', fontSize: 12 }}>
+                  <span style={{ fontWeight: 700, color: scaduta ? 'var(--accent, #c0392b)' : '#b87333', minWidth: 84 }}>{scaduta ? 'SCADUTA' : 'IN SCADENZA'}</span>
+                  <span style={{ fontWeight: 600, fontFamily: 'var(--font-mono, monospace)', color: 'var(--ink)' }}>{m ? (m.targa || ('n.' + m.numero)) : (x.vehicleId || '—')}</span>
+                  <span style={{ color: 'var(--ink-2)', flex: 1 }}>
+                    {MANUTENZIONE_TIPI?.find(t => t.id === x.tipo)?.label || x.tipo}{x.descrizione ? ` · ${x.descrizione}` : ''}
+                  </span>
+                  <span style={{ fontFamily: 'var(--font-mono, monospace)', fontWeight: 600, color: 'var(--ink)' }}>{formatDate(x.dataScadenza)}</span>
+                </div>
+              );
+            })}
+            {manutenzioniAlert.length > 6 && (
+              <div style={{ fontSize: 12, color: 'var(--muted)', textAlign: 'center' }}>
+                + altre {manutenzioniAlert.length - 6} — dettaglio in Flotta
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       <p style={{ fontSize: 11, color: 'var(--ink-2)', marginTop: 12 }}>
         "Liberi ora" = mezzi non in manutenzione e senza un noleggio che copre oggi. Numeri presi dalla stessa
