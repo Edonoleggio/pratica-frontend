@@ -17277,7 +17277,7 @@ export default function App() {
               {page === 'contracts'  && <ContractsList contracts={localContracts} operators={operators} onRetry={retryContract} onMarkReturned={markContractReturned} onSendPec={sendContractPec} pecStatus={pecStatus} online={online} />}
               {page === 'cuore' && cuoreNuovo && <CuoreAnteprimaPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} prenotazioni={prenotazioni} scadenze={scadenze} fermiFlotta={fermiFlotta} />}
               {page === 'cuore_oggi' && cuoreNuovo && <CuoreOggiPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} listino={listino} pushToast={pushToast} operator={operator} setPage={setPage} fermiFlotta={fermiFlotta} customers={customers} manutenzioni={manutenzioni} />}
-              {page === 'cuore_prenotazioni' && cuoreNuovo && <CuorePrenotazioniPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} setCassa={setCassa} pushToast={pushToast} operator={operator} setPage={setPage} setCuorePrefill={setCuorePrefill} fermiFlotta={fermiFlotta} customers={customers} partners={partners} agency={agency} />}
+              {page === 'cuore_prenotazioni' && cuoreNuovo && <CuorePrenotazioniPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} setCassa={setCassa} pushToast={pushToast} operator={operator} setPage={setPage} setCuorePrefill={setCuorePrefill} fermiFlotta={fermiFlotta} customers={customers} partners={partners} agency={agency} cuorePrefill={cuorePrefill} clearCuorePrefill={() => setCuorePrefill(null)} />}
               {page === 'cuore_cal' && cuoreNuovo && <CuoreCalendarioPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} prenotazioni={prenotazioni} scadenze={scadenze} setPrenotazioni={setPrenotazioni} pushToast={pushToast} fermiFlotta={fermiFlotta} setPage={setPage} setCuorePrefill={setCuorePrefill} />}
               {page === 'cuore_preno' && cuoreNuovo && <CuorePrenotaPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} pushToast={pushToast} prefill={cuorePrefill} fermiFlotta={fermiFlotta} listino={listino} setCassa={setCassa} operator={operator} partners={partners} />}
               {page === 'cuore_banco' && cuoreNuovo && <CuoreBancoPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} listino={listino} pushToast={pushToast} operator={operator} fermiFlotta={fermiFlotta} />}
@@ -19030,6 +19030,13 @@ function CuoreCalendarioPage({ rentmeVehicles, targhe, fleet, prenotazioni, scad
               {riga('Telefono', p.clienteTel)}
               {riga('Note', p.note)}
               <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+                {setPage && setCuorePrefill && (
+                  <button type="button"
+                    onClick={() => { setCuorePrefill({ focusId: p.id }); setDettaglio(null); setPage('cuore_prenotazioni'); }}
+                    style={{ flex: 1, padding: '8px 14px', border: 'none', borderRadius: 6, background: 'var(--sea)', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: 13 }}>
+                    ✏️ Modifica prenotazione
+                  </button>
+                )}
                 <button type="button" onClick={() => setDettaglio(null)} style={{ flex: 1, padding: '8px 14px', border: '1px solid var(--border)', borderRadius: 6, background: 'transparent', cursor: 'pointer', fontSize: 13 }}>Chiudi</button>
               </div>
             </div>
@@ -20018,7 +20025,7 @@ function CuoreRientroPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazion
 // cassa (formato handleSaldoRapido) · duplica → Prenota prefill · WhatsApp ·
 // contratto (STESSO ContractPdfModal del vecchio) · annulla/elimina.
 // ═══════════════════════════════════════════════════════════════════
-function CuorePrenotazioniPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazioni, setPrenotazioni, setCassa, pushToast, operator, setPage, setCuorePrefill, fermiFlotta, customers, partners, agency }) {
+function CuorePrenotazioniPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazioni, setPrenotazioni, setCassa, pushToast, operator, setPage, setCuorePrefill, fermiFlotta, customers, partners, agency, cuorePrefill, clearCuorePrefill }) {
   const parco = useMemo(() => cuoreBuildParco(rentmeVehicles, { targhe, fleet, scadenze }), [rentmeVehicles, targhe, fleet, scadenze]);
   const parcoByNum = useMemo(() => new Map(parco.map(m => [String(m.numero), m])), [parco]);
   const prenoTutte = useMemo(() => (prenotazioni || []).map(p => cuoreMigraPreno(p, parco)).filter(Boolean), [prenotazioni, parco]);
@@ -20033,6 +20040,16 @@ function CuorePrenotazioniPage({ rentmeVehicles, targhe, fleet, scadenze, prenot
   const [sel, setSel] = useState(null);        // prenotazione aperta nel dettaglio (id)
   const [azione, setAzione] = useState(null);  // 'date' | 'mezzo' | 'sostituzione' | 'saldo' | 'elimina' | null
   const [contratto, setContratto] = useState(null);
+  const [foto, setFoto] = useState(null); // preno per il modale FOTO (stesso FotoModal del vecchio)
+
+  // Arrivo dal calendario cuore ("Modifica prenotazione"): apri subito il dettaglio.
+  useEffect(() => {
+    if (cuorePrefill?.focusId) {
+      setSel(cuorePrefill.focusId);
+      setFStato('tutte'); // la preno potrebbe essere completata/annullata: non nasconderla
+      clearCuorePrefill && clearCuorePrefill();
+    }
+  }, [cuorePrefill]);
 
   const tipi = useMemo(() => [...new Set(parco.map(m => m.tipo).filter(Boolean))].sort(), [parco]);
   const STATO_LBL = { attesa: 'In attesa', confermata: 'Confermata', in_corso: 'In corso', completata: 'Completata', annullata: 'Annullata', cancellata: 'Annullata' };
@@ -20214,16 +20231,23 @@ function CuorePrenotazioniPage({ rentmeVehicles, targhe, fleet, scadenze, prenot
 
               {/* azioni principali */}
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 14 }}>
+                {attiva && <button type="button" style={btnSec} onClick={() => setAzione(azione === 'edit' ? null : 'edit')}>Modifica dati</button>}
                 {attiva && <button type="button" style={btnSec} onClick={() => setAzione(azione === 'date' ? null : 'date')}>Date / proroga</button>}
                 {attiva && <button type="button" style={btnSec} onClick={() => setAzione(azione === 'mezzo' ? null : 'mezzo')}>{m ? 'Cambia mezzo' : 'Assegna mezzo'}</button>}
                 {st === 'in_corso' && m && <button type="button" style={btnSec} onClick={() => setAzione(azione === 'sostituzione' ? null : 'sostituzione')}>Sostituzione guasto</button>}
                 {attiva && !p.saldoRegistrato && (Number(p.prezzo) || 0) > 0 && <button type="button" style={btnSec} onClick={() => setAzione(azione === 'saldo' ? null : 'saldo')}>Saldo in cassa</button>}
                 <button type="button" style={btnSec} onClick={() => setContratto(p)}>Contratto</button>
                 <button type="button" style={btnSec} onClick={() => { setCuorePrefill && setCuorePrefill({ tipo: canonicalTipo({ tipo: p.tipo || p.vehicleType }), categoria: p.categoria || '', dal: p.dal, al: p.al, cognome: p.clienteCognome || '', nome: p.clienteNome || '' }); setSel(null); setPage && setPage('cuore_preno'); }}>Duplica</button>
+                <button type="button" style={btnSec} onClick={() => setFoto((prenotazioni || []).find(x => x.id === p.id) || p)}>Foto</button>
                 {tel && <a href={`https://wa.me/${tel}`} target="_blank" rel="noreferrer" style={{ ...btnSec, textDecoration: 'none', background: 'rgba(37,211,102,0.13)', color: '#25d366', border: 'none', fontWeight: 700, display: 'inline-flex', alignItems: 'center' }}>WA</a>}
               </div>
 
               {/* pannelli azione */}
+              {azione === 'edit' && <CuoreEditDati p={p} onSave={(patch) => {
+                aggiorna(p.id, patch);
+                pushToast && pushToast({ tone: 'success', title: 'Dati aggiornati', message: `${patch.clienteCognome} ${patch.clienteNome}`.trim() });
+                setAzione(null);
+              }} />}
               {azione === 'date' && <CuoreEditDate p={p} m={m} oggi={oggi} numeroLibero={numeroLibero} parco={parco} prenoConFermi={prenoConFermi}
                 onSave={(dal, al) => {
                   const segs = cuoreSegmenti(p);
@@ -20311,6 +20335,19 @@ function CuorePrenotazioniPage({ rentmeVehicles, targhe, fleet, scadenze, prenot
         );
       })()}
 
+      {/* foto consegna/rientro — STESSO FotoModal del vecchio */}
+      {foto && (
+        <FotoModal
+          prenotazione={foto}
+          onSave={(updated) => {
+            setPrenotazioni(ps => (ps || []).map(x => x.id === updated.id ? updated : x));
+            setFoto(null);
+            pushToast && pushToast({ tone: 'success', title: 'Foto salvate', message: `${(updated.foto?.consegna?.length || 0) + (updated.foto?.rientro?.length || 0)} foto` });
+          }}
+          onClose={() => setFoto(null)}
+        />
+      )}
+
       {/* contratto — STESSO modale del vecchio (prova legale identica) */}
       {contratto && (
         <ContractPdfModal
@@ -20323,6 +20360,41 @@ function CuorePrenotazioniPage({ rentmeVehicles, targhe, fleet, scadenze, prenot
           onClose={() => setContratto(null)}
         />
       )}
+    </div>
+  );
+}
+
+// editor DATI cliente/prezzo della lista cuore (chiude l'ultimo "fuori scope" della #85)
+function CuoreEditDati({ p, onSave }) {
+  const [cognome, setCognome] = useState(p.clienteCognome || '');
+  const [nome, setNome] = useState(p.clienteNome || '');
+  const [tel, setTel] = useState(p.clienteTel || '');
+  const [prezzo, setPrezzo] = useState(p.prezzo != null && p.prezzo !== '' ? String(p.prezzo) : '');
+  const [acconto, setAcconto] = useState(Number(p.acconto) > 0 ? String(p.acconto) : '');
+  const [note, setNote] = useState(p.note || '');
+  const lbl = { fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--ink-2)', display: 'block', marginBottom: 4 };
+  const inp = { padding: '7px 9px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 13, width: '100%', boxSizing: 'border-box' };
+  const ok = cognome.trim().length > 0;
+  return (
+    <div style={{ marginTop: 12, padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 8 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+        <div><label style={lbl}>Cognome</label><input style={inp} value={cognome} onChange={e => setCognome(e.target.value)} /></div>
+        <div><label style={lbl}>Nome</label><input style={inp} value={nome} onChange={e => setNome(e.target.value)} /></div>
+        <div><label style={lbl}>Telefono</label><input type="tel" style={inp} value={tel} onChange={e => setTel(e.target.value)} /></div>
+        <div><label style={lbl}>Prezzo €</label><input type="number" inputMode="decimal" min="0" style={inp} value={prezzo} onChange={e => setPrezzo(e.target.value)} /></div>
+        <div><label style={lbl}>Acconto €</label><input type="number" inputMode="decimal" min="0" style={inp} value={acconto} onChange={e => setAcconto(e.target.value)} /></div>
+        <div><label style={lbl}>Note</label><input style={inp} value={note} onChange={e => setNote(e.target.value)} /></div>
+      </div>
+      <button type="button" disabled={!ok}
+        onClick={() => ok && onSave({
+          clienteCognome: cognome.trim(), clienteNome: nome.trim(), clienteTel: tel.trim(),
+          prezzo: prezzo !== '' ? Number(prezzo) : null,
+          acconto: Number(acconto) > 0 ? Number(acconto) : 0,
+          note: note.trim(),
+        })}
+        style={{ marginTop: 10, padding: '8px 16px', borderRadius: 7, border: 'none', fontWeight: 700, fontSize: 13, cursor: ok ? 'pointer' : 'not-allowed', background: ok ? 'var(--sea)' : 'var(--surface-2)', color: ok ? '#fff' : 'var(--ink-2)' }}>
+        Salva dati
+      </button>
     </div>
   );
 }
