@@ -17279,8 +17279,8 @@ export default function App() {
               {page === 'cuore_oggi' && cuoreNuovo && <CuoreOggiPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} listino={listino} pushToast={pushToast} operator={operator} setPage={setPage} fermiFlotta={fermiFlotta} customers={customers} manutenzioni={manutenzioni} />}
               {page === 'cuore_prenotazioni' && cuoreNuovo && <CuorePrenotazioniPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} setCassa={setCassa} pushToast={pushToast} operator={operator} setPage={setPage} setCuorePrefill={setCuorePrefill} fermiFlotta={fermiFlotta} customers={customers} partners={partners} agency={agency} />}
               {page === 'cuore_cal' && cuoreNuovo && <CuoreCalendarioPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} prenotazioni={prenotazioni} scadenze={scadenze} setPrenotazioni={setPrenotazioni} pushToast={pushToast} fermiFlotta={fermiFlotta} setPage={setPage} setCuorePrefill={setCuorePrefill} />}
-              {page === 'cuore_preno' && cuoreNuovo && <CuorePrenotaPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} pushToast={pushToast} prefill={cuorePrefill} fermiFlotta={fermiFlotta} listino={listino} setCassa={setCassa} operator={operator} partners={partners} />}
-              {page === 'cuore_banco' && cuoreNuovo && <CuoreBancoPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} listino={listino} pushToast={pushToast} operator={operator} fermiFlotta={fermiFlotta} />}
+              {page === 'cuore_preno' && cuoreNuovo && <CuorePrenotaPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} pushToast={pushToast} prefill={cuorePrefill} fermiFlotta={fermiFlotta} listino={listino} setCassa={setCassa} operator={operator} partners={partners} rentmePush={rentmeSync.pushBooking} rentmeConnected={rentmeSync.status === 'ok'} />}
+              {page === 'cuore_banco' && cuoreNuovo && <CuoreBancoPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} listino={listino} pushToast={pushToast} operator={operator} fermiFlotta={fermiFlotta} rentmeSyncStatus={rentmeSync.status} onRentmeSync={rentmeSync.sync} rentmeLastSync={rentmeSync.lastSync} />}
               {page === 'cuore_consegna' && cuoreNuovo && <CuoreConsegnaPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} pushToast={pushToast} operator={operator} fermiFlotta={fermiFlotta} partners={partners} />}
               {page === 'cuore_rientro' && cuoreNuovo && <CuoreRientroPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} pushToast={pushToast} setCassa={setCassa} operator={operator} />}
               {page === 'cuore_prev' && cuoreNuovo && <CuorePreventiviPage listino={listino} fleet={fleet} rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} targhe={targhe} scadenze={scadenze} setPage={setPage} setCuorePrefill={setCuorePrefill} pushToast={pushToast} fermiFlotta={fermiFlotta} />}
@@ -19045,7 +19045,7 @@ function CuoreCalendarioPage({ rentmeVehicles, targhe, fleet, prenotazioni, scad
 // Categoria esaurita → bloccato. Mezzo già occupato → bloccato. Scrive il nuovo
 // modello {tipo,categoria,assegnazioni} + rispecchia i campi vecchi per compatibilità.
 // ═══════════════════════════════════════════════════════════════════
-function CuorePrenotaPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazioni, setPrenotazioni, pushToast, prefill, fermiFlotta, listino, setCassa, operator, partners }) {
+function CuorePrenotaPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazioni, setPrenotazioni, pushToast, prefill, fermiFlotta, listino, setCassa, operator, partners, rentmePush, rentmeConnected }) {
   const parco = useMemo(() => cuoreBuildParco(rentmeVehicles, { targhe, fleet, scadenze }), [rentmeVehicles, targhe, fleet, scadenze]);
   const prenoNuove = useMemo(() => (prenotazioni || []).map(p => cuoreMigraPreno(p, parco)), [prenotazioni, parco]);
   const prenoConFermi = useMemo(() => [...prenoNuove, ...cuoreFermiToPreno(fermiFlotta, parco)], [prenoNuove, fermiFlotta, parco]);
@@ -19067,6 +19067,10 @@ function CuorePrenotaPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazion
   const [note, setNote] = useState('');
   const [consegnaStruttura, setConsegnaStruttura] = useState('');
   const [consegnaIndirizzo, setConsegnaIndirizzo] = useState('');
+  const [stato, setStato] = useState('confermata');
+  const [fonte, setFonte] = useState('manuale');
+  const [sendRentme, setSendRentme] = useState(false);
+  const [scanTarga, setScanTarga] = useState(false);
 
   const tipi = useMemo(() => [...new Set(parco.map(m => m.tipo).filter(Boolean))].sort(), [parco]);
   const categorieDelTipo = useMemo(() => {
@@ -19109,8 +19113,8 @@ function CuorePrenotaPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazion
     const nuova = {
       id,
       codice: (typeof generateBookingCode === 'function' ? generateBookingCode() : id),
-      stato: 'confermata',
-      fonte: 'manuale',
+      stato,
+      fonte,
       clienteCognome: cognome.trim(),
       clienteNome: nome.trim(),
       clienteTel: telefono.trim(),
@@ -19145,6 +19149,13 @@ function CuorePrenotaPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazion
         nota: `Acconto pren. ${formatDate(dal)}→${formatDate(al)}`,
         operatorId: operator?.id || '', operatorName: operator?.nome || '',
       }, ...(prev || [])]);
+    }
+    if (sendRentme && rentmePush) {
+      const rmVeh = mezzo && typeof cuoreNumero === 'function'
+        ? (rentmeVehicles || []).find(v => String(cuoreNumero(v)) === String(mezzo.numero)) : null;
+      rentmePush(nuova, rmVeh?.slug || tipo || 'auto')
+        .then(() => pushToast && pushToast({ tone: 'success', title: 'Inviata a RentMe' }))
+        .catch(err => pushToast && pushToast({ tone: 'warning', title: 'RentMe: invio fallito', message: err.message }));
     }
     pushToast && pushToast({ tone: 'success', title: 'Prenotazione creata (cuore)', message: `${cognome} · ${tipo} ${categoria || ''} · ${dal}→${al}${mezzo ? ' · n.' + mezzo.numero : ' · da assegnare'}${Number(acconto) > 0 ? ` · acconto €${acconto} in cassa` : ''}` });
     setCognome(''); setNome(''); setNumero(''); setTelefono(''); setAcconto(''); setNote('');
@@ -19200,11 +19211,20 @@ function CuorePrenotaPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazion
         )}
 
         <div><label style={lbl}>Mezzo specifico (facoltativo — altrimenti si assegna dopo)</label>
+          <div style={{ display: 'flex', gap: 6 }}>
           <select style={inp} value={numero} onChange={e => setNumero(e.target.value)} disabled={!disp || categoriaPiena}>
             <option value="">— nessun mezzo preciso (da assegnare) —</option>
             {mezziScegliibili.map(m => <option key={m.numero} value={m.numero}>{m.modello || ''} · {m.targa || '(targa manca)'} · n.{m.numero}</option>)}
           </select>
+          <button type="button" onClick={() => setScanTarga(true)} disabled={!disp || categoriaPiena} title="Scansiona targa con fotocamera"
+            style={{ padding: '0 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', cursor: (!disp || categoriaPiena) ? 'not-allowed' : 'pointer', fontSize: 17, flexShrink: 0 }}>
+            📷
+          </button>
+          </div>
           {numeroOccupato && <div style={{ color: 'var(--accent, #c0392b)', fontSize: 12, marginTop: 3 }}>⛔ Questo mezzo è già occupato in queste date</div>}
+          {scanTarga && <TargaScanModal parco={parco} liberi={mezziScegliibili}
+            onFound={(m) => { setNumero(String(m.numero)); setScanTarga(false); }}
+            onClose={() => setScanTarga(false)} />}
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
@@ -19234,6 +19254,25 @@ function CuorePrenotaPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazion
 
         <div><label style={lbl}>Note <span style={{ textTransform: 'none', color: 'var(--muted)' }}>(facolt.)</span></label>
           <input style={inp} value={note} onChange={e => setNote(e.target.value)} placeholder="" /></div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, alignItems: 'end' }}>
+          <div><label style={lbl}>Stato</label>
+            <select style={inp} value={stato} onChange={e => setStato(e.target.value)}>
+              {Object.entries(PRENO_STATI).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+            </select>
+          </div>
+          <div><label style={lbl}>Fonte</label>
+            <select style={inp} value={fonte} onChange={e => setFonte(e.target.value)}>
+              {FONTI_SELEZIONABILI.map(k => <option key={k} value={k}>{PRENO_FONTI[k]}</option>)}
+            </select>
+          </div>
+          {rentmeConnected ? (
+            <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, cursor: 'pointer', paddingBottom: 8 }}>
+              <input type="checkbox" checked={sendRentme} onChange={e => setSendRentme(e.target.checked)} />
+              Invia a RentMe
+            </label>
+          ) : <span />}
+        </div>
 
         <button type="button" onClick={conferma} disabled={!puoConfermare}
           style={{ padding: '10px 16px', borderRadius: 8, border: 'none', fontWeight: 700, fontSize: 14,
@@ -19314,6 +19353,26 @@ function CuoreConsegnaDialog({ preno, parco, prenoNuove, partners, onConfirm, on
     }
     return { impossible: true };
   }, [liberi, parco, prenoNuove, preno]);
+
+  // ── "Consigliato" (parità con lo score del vecchio): per ogni mezzo libero,
+  // quanti giorni resta libero CONTIGUI dal ritiro (orizzonte 90gg) — il più
+  // lungo ha margine per proroghe → ★ consigliato, lista ordinata di conseguenza.
+  const ggLiberi = useMemo(() => {
+    const addDay = (iso, n) => { const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
+    const map = new Map();
+    liberi.forEach(m => {
+      let fine = addDay(preno.dal, 90);
+      prenoNuove.forEach(p => {
+        if (!p || p.id === preno.id || CUORE_PRENO_FUORI.has(String(p.stato || ''))) return;
+        cuoreSegmenti(p).forEach(seg => { if (String(seg.numero) === String(m.numero) && seg.dal > preno.dal && seg.dal <= fine) fine = addDay(seg.dal, -1); });
+      });
+      map.set(String(m.numero), Math.round((new Date(fine + 'T12:00:00') - new Date(preno.dal + 'T12:00:00')) / 86400000) + 1);
+    });
+    return map;
+  }, [liberi, prenoNuove, preno]);
+  const liberiOrdinati = useMemo(
+    () => [...liberi].sort((a, b) => (ggLiberi.get(String(b.numero)) || 0) - (ggLiberi.get(String(a.numero)) || 0)),
+    [liberi, ggLiberi]);
   const FUEL = [{ v: '100', l: '🟢 Pieno' }, { v: '75', l: '🟡 3/4' }, { v: '50', l: '🟠 Metà' }, { v: '25', l: '🔴 1/4' }];
   const inp = { padding: '7px 9px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 13, width: '100%', boxSizing: 'border-box' };
 
@@ -19359,13 +19418,17 @@ function CuoreConsegnaDialog({ preno, parco, prenoNuove, partners, onConfirm, on
           </div>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 6, maxHeight: '34vh', overflowY: 'auto' }}>
-            {liberi.map(m => {
+            {liberiOrdinati.map((m, idx) => {
               const sel = String(m.numero) === String(numero);
+              const gg = ggLiberi.get(String(m.numero)) || 0;
               return (
                 <button key={m.numero} type="button" onClick={() => setNumero(String(m.numero))}
                   style={{ textAlign: 'left', padding: '8px 9px', border: `2px solid ${sel ? 'var(--sea)' : 'var(--border)'}`, borderRadius: 8, background: sel ? 'rgba(31,93,131,0.08)' : 'transparent', cursor: 'pointer' }}>
                   <div style={{ fontFamily: 'var(--font-mono, monospace)', fontWeight: 700, fontSize: 13 }}>{m.targa || ('n.' + m.numero)}</div>
                   <div style={{ fontSize: 10, color: 'var(--ink-2)', marginTop: 1 }}>{m.modello || m.tipo || '—'} · n.{m.numero}</div>
+                  <div style={{ fontSize: 9, marginTop: 2, fontWeight: idx === 0 ? 700 : 400, color: idx === 0 ? '#2e6e3e' : 'var(--muted)' }}>
+                    {idx === 0 ? '★ consigliato · ' : ''}libero {gg >= 91 ? '90+' : gg}gg
+                  </div>
                 </button>
               );
             })}
@@ -19759,9 +19822,22 @@ function CuoreWalkIn({ rentmeVehicles, targhe, fleet, scadenze, prenotazioni, se
 }
 
 function CuoreBancoPage(props) {
+  const { rentmeSyncStatus, onRentmeSync, rentmeLastSync } = props;
   return (
     <div style={{ maxWidth: 1000, margin: '0 auto' }}>
-      <div className="label" style={{ color: 'var(--sea)' }}>NUOVO CUORE · BANCO RAPIDO (anteprima)</div>
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+        <div className="label" style={{ color: 'var(--sea)' }}>NUOVO CUORE · BANCO RAPIDO (anteprima)</div>
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 11, color: 'var(--muted)' }}>
+          <span className="pulse" style={{ width: 7, height: 7, borderRadius: '50%', flexShrink: 0, background: rentmeSyncStatus === 'ok' ? '#27ae60' : rentmeSyncStatus === 'error' ? 'var(--accent, #c0392b)' : '#b87333', display: 'inline-block' }} />
+          <span>RentMe {rentmeSyncStatus === 'ok' ? (typeof fmtLastSync === 'function' && rentmeLastSync ? '· sync ' + fmtLastSync(rentmeLastSync) : '· ok') : rentmeSyncStatus === 'syncing' ? '· sincronizzazione…' : rentmeSyncStatus === 'error' ? '· errore' : '· non connesso'}</span>
+          {onRentmeSync && (
+            <button type="button" onClick={onRentmeSync}
+              style={{ border: '1px solid var(--border)', background: 'transparent', borderRadius: 6, padding: '2px 8px', cursor: 'pointer', color: 'var(--ink-2)', fontSize: 11 }}>
+              ↻ Sincronizza
+            </button>
+          )}
+        </div>
+      </div>
       <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: 22, letterSpacing: '-0.01em', margin: '2px 0 4px' }}>Banco rapido</h1>
       <p style={{ fontSize: 13, color: 'var(--ink-2)', marginBottom: 16 }}>
         Walk-in sul <strong>motore unico</strong>: categorie con liberi reali e prezzo del periodo; un tap →
@@ -19781,7 +19857,12 @@ function CuoreBancoPage(props) {
 function CuoreRientroDialog({ preno, mezzo, onConfirm, onClose }) {
   const [km, setKm] = useState(preno.kmRientro ?? '');
   const [carburante, setCarburante] = useState(preno.carburanteRientro || '');
-  const [danni, setDanni] = useState((preno.danniRiscontrati || []).join(', '));
+  const DANNI_VOCI = ['carrozzeria', 'cristalli', 'pneumatici', 'interni', 'specchietti'];
+  const [danniCheck, setDanniCheck] = useState(() => {
+    const have = new Set(preno.danniRiscontrati || []);
+    return Object.fromEntries(DANNI_VOCI.map(v => [v, have.has(v)]));
+  });
+  const [noteDanni, setNoteDanni] = useState(preno.noteDanni || '');
   const [note, setNote] = useState(preno.noteRientro || '');
   // ── Saldo in cassa al rientro (stesso formato di handleSaldoRapido) ──
   // residuo = prezzo − acconto; si registra solo se c'è un prezzo e non è già saldato.
@@ -19795,7 +19876,7 @@ function CuoreRientroDialog({ preno, mezzo, onConfirm, onClose }) {
   const FUEL = [{ v: '100', l: '🟢 Pieno' }, { v: '75', l: '🟡 3/4' }, { v: '50', l: '🟠 Metà' }, { v: '25', l: '🔴 1/4' }];
   const inp = { padding: '7px 9px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 13, width: '100%', boxSizing: 'border-box' };
   const lbl = { fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--ink-2)', display: 'block', marginBottom: 4 };
-  const hasDanni = danni.trim().length > 0;
+  const hasDanni = Object.values(danniCheck).some(Boolean) || noteDanni.trim().length > 0;
   const saldoOk = !registraSaldo || (Number(importo) > 0);
 
   return (
@@ -19823,8 +19904,19 @@ function CuoreRientroDialog({ preno, mezzo, onConfirm, onClose }) {
         </div>
 
         <div style={{ marginTop: 12 }}>
-          <label style={lbl}>Danni riscontrati <span style={{ textTransform: 'none', color: 'var(--muted)' }}>(facolt. — vuoto = nessun danno)</span></label>
-          <input style={{ ...inp, borderColor: hasDanni ? 'var(--accent, #c0392b)' : 'var(--border)' }} value={danni} onChange={e => setDanni(e.target.value)} placeholder="es. graffio sportello, specchietto" />
+          <label style={lbl}>Danni riscontrati <span style={{ textTransform: 'none', color: 'var(--muted)' }}>(spunta + dettaglio — vuoto = nessun danno)</span></label>
+          <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 6 }}>
+            {DANNI_VOCI.map(v => (
+              <button key={v} type="button" onClick={() => setDanniCheck(c => ({ ...c, [v]: !c[v] }))}
+                style={{ padding: '5px 10px', fontSize: 11, borderRadius: 12, cursor: 'pointer', textTransform: 'capitalize',
+                  border: `1px solid ${danniCheck[v] ? 'var(--accent, #c0392b)' : 'var(--border)'}`,
+                  background: danniCheck[v] ? 'rgba(192,57,50,0.10)' : 'transparent',
+                  color: danniCheck[v] ? 'var(--accent, #c0392b)' : 'var(--ink-2)', fontWeight: danniCheck[v] ? 700 : 400 }}>
+                {danniCheck[v] ? '✗ ' : ''}{v}
+              </button>
+            ))}
+          </div>
+          <input style={{ ...inp, borderColor: hasDanni ? 'var(--accent, #c0392b)' : 'var(--border)' }} value={noteDanni} onChange={e => setNoteDanni(e.target.value)} placeholder="dettaglio danni (es. graffio sportello dx)" />
         </div>
         <div style={{ marginTop: 12 }}>
           <label style={lbl}>Note rientro <span style={{ textTransform: 'none', color: 'var(--muted)' }}>(facolt.)</span></label>
@@ -19859,7 +19951,7 @@ function CuoreRientroDialog({ preno, mezzo, onConfirm, onClose }) {
 
         <div style={{ display: 'flex', gap: 8, marginTop: 18 }}>
           <button type="button" disabled={!saldoOk}
-            onClick={() => saldoOk && onConfirm({ km, carburante, danni, note, saldo: (registraSaldo && Number(importo) > 0) ? { importo: Number(importo), metodo } : null })}
+            onClick={() => saldoOk && onConfirm({ km, carburante, danni: DANNI_VOCI.filter(v => danniCheck[v]), noteDanni: noteDanni.trim(), note, saldo: (registraSaldo && Number(importo) > 0) ? { importo: Number(importo), metodo } : null })}
             style={{ flex: 1, padding: '10px 16px', borderRadius: 8, border: 'none', fontWeight: 700, fontSize: 14, cursor: saldoOk ? 'pointer' : 'not-allowed', background: !saldoOk ? 'var(--surface-2)' : (hasDanni ? 'var(--accent, #c0392b)' : 'var(--sea)'), color: !saldoOk ? 'var(--ink-2)' : '#fff' }}>
             {hasDanni ? '⚠️ Rientro con danni' : '📍 Conferma rientro'}{registraSaldo && Number(importo) > 0 ? ` + saldo €${Number(importo)}` : ''}
           </button>
@@ -19891,10 +19983,10 @@ function CuoreRientroPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazion
     .sort((a, b) => String(b.riconsegnaAt || '').localeCompare(String(a.riconsegnaAt || ''))),
     [prenoNuove, oggi]);
 
-  function confermaRientro({ km, carburante, danni, note, saldo }) {
+  function confermaRientro({ km, carburante, danni, noteDanni, note, saldo }) {
     const preno = target;
     if (!preno) return;
-    const danniArr = danni && danni.trim() ? danni.split(',').map(s => s.trim()).filter(Boolean) : null;
+    const danniArr = Array.isArray(danni) ? (danni.length ? danni : null) : (danni && danni.trim() ? danni.split(',').map(s => s.trim()).filter(Boolean) : null);
     // Saldo in cassa (stesso formato di handleSaldoRapido): record 'saldo' + flag sulla preno.
     if (saldo && saldo.importo > 0 && setCassa) {
       setCassa(prev => [{
@@ -19919,6 +20011,7 @@ function CuoreRientroPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazion
       kmRientro: (km !== '' && km != null) ? Number(km) : (x.kmRientro ?? null),
       carburanteRientro: carburante || null,
       danniRiscontrati: danniArr,
+      noteDanni: noteDanni || '',
       noteDanni: danniArr ? (note || x.noteDanni || '') : (x.noteDanni || ''),
       noteRientro: note || '',
       ...(saldo && saldo.importo > 0 ? { saldoRegistrato: true, saldato: saldo.importo } : {}),
@@ -20006,6 +20099,74 @@ function CuoreRientroPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazion
           onClose={() => setTarget(null)}
         />
       )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// SCANNER TARGA riusabile (fotocamera + Tesseract, stessa pipeline del vecchio
+// PrenoForm — la cui copia inline muore con la Fase 6). Trova il mezzo nel
+// PARCO dalla targa riconosciuta e avvisa se è occupato nelle date.
+// ═══════════════════════════════════════════════════════════════════
+function TargaScanModal({ parco, liberi, onFound, onClose }) {
+  const [status, setStatus] = useState('loading'); // loading|scanning|done|error
+  const [msg, setMsg] = useState('Avvio fotocamera…');
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+  const streamRef = useRef(null);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+        });
+        if (!alive) { stream.getTracks().forEach(t => t.stop()); return; }
+        streamRef.current = stream;
+        if (videoRef.current) { videoRef.current.srcObject = stream; videoRef.current.play(); }
+        setStatus('scanning'); setMsg('Punta la fotocamera sulla targa e scatta');
+      } catch (err) { setStatus('error'); setMsg('Fotocamera non disponibile: ' + err.message); }
+    })();
+    return () => { alive = false; if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop()); };
+  }, []);
+  async function scatta() {
+    if (!videoRef.current || !canvasRef.current) return;
+    setStatus('loading'); setMsg('Riconosco targa…');
+    const canvas = canvasRef.current, video = videoRef.current;
+    canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+    canvas.getContext('2d').drawImage(video, 0, 0);
+    try {
+      const result = await Tesseract.recognize(canvas, 'eng', {
+        logger: (m) => { if (m.status === 'recognizing text') setMsg('OCR: ' + Math.round(m.progress * 100) + '%'); },
+      });
+      const plate = extractItalianPlate(result.data.text);
+      if (!plate) { setStatus('scanning'); setMsg('Targa non riconosciuta — riprova'); return; }
+      const m = (parco || []).find(x => {
+        const t = (x.targa || '').toUpperCase().replace(/\s/g, '');
+        return t && (t === plate || t.includes(plate) || plate.includes(t));
+      });
+      if (!m) { setStatus('scanning'); setMsg(`Targa ${plate} non trovata nel Parco — scegli a mano`); return; }
+      const libero = (liberi || []).some(x => String(x.numero) === String(m.numero));
+      if (!libero) { setStatus('scanning'); setMsg(`⛔ ${plate} (n.${m.numero}) è occupato in queste date`); return; }
+      setStatus('done'); setMsg(`✅ ${plate} → n.${m.numero}`);
+      onFound(m);
+    } catch (err) { setStatus('error'); setMsg('Errore OCR: ' + err.message); }
+  }
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 60 }}>
+      <div onClick={e => e.stopPropagation()} className="card-paper" style={{ padding: 16, width: 420, maxWidth: '94vw' }}>
+        <h3 style={{ fontFamily: 'var(--font-serif)', fontSize: 16, marginBottom: 8 }}>Scansiona targa</h3>
+        <video ref={videoRef} playsInline muted style={{ width: '100%', borderRadius: 8, background: '#000', minHeight: 180 }} />
+        <canvas ref={canvasRef} style={{ display: 'none' }} />
+        <div style={{ fontSize: 12, color: status === 'error' ? 'var(--accent, #c0392b)' : 'var(--ink-2)', margin: '8px 0', minHeight: 18 }}>{msg}</div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button type="button" onClick={scatta} disabled={status === 'loading'}
+            style={{ flex: 1, padding: '9px 14px', borderRadius: 8, border: 'none', fontWeight: 700, fontSize: 13, cursor: status === 'loading' ? 'wait' : 'pointer', background: 'var(--sea)', color: '#fff' }}>
+            📷 Scatta e riconosci
+          </button>
+          <button type="button" onClick={onClose} style={{ padding: '9px 14px', border: '1px solid var(--border)', borderRadius: 8, background: 'transparent', cursor: 'pointer', fontSize: 13 }}>Chiudi</button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -20528,18 +20689,22 @@ function CuorePreventiviPage({ listino, fleet, rentmeVehicles, prenotazioni, tar
       navigator.clipboard.writeText(url).then(() => { setLinkCopiato(true); setTimeout(() => setLinkCopiato(false), 2200); });
     } catch { /* clipboard non disponibile */ }
   };
-  // ── PDF preventivo: STESSO generatore del vecchio (exportPreventivoPDF) ──
-  const pdfDi = (r) => {
+  // ── PDF preventivo: STESSO generatore del vecchio, con dati CLIENTE facoltativi ──
+  const [pdfTarget, setPdfTarget] = useState(null); // riga per cui generare il PDF
+  const [pdfCliente, setPdfCliente] = useState({ nome: '', tel: '', email: '' });
+  const pdfDi = (r, cliente) => {
     const q = calcPreventivo(r.cat, dal, al);
     if (!q) return;
+    const c = cliente && (cliente.nome || cliente.tel || cliente.email) ? cliente : null;
     exportPreventivoPDF({
       catName: r.cat.nome, dal, al,
       stagione: q.season, isWeekly: false,
       total: q.totale, totalDays: q.giorni,
       codice: (typeof generateBookingCode === 'function' ? generateBookingCode() : ''),
-      cliente: null,
+      cliente: c,
       breakdown: (q.righe || []).map(rr => ({ label: rr.desc || '', gg: 0, price: 0, subtotal: rr.sub || 0 })),
     }, null, 'it');
+    setPdfTarget(null);
   };
 
   return (
@@ -20583,7 +20748,7 @@ function CuorePreventiviPage({ listino, fleet, rentmeVehicles, prenotazioni, tar
                   style={{ flex: 1, padding: '8px 12px', borderRadius: 6, border: 'none', fontWeight: 700, fontSize: 13, cursor: pieno ? 'not-allowed' : 'pointer', background: pieno ? 'var(--surface-2)' : 'var(--sea)', color: pieno ? 'var(--ink-2)' : '#fff' }}>
                   {pieno ? 'Nessun mezzo libero' : 'Prenota →'}
                 </button>
-                <button type="button" onClick={() => pdfDi(r)} disabled={!(r.giorni > 0)} title="Genera PDF del preventivo (anche se pieno: vale per altre date)"
+                <button type="button" onClick={() => { setPdfCliente({ nome: '', tel: '', email: '' }); setPdfTarget(r); }} disabled={!(r.giorni > 0)} title="Genera PDF del preventivo (anche se pieno: vale per altre date)"
                   style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', cursor: r.giorni > 0 ? 'pointer' : 'not-allowed', color: 'var(--ink-2)', display: 'inline-flex', alignItems: 'center' }}>
                   <Printer style={{ width: 14, height: 14 }} />
                 </button>
@@ -20593,6 +20758,28 @@ function CuorePreventiviPage({ listino, fleet, rentmeVehicles, prenotazioni, tar
         })}
         {righe.length === 0 && <div style={{ padding: 20, color: 'var(--ink-2)' }}>Imposta le date per vedere prezzi e disponibilità.</div>}
       </div>
+
+      {/* mini-dialog: dati cliente FACOLTATIVI sul PDF (parità col vecchio) */}
+      {pdfTarget && (
+        <div onClick={() => setPdfTarget(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
+          <div onClick={e => e.stopPropagation()} className="card-paper" style={{ padding: 18, width: 380, maxWidth: '92vw' }}>
+            <h3 style={{ fontFamily: 'var(--font-serif)', fontSize: 16, marginBottom: 2 }}>PDF preventivo · {pdfTarget.cat.nome}</h3>
+            <p style={{ fontSize: 12, color: 'var(--ink-2)', marginBottom: 10 }}>Dati cliente facoltativi (compaiono sul documento).</p>
+            <div style={{ display: 'grid', gap: 8 }}>
+              <input style={{ padding: '7px 9px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 13 }} placeholder="Nome e cognome" value={pdfCliente.nome} onChange={e => setPdfCliente(c => ({ ...c, nome: e.target.value }))} />
+              <input style={{ padding: '7px 9px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 13 }} placeholder="Telefono" value={pdfCliente.tel} onChange={e => setPdfCliente(c => ({ ...c, tel: e.target.value }))} />
+              <input style={{ padding: '7px 9px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 13 }} placeholder="Email" value={pdfCliente.email} onChange={e => setPdfCliente(c => ({ ...c, email: e.target.value }))} />
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+              <button type="button" onClick={() => pdfDi(pdfTarget, pdfCliente)}
+                style={{ flex: 1, padding: '9px 14px', borderRadius: 7, border: 'none', background: 'var(--sea)', color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
+                Genera PDF
+              </button>
+              <button type="button" onClick={() => setPdfTarget(null)} style={{ padding: '9px 12px', border: '1px solid var(--border)', borderRadius: 7, background: 'transparent', cursor: 'pointer', fontSize: 13 }}>Annulla</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
