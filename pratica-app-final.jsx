@@ -19270,7 +19270,50 @@ function CuoreConsegnaDialog({ preno, parco, prenoNuove, partners, onConfirm, on
   const [note, setNote] = useState(preno.noteConsegna || '');
   const [struttura, setStruttura] = useState(preno.consegnaStruttura || '');
   const [indirizzo, setIndirizzo] = useState(preno.consegnaIndirizzo || '');
+  const [usaCombo, setUsaCombo] = useState(false);
   const cliente = `${preno.clienteCognome || ''} ${preno.clienteNome || ''}`.trim() || '—';
+
+  // ── COMBO AUTOMATICA (parità col vecchio, ma sui SEGMENTI nativi del modello):
+  // quando NESSUN singolo mezzo copre tutto il periodo, propone uno split greedy
+  // su più mezzi della stessa categoria (ognuno il tratto contiguo più lungo, max 4 cambi).
+  const combo = useMemo(() => {
+    if (liberi.length > 0) return null;
+    const addDay = (iso, n) => { const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
+    const cand = parco.filter(m =>
+      !CUORE_MEZZO_FUORI.has(String(m.stato || 'disponibile')) &&
+      canonicalTipo({ tipo: m.tipo }) === canonicalTipo({ tipo: preno.tipo }) &&
+      (!preno.categoria || String(m.categoria || '').toUpperCase() === String(preno.categoria || '').toUpperCase()));
+    if (!cand.length) return { impossible: true };
+    const busy = new Map(); // numero → segmenti occupati (preno attive + fermi, esclusa questa)
+    prenoNuove.forEach(p => {
+      if (!p || p.id === preno.id || CUORE_PRENO_FUORI.has(String(p.stato || ''))) return;
+      cuoreSegmenti(p).forEach(s => {
+        if (!busy.has(String(s.numero))) busy.set(String(s.numero), []);
+        busy.get(String(s.numero)).push(s);
+      });
+    });
+    const liberoFinoA = (numero, da) => {
+      const segs = busy.get(String(numero)) || [];
+      if (segs.some(s => s.dal <= da && s.al >= da)) return null; // occupato già il primo giorno
+      let fine = preno.al;
+      segs.forEach(s => { if (s.dal > da && s.dal <= fine) fine = addDay(s.dal, -1); });
+      return fine;
+    };
+    const piano = [];
+    let cur = preno.dal;
+    for (let hop = 0; hop < 4 && cur <= preno.al; hop++) {
+      let best = null;
+      cand.forEach(m => {
+        const fine = liberoFinoA(m.numero, cur);
+        if (fine && (!best || fine > best.fine)) best = { m, fine };
+      });
+      if (!best) return { impossible: true };
+      piano.push({ numero: String(best.m.numero), dal: cur, al: best.fine, mezzo: best.m });
+      if (best.fine >= preno.al) return { segmenti: piano };
+      cur = addDay(best.fine, 1);
+    }
+    return { impossible: true };
+  }, [liberi, parco, prenoNuove, preno]);
   const FUEL = [{ v: '100', l: '🟢 Pieno' }, { v: '75', l: '🟡 3/4' }, { v: '50', l: '🟠 Metà' }, { v: '25', l: '🔴 1/4' }];
   const inp = { padding: '7px 9px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 13, width: '100%', boxSizing: 'border-box' };
 
@@ -19288,7 +19331,32 @@ function CuoreConsegnaDialog({ preno, parco, prenoNuove, partners, onConfirm, on
 
         <label style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--ink-2)', display: 'block', marginBottom: 6 }}>Mezzo (i due blocchi: solo i liberi della categoria)</label>
         {liberi.length === 0 ? (
-          <div style={{ padding: '10px 12px', borderRadius: 8, background: 'rgba(192,57,50,0.1)', color: 'var(--accent, #c0392b)', fontSize: 13, fontWeight: 600 }}>⛔ Nessun mezzo libero per queste date</div>
+          <div>
+            <div style={{ padding: '10px 12px', borderRadius: 8, background: 'rgba(192,57,50,0.1)', color: 'var(--accent, #c0392b)', fontSize: 13, fontWeight: 600 }}>⛔ Nessun mezzo libero per TUTTO il periodo</div>
+            {combo && combo.segmenti && (
+              <div style={{ marginTop: 10, padding: '12px 14px', borderRadius: 8, border: `2px solid ${usaCombo ? 'var(--sea)' : '#c88a2e'}`, background: usaCombo ? 'rgba(31,93,131,0.06)' : 'rgba(200,138,46,0.08)' }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#c88a2e', marginBottom: 6 }}>🧩 Combinazione automatica su {combo.segmenti.length} mezzi (cambio in corso di noleggio)</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 8 }}>
+                  {combo.segmenti.map((seg, i) => (
+                    <span key={i} style={{ fontSize: 11, background: 'rgba(31,93,131,.1)', color: 'var(--sea)', borderRadius: 4, padding: '2px 8px', fontFamily: 'var(--font-mono, monospace)', fontWeight: 600 }}>
+                      {seg.mezzo.targa || ('n.' + seg.numero)}
+                      <span style={{ fontWeight: 400, color: 'var(--muted)', marginLeft: 4 }}>{formatDate(seg.dal)}→{formatDate(seg.al)}</span>
+                      {i < combo.segmenti.length - 1 ? ' ›' : ''}
+                    </span>
+                  ))}
+                </div>
+                <button type="button" onClick={() => setUsaCombo(v => !v)}
+                  style={{ fontSize: 11, padding: '5px 14px', borderRadius: 5, border: 'none', background: usaCombo ? 'var(--sea)' : '#c88a2e', color: '#fff', fontWeight: 700, cursor: 'pointer' }}>
+                  {usaCombo ? '✓ Combinazione selezionata' : 'Usa questa combinazione'}
+                </button>
+              </div>
+            )}
+            {combo && combo.impossible && (
+              <div style={{ marginTop: 8, fontSize: 12, color: 'var(--accent, #c0392b)' }}>
+                Nessuna combinazione possibile: il periodo non si copre nemmeno spezzando su più mezzi.
+              </div>
+            )}
+          </div>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 6, maxHeight: '34vh', overflowY: 'auto' }}>
             {liberi.map(m => {
@@ -19332,10 +19400,17 @@ function CuoreConsegnaDialog({ preno, parco, prenoNuove, partners, onConfirm, on
         </div>
 
         <div style={{ display: 'flex', gap: 8, marginTop: 18 }}>
-          <button type="button" onClick={() => numero && onConfirm({ numero, km, carburante, note, struttura, indirizzo })} disabled={!numero}
-            style={{ flex: 1, padding: '10px 16px', borderRadius: 8, border: 'none', fontWeight: 700, fontSize: 14, cursor: numero ? 'pointer' : 'not-allowed', background: numero ? 'var(--sea)' : 'var(--surface-2)', color: numero ? '#fff' : 'var(--ink-2)' }}>
-            🚗 Conferma consegna
-          </button>
+          {(() => {
+            const comboAttiva = usaCombo && combo && combo.segmenti;
+            const pronto = !!numero || !!comboAttiva;
+            return (
+              <button type="button" disabled={!pronto}
+                onClick={() => pronto && onConfirm({ numero, combo: comboAttiva ? combo.segmenti.map(s => ({ numero: s.numero, dal: s.dal, al: s.al })) : null, km, carburante, note, struttura, indirizzo })}
+                style={{ flex: 1, padding: '10px 16px', borderRadius: 8, border: 'none', fontWeight: 700, fontSize: 14, cursor: pronto ? 'pointer' : 'not-allowed', background: pronto ? 'var(--sea)' : 'var(--surface-2)', color: pronto ? '#fff' : 'var(--ink-2)' }}>
+                🚗 Conferma consegna{comboAttiva ? ' (combo)' : ''}
+              </button>
+            );
+          })()}
           <button type="button" onClick={onClose} style={{ padding: '10px 16px', border: '1px solid var(--border)', borderRadius: 8, background: 'transparent', cursor: 'pointer', fontSize: 13 }}>Annulla</button>
         </div>
       </div>
@@ -19370,14 +19445,17 @@ function CuoreConsegnaPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazio
 
   const mezzoDi = (p) => { const s = cuoreSegmenti(p)[0]; return s ? parcoByNum.get(String(s.numero)) : null; };
 
-  function confermaConsegna({ numero, km, carburante, note, struttura, indirizzo }) {
+  function confermaConsegna({ numero, combo, km, carburante, note, struttura, indirizzo }) {
     const preno = target;
-    const mezzo = parcoByNum.get(String(numero));
+    const segs = (combo && combo.length)
+      ? combo.map(s => ({ numero: String(s.numero), dal: s.dal, al: s.al }))
+      : (numero ? [{ numero: String(numero), dal: preno.dal, al: preno.al }] : null);
+    const mezzo = segs ? parcoByNum.get(String(segs[0].numero)) : null; // il mezzo consegnato ORA
     if (!preno || !mezzo) return;
     setPrenotazioni(prev => (prev || []).map(x => x.id === preno.id ? {
       ...x,
       stato: 'in_corso',
-      assegnazioni: [{ numero: String(mezzo.numero), dal: preno.dal, al: preno.al }],
+      assegnazioni: segs,
       // specchio campi vecchi — TARGA DALLA TABELLA (Parco Mezzi) = fonte unica → contratto giusto
       vehicleId: String(mezzo.numero),
       vehicleTarga: mezzo.targa || '',
@@ -19393,7 +19471,7 @@ function CuoreConsegnaPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazio
       consegnaOperatore: operator?.nome || x.consegnaOperatore || '',
       updatedAt: new Date().toISOString(),
     } : x));
-    pushToast && pushToast({ tone: 'success', title: '🚗 Consegna confermata', message: `${cliente(preno)} → ${mezzo.modello || ''} ${mezzo.targa || ('n.' + mezzo.numero)}` });
+    pushToast && pushToast({ tone: 'success', title: '🚗 Consegna confermata', message: `${cliente(preno)} → ${mezzo.modello || ''} ${mezzo.targa || ('n.' + mezzo.numero)}${(combo && combo.length > 1) ? ` +combo (${combo.length} mezzi)` : ''}` });
     setTarget(null);
   }
 
@@ -20441,6 +20519,29 @@ function CuorePreventiviPage({ listino, fleet, rentmeVehicles, prenotazioni, tar
     pushToast && pushToast({ tone: 'success', title: 'Preventivo → Prenotazione', message: `${r.cat.nome} · ${dal} → ${al}` });
   };
 
+  // ── Copia link condivisibile (stesso formato del vecchio Preventivi: ?preventivo=tipo|dal|al) ──
+  const [linkCopiato, setLinkCopiato] = useState(false);
+  const copiaLink = () => {
+    try {
+      const base = window.location.origin + window.location.pathname;
+      const url = `${base}?preventivo=${encodeURIComponent(['tutti', dal, al].join('|'))}`;
+      navigator.clipboard.writeText(url).then(() => { setLinkCopiato(true); setTimeout(() => setLinkCopiato(false), 2200); });
+    } catch { /* clipboard non disponibile */ }
+  };
+  // ── PDF preventivo: STESSO generatore del vecchio (exportPreventivoPDF) ──
+  const pdfDi = (r) => {
+    const q = calcPreventivo(r.cat, dal, al);
+    if (!q) return;
+    exportPreventivoPDF({
+      catName: r.cat.nome, dal, al,
+      stagione: q.season, isWeekly: false,
+      total: q.totale, totalDays: q.giorni,
+      codice: (typeof generateBookingCode === 'function' ? generateBookingCode() : ''),
+      cliente: null,
+      breakdown: (q.righe || []).map(rr => ({ label: rr.desc || '', gg: 0, price: 0, subtotal: rr.sub || 0 })),
+    }, null, 'it');
+  };
+
   return (
     <div style={{ maxWidth: 1000, margin: '0 auto' }}>
       <div className="label" style={{ color: 'var(--sea)' }}>NUOVO CUORE · PREVENTIVI (anteprima)</div>
@@ -20455,6 +20556,14 @@ function CuorePreventiviPage({ listino, fleet, rentmeVehicles, prenotazioni, tar
         <label style={{ fontSize: 12, color: 'var(--ink-2)' }}>Dal<br /><input type="date" value={dal} onChange={e => setDal(e.target.value)} style={{ padding: 6, border: '1px solid var(--border)', borderRadius: 6 }} /></label>
         <label style={{ fontSize: 12, color: 'var(--ink-2)' }}>Al<br /><input type="date" value={al} onChange={e => setAl(e.target.value)} style={{ padding: 6, border: '1px solid var(--border)', borderRadius: 6 }} /></label>
         {righe[0] && righe[0].giorni > 0 && <span style={{ fontSize: 12, color: 'var(--ink-2)' }}>{righe[0].giorni} giorni</span>}
+        {dal && al && (
+          <button type="button" onClick={copiaLink} title="Copia link condivisibile con queste date"
+            style={{ padding: '7px 12px', borderRadius: 6, fontSize: 12, cursor: 'pointer', border: '1px solid var(--border)',
+              background: linkCopiato ? 'rgba(46,110,62,0.10)' : 'transparent', color: linkCopiato ? '#2e6e3e' : 'var(--ink-2)',
+              fontWeight: 500, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+            {linkCopiato ? '✓ Link copiato!' : <><Link style={{ width: 13, height: 13 }} aria-hidden="true" /> Copia link</>}
+          </button>
+        )}
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: 12 }}>
@@ -20469,10 +20578,16 @@ function CuorePreventiviPage({ listino, fleet, rentmeVehicles, prenotazioni, tar
               <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 10, color: pieno ? 'var(--accent, #c0392b)' : 'var(--sea)' }}>
                 {pieno ? `⛔ Pieno per queste date (${r.totale}/${r.totale})` : `✓ ${r.liberi} liberi su ${r.totale}`}
               </div>
-              <button type="button" onClick={() => prenota(r)} disabled={pieno}
-                style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: 'none', fontWeight: 700, fontSize: 13, cursor: pieno ? 'not-allowed' : 'pointer', background: pieno ? 'var(--surface-2)' : 'var(--sea)', color: pieno ? 'var(--ink-2)' : '#fff' }}>
-                {pieno ? 'Nessun mezzo libero' : 'Prenota →'}
-              </button>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button type="button" onClick={() => prenota(r)} disabled={pieno}
+                  style={{ flex: 1, padding: '8px 12px', borderRadius: 6, border: 'none', fontWeight: 700, fontSize: 13, cursor: pieno ? 'not-allowed' : 'pointer', background: pieno ? 'var(--surface-2)' : 'var(--sea)', color: pieno ? 'var(--ink-2)' : '#fff' }}>
+                  {pieno ? 'Nessun mezzo libero' : 'Prenota →'}
+                </button>
+                <button type="button" onClick={() => pdfDi(r)} disabled={!(r.giorni > 0)} title="Genera PDF del preventivo (anche se pieno: vale per altre date)"
+                  style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', cursor: r.giorni > 0 ? 'pointer' : 'not-allowed', color: 'var(--ink-2)', display: 'inline-flex', alignItems: 'center' }}>
+                  <Printer style={{ width: 14, height: 14 }} />
+                </button>
+              </div>
             </div>
           );
         })}
