@@ -21448,6 +21448,18 @@ function Topbar({ page, online, setOnline, pendingQueue, operator, admin, setAdm
 // ═══════════════════════════════════════════════════════════════════
 // DASHBOARD — basata su dati reali (props), niente mock
 // ═══════════════════════════════════════════════════════════════════
+// Blocco/riserva (NON un noleggio vero): RentMe "bloccata"/overbooking o riserve
+// manuali (es. "EMERGENZA RISERVA"). Riconosciuto dal nome cliente. Escluso dai
+// conteggi "veicoli fuori" (richiesta utente 13/6: contare solo i noleggi veri).
+function isBloccoPreno(p) {
+  const nome = `${p?.clienteCognome || ''} ${p?.clienteNome || ''} ${p?.cliente || ''}`.toLowerCase();
+  return /blocc|over\s?book|emergenz|riserv/.test(nome);
+}
+// "Veicoli fuori ora" = UNICA verità condivisa (Dashboard + Flotta): mezzo CONSEGNATO
+// (prenotazione in_corso) con veicolo, non rientrato, ESCLUSI i blocchi/riserve.
+function prenoFuoriOra(prenotazioni) {
+  return (prenotazioni || []).filter(p => p.stato === 'in_corso' && p.vehicleId && !isBloccoPreno(p));
+}
 function Dashboard({ onNew, setPage, operator, fleet, contracts, partners, onMarkReturned, scadenze, prenotazioni, agency }) {
   // Data di oggi formattata in italiano
   const today = useMemo(() => {
@@ -21474,20 +21486,13 @@ function Dashboard({ onNew, setPage, operator, fleet, contracts, partners, onMar
     const sent     = todayContracts.filter(c => c.status === 'sent').length;
     const dueCargos = todayContracts.filter(c => c.cargosRequired).length;
     const errors   = contracts.filter(c => c.status === 'error').length;
-    // Veicoli fuori = contratti attivi non ancora marcati rientrati
-    const out = contracts.filter(c =>
-      !c.returnedAt &&
-      ['sent', 'paper', 'queued', 'pending'].includes(c.status) &&
-      parseItalianDateTime(c.record?.CONTRATTO_CHECKIN_DATA) !== null
-    ).length;
-    // Overdue rispetto a ora
-    const nowMs = Date.now();
-    const overdue = contracts.filter(c => {
-      if (c.returnedAt) return false;
-      if (!['sent', 'paper', 'queued', 'pending'].includes(c.status)) return false;
-      const d = parseItalianDateTime(c.record?.CONTRATTO_CHECKIN_DATA);
-      return d !== null && d.getTime() < nowMs;
-    }).length;
+    // Veicoli fuori = mezzi CONSEGNATI (prenotazione in_corso) non rientrati, ESCLUSI i
+    // blocchi/riserve. STESSA fonte/definizione del pannello "Mezzi fuori ora" di Flotta
+    // (prima qui si contavano i CONTRATTI CARGOS -> divergeva dalla Flotta: ora una sola verità).
+    const fuori   = prenoFuoriOra(prenotazioni);
+    const out     = fuori.length;
+    const oggiISO = todayISO();
+    const overdue = fuori.filter(p => p.al && p.al < oggiISO).length; // rientro previsto già passato
 
     return [
       {
@@ -21525,7 +21530,7 @@ function Dashboard({ onNew, setPage, operator, fleet, contracts, partners, onMar
         color: overdue > 0 ? 'var(--accent)' : 'var(--edo-sun-warm)',
       },
     ];
-  }, [contracts]);
+  }, [contracts, prenotazioni]);
 
   // Saluto adattivo
   const greeting = useMemo(() => {
@@ -22604,8 +22609,7 @@ function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, on
         // "Fuori" = consegnato e non ancora rientrato → stato 'in_corso'
         // (include i ritardi: al < oggi ma non riconsegnato). Risolve la targa
         // legacy via matchVehicle.
-        const out = (prenotazioni || [])
-          .filter(p => p.stato === 'in_corso' && p.vehicleId)
+        const out = prenoFuoriOra(prenotazioni)  // in_corso + veicolo, ESCLUSI blocchi/riserve (verità condivisa con Dashboard)
           .map(p => {
             const v = (fleet || []).find(fv => matchVehicle(p.vehicleId, fv.id, fv.targa)) || {};
             const partner = (partners || []).find(s => s.id === p.consegnaStruttura);
