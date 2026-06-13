@@ -9684,10 +9684,13 @@ function buildUnifiedAvailableVehicles(rentmeVehicles, fleet, targhe) {
 // l'occupazione indipendente dallo schema di id usato dalla lista.
 function matchVehicleUnified(bookingVid, v, resolve) {
   if (matchVehicle(bookingVid, v.id, v.targa)) return true;
+  if (v && v.numero != null && String(bookingVid) === String(v.numero)) return true; // id canonico diretto
   if (!resolve || !bookingVid) return false;
   const bc = resolve(bookingVid);
   if (!bc) return false;
-  return bc === resolve(v.id) || bc === resolve(v.targa);
+  // confronto sul codice canonico: il veicolo unificato ha `numero` (anche senza targa),
+  // quelli fleet legacy si risolvono da id/targa.
+  return bc === (v && v.numero != null ? String(v.numero) : null) || bc === resolve(v.id) || bc === resolve(v.targa);
 }
 
 // ── Migrazione chiavi alla "Flotta unificata" (codice RentMe) ────────
@@ -18599,7 +18602,7 @@ function DateField({ value, onChange, min, max, required, style, className, disa
         <span aria-hidden style={{ fontSize: 15, opacity: 0.7 }}>📅</span>
       </button>
       {/* Popup in PORTAL sul wrapper .pratica-app: esce dallo stacking dei modali
-          (prima a zIndex 90 finiva SOTTO i modali z>=200 -> click inerti) e mantiene il
+          (prima a zIndex 90 finiva SOTTO i modali z≥200 → click inerti) e mantiene il
           tema/dark-mode (le variabili --bg/--ink sono ridefinite su .dark-mode del wrapper,
           non su :root). z-index 10050 = sopra ogni overlay dell'app (max 10000). */}
       {open && createPortal((
@@ -21448,6 +21451,18 @@ function Topbar({ page, online, setOnline, pendingQueue, operator, admin, setAdm
 // ═══════════════════════════════════════════════════════════════════
 // DASHBOARD — basata su dati reali (props), niente mock
 // ═══════════════════════════════════════════════════════════════════
+// Blocco/riserva (NON un noleggio vero): RentMe "bloccata"/overbooking o riserve
+// manuali (es. "EMERGENZA RISERVA"). Riconosciuto dal nome cliente. Escluso dai
+// conteggi "veicoli fuori" (richiesta utente 13/6: contare solo i noleggi veri).
+function isBloccoPreno(p) {
+  const nome = `${p?.clienteCognome || ''} ${p?.clienteNome || ''} ${p?.cliente || ''}`.toLowerCase();
+  return /blocc|over\s?book|emergenz|riserv/.test(nome);
+}
+// "Veicoli fuori ora" = UNICA verità condivisa (Dashboard + Flotta): mezzo CONSEGNATO
+// (prenotazione in_corso) con veicolo, non rientrato, ESCLUSI i blocchi/riserve.
+function prenoFuoriOra(prenotazioni) {
+  return (prenotazioni || []).filter(p => p.stato === 'in_corso' && p.vehicleId && !isBloccoPreno(p));
+}
 function Dashboard({ onNew, setPage, operator, fleet, contracts, partners, onMarkReturned, scadenze, prenotazioni, agency }) {
   // Data di oggi formattata in italiano
   const today = useMemo(() => {
@@ -21474,20 +21489,13 @@ function Dashboard({ onNew, setPage, operator, fleet, contracts, partners, onMar
     const sent     = todayContracts.filter(c => c.status === 'sent').length;
     const dueCargos = todayContracts.filter(c => c.cargosRequired).length;
     const errors   = contracts.filter(c => c.status === 'error').length;
-    // Veicoli fuori = contratti attivi non ancora marcati rientrati
-    const out = contracts.filter(c =>
-      !c.returnedAt &&
-      ['sent', 'paper', 'queued', 'pending'].includes(c.status) &&
-      parseItalianDateTime(c.record?.CONTRATTO_CHECKIN_DATA) !== null
-    ).length;
-    // Overdue rispetto a ora
-    const nowMs = Date.now();
-    const overdue = contracts.filter(c => {
-      if (c.returnedAt) return false;
-      if (!['sent', 'paper', 'queued', 'pending'].includes(c.status)) return false;
-      const d = parseItalianDateTime(c.record?.CONTRATTO_CHECKIN_DATA);
-      return d !== null && d.getTime() < nowMs;
-    }).length;
+    // Veicoli fuori = mezzi CONSEGNATI (prenotazione in_corso) non rientrati, ESCLUSI i
+    // blocchi/riserve. STESSA fonte/definizione del pannello "Mezzi fuori ora" di Flotta
+    // (prima qui si contavano i CONTRATTI CARGOS → divergeva dalla Flotta: ora una sola verità).
+    const fuori   = prenoFuoriOra(prenotazioni);
+    const out     = fuori.length;
+    const oggiISO = todayISO();
+    const overdue = fuori.filter(p => p.al && p.al < oggiISO).length; // rientro previsto già passato
 
     return [
       {
@@ -21525,7 +21533,7 @@ function Dashboard({ onNew, setPage, operator, fleet, contracts, partners, onMar
         color: overdue > 0 ? 'var(--accent)' : 'var(--edo-sun-warm)',
       },
     ];
-  }, [contracts]);
+  }, [contracts, prenotazioni]);
 
   // Saluto adattivo
   const greeting = useMemo(() => {
@@ -22035,7 +22043,7 @@ function ContractsList({ contracts, operators, onRetry, onMarkReturned, onSendPe
 // ═══════════════════════════════════════════════════════════════════
 // STATISTICHE VEICOLO — modal con km, giorni, revenue, occupazione
 // ═══════════════════════════════════════════════════════════════════
-function VeicoloStatsModal({ vehicle, prenotazioni, onClose }) {
+function VeicoloStatsModal({ vehicle, prenotazioni, onClose, resolve }) {
   const vLabel = makeVehicleLabel(vehicle);
   const oggi = todayISO();
   const annoCorr = new Date().getFullYear();
@@ -22043,7 +22051,7 @@ function VeicoloStatsModal({ vehicle, prenotazioni, onClose }) {
 
   const statsPerAnno = useCallback((anno) => {
     const prenoVeh = (prenotazioni || []).filter(p =>
-      matchVehicle(p.vehicleId, vehicle.id, vehicle.targa) &&
+      matchVehicleUnified(p.vehicleId, vehicle, resolve) &&
       p.stato !== 'annullata' && p.stato !== 'cancellata' && p.stato !== 'bozza' &&
       p.dal && p.al
     );
@@ -22055,14 +22063,14 @@ function VeicoloStatsModal({ vehicle, prenotazioni, onClose }) {
     const revenue = inAnno.reduce((s, p) => s + safePrezzo(p), 0);
     const occupazione = Math.min(100, Math.round(giorni / 365 * 100));
     return { n: inAnno.length, giorni, revenue, occupazione };
-  }, [prenotazioni, vehicle]);
+  }, [prenotazioni, vehicle, resolve]);
 
   const curr = statsPerAnno(annoCorr);
   const prev = statsPerAnno(annoPrec);
 
   // Lifetime
   const prenoTutte = (prenotazioni || []).filter(p =>
-    matchVehicle(p.vehicleId, vehicle.id, vehicle.targa) &&
+    matchVehicleUnified(p.vehicleId, vehicle, resolve) &&
     p.stato !== 'annullata' && p.stato !== 'cancellata' && p.stato !== 'bozza'
   );
   const lifetimeGiorni  = prenoTutte.reduce((s, p) => s + Math.max(0, daysDiff(p.dal || '', p.al || '')), 0);
@@ -22373,6 +22381,10 @@ function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, on
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
+  // Risolutore unico vehicleId → numero (codice RentMe): rende i confronti veicolo
+  // numero-aware (i dati sono migrati a numero, ma fleet.id/targa sono ancora usati qui).
+  const vidResolver = useMemo(() => buildVehicleKeyResolver(fleet, targhe), [fleet, targhe]);
+
   // Veicoli attualmente in noleggio (oggi) — chiave normalizzata a fleet.v.id
   // (retrocompatibile: p.vehicleId potrebbe essere targa legacy)
   const inNoleggio = useMemo(() => {
@@ -22381,12 +22393,12 @@ function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, on
     (prenotazioni || []).forEach(p => {
       if (!p.vehicleId) return;
       if ((p.stato === 'in_corso' || p.stato === 'confermata') && p.dal <= oggi && p.al >= oggi) {
-        const fleetV = (fleet || []).find(fv => matchVehicle(p.vehicleId, fv.id, fv.targa));
+        const fleetV = (fleet || []).find(fv => matchVehicleUnified(p.vehicleId, fv, vidResolver));
         m[fleetV?.id || p.vehicleId] = p;
       }
     });
     return m;
-  }, [prenotazioni, fleet]);
+  }, [prenotazioni, fleet, vidResolver]);
 
   const statusCounts = useMemo(() => {
     const c = { all: fleet.length, available: 0, fermo: 0, incidentato: 0, venduto: 0 };
@@ -22604,10 +22616,9 @@ function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, on
         // "Fuori" = consegnato e non ancora rientrato → stato 'in_corso'
         // (include i ritardi: al < oggi ma non riconsegnato). Risolve la targa
         // legacy via matchVehicle.
-        const out = (prenotazioni || [])
-          .filter(p => p.stato === 'in_corso' && p.vehicleId)
+        const out = prenoFuoriOra(prenotazioni)  // in_corso + veicolo, ESCLUSI blocchi/riserve (verità condivisa con Dashboard)
           .map(p => {
-            const v = (fleet || []).find(fv => matchVehicle(p.vehicleId, fv.id, fv.targa)) || {};
+            const v = (fleet || []).find(fv => matchVehicleUnified(p.vehicleId, fv, vidResolver)) || {};
             const partner = (partners || []).find(s => s.id === p.consegnaStruttura);
             const luogo = partner?.nome || p.consegnaIndirizzo || '';
             const tipo = canonicalTipo(v) || v.tipo || canonicalTipo({ tipo: p.vehicleType }) || 'altro';
@@ -22855,6 +22866,7 @@ function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, on
           vehicle={statsModalVeh}
           prenotazioni={prenotazioni}
           onClose={() => setStatsModalVeh(null)}
+          resolve={vidResolver}
         />
       )}
 
