@@ -10206,7 +10206,11 @@ function useRentMeSync({ fleet, rentmeVehicles, setRentmeVehicles, setPrenotazio
               vehicleType:   v.tipo || '',
               dal:           p[0],
               al:            p[1],
-              stato:         'confermata',
+              // Campo 9 di dateImpegno = flag BLOCCATA di RentMe ('true'/'false').
+              // bloccata=true → prenotazione IN ATTESA (overbooking/blocco non confermato);
+              // false → confermata. (Verificato sul JSON RentMe live 13/6: i "true" sono
+              // OVERBOOKING/"Bloccato over booking"/BLOCCATA, i "false" clienti veri.)
+              stato:         (String(p[8]).trim() === 'true') ? 'attesa' : 'confermata',
               fonte:         'rentme',
               prezzo:        parseFloat(p[4])||0,
               acconto:       parseFloat(p[3])||0,
@@ -10225,8 +10229,11 @@ function useRentMeSync({ fleet, rentmeVehicles, setRentmeVehicles, setPrenotazio
       setPrenotazioni(prev => {
         const existingRentme = (prev || []).filter(p => p.fonte === 'rentme');
         const local          = (prev || []).filter(p => p.fonte !== 'rentme');
-        // Rank stato per non far REGREDIRE quello impostato dall'operatore.
-        const RANK = { attesa: 0, confermata: 1, in_corso: 2, completata: 3, cancellata: 3, annullata: 3 };
+        // RentMe è PADRONE del flag bloccata → stato base attesa↔confermata. L'operatore
+        // è padrone solo dell'AVANZAMENTO reale (consegna→in_corso/completata, o annullamento).
+        // Quindi: se l'operatore ha avanzato, vince il locale; altrimenti vince lo stato RentMe
+        // (così un blocco che prima sincronizzavamo come "confermata" ora torna "attesa").
+        const AVANZATO = new Set(['in_corso', 'completata', 'cancellata', 'annullata']);
         const rentmeWithCodes = rentmeRows.map(r => {
           const found = existingRentme.find(e => e.id === r.id);
           if (!found) return { ...r, codice: generateBookingCode() };
@@ -10242,8 +10249,9 @@ function useRentMeSync({ fleet, rentmeVehicles, setRentmeVehicles, setPrenotazio
             rentmeTarga: r.rentmeTarga, rentmeCode: r.rentmeCode, fonte: 'rentme',
             updatedAt: r.updatedAt,
           };
-          // Stato: tieni il locale se più avanzato (in_corso/completata/cancellata).
-          const stato = (RANK[found.stato] ?? 0) > (RANK[r.stato] ?? 0) ? found.stato : r.stato;
+          // Stato: l'operatore vince solo se ha AVANZATO davvero; altrimenti comanda RentMe
+          // (incluso il ritorno confermata→attesa quando un booking diventa "bloccato").
+          const stato = AVANZATO.has(found.stato) ? found.stato : r.stato;
           // Veicolo: se l'operatore ha già consegnato, vince il mezzo assegnato localmente;
           // altrimenti usa quello di RentMe.
           const veh = found.consegnaAt
