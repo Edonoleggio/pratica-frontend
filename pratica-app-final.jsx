@@ -3756,18 +3756,18 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
             <div>
               <label style={lbl}>Dal *</label>
-              <input
+              <DateField
                 style={{ ...inp, ...(formErrors.dal ? { borderColor: '#c85050' } : {}) }}
-                type="date" required value={f.dal}
+                required value={f.dal}
                 onChange={e => { set('dal', e.target.value); setFormErrors(p => ({ ...p, dal: '' })); }}
               />
               {formErrors.dal && <div data-form-error style={{ color: '#c85050', fontSize: 11, marginTop: 3 }}>⚠️ {formErrors.dal}</div>}
             </div>
             <div>
               <label style={lbl}>Al *</label>
-              <input
+              <DateField
                 style={{ ...inp, ...(formErrors.al ? { borderColor: '#c85050' } : {}) }}
-                type="date" value={f.al} min={f.dal}
+                value={f.al} min={f.dal}
                 onChange={e => { set('al', e.target.value); setFormErrors(p => ({ ...p, al: '' })); }}
               />
               {formErrors.al && <div data-form-error style={{ color: '#c85050', fontSize: 11, marginTop: 3 }}>⚠️ {formErrors.al}</div>}
@@ -4722,12 +4722,12 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rent
         <div style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 8, padding: '14px 16px', marginBottom: 16, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
           <div>
             <div style={{ fontSize: 10, color: 'var(--muted)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Dal</div>
-            <input type="date" value={filterDal} onChange={e => setFilterDal(e.target.value)}
+            <DateField value={filterDal} onChange={e => setFilterDal(e.target.value)}
               style={{ padding: '5px 8px', border: '1px solid var(--border)', borderRadius: 5, fontSize: 12, background: 'var(--bg)', color: 'var(--ink)', cursor: 'pointer' }} />
           </div>
           <div>
             <div style={{ fontSize: 10, color: 'var(--muted)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Al</div>
-            <input type="date" value={filterAl} onChange={e => setFilterAl(e.target.value)}
+            <DateField value={filterAl} onChange={e => setFilterAl(e.target.value)}
               style={{ padding: '5px 8px', border: '1px solid var(--border)', borderRadius: 5, fontSize: 12, background: 'var(--bg)', color: 'var(--ink)', cursor: 'pointer' }} />
           </div>
           <div>
@@ -5161,7 +5161,7 @@ function SostituzioneModal({ preno, prenotazioni, fleet, rentmeVehicles, onConfi
             letterSpacing: '.06em', color: 'var(--muted)', marginBottom: 6 }}>
             Data guasto / incidente
           </label>
-          <input type="date" value={dataGuasto}
+          <DateField value={dataGuasto}
             min={preno.dal} max={preno.al}
             onChange={e => { setDataGuasto(e.target.value); setMezzoNuovo(''); }}
             style={inp} />
@@ -6789,8 +6789,7 @@ function PreventiviPage({ setPage, setPrenotazioniPrefill, listino: listinoProps
           <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--ink-2)', marginBottom: 5 }}>
             Dal (ritiro)
           </div>
-          <input
-            type="date"
+          <DateField
             value={dal}
             onChange={e => { setDal(e.target.value); if (al && e.target.value > al) setAl(''); }}
             style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 5, fontSize: 14, fontFamily: 'monospace', background: 'var(--bg)', color: 'var(--ink)', boxSizing: 'border-box' }}
@@ -6800,8 +6799,7 @@ function PreventiviPage({ setPage, setPrenotazioniPrefill, listino: listinoProps
           <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--ink-2)', marginBottom: 5 }}>
             Al (riconsegna)
           </div>
-          <input
-            type="date"
+          <DateField
             value={al}
             min={dal}
             onChange={e => setAl(e.target.value)}
@@ -10486,14 +10484,14 @@ function BancoRapidoPage({ rentmeVehicles, prenotazioni, fleet, setPage, setPren
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24, padding: '14px 18px', background: 'var(--surface-2)', borderRadius: 8, border: '1px solid var(--border)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink-2)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Dal</label>
-          <input type="date" value={dal} min={today}
+          <DateField value={dal} min={today}
             onChange={e => { setDal(e.target.value); if (e.target.value > al) setAl(e.target.value); }}
             style={{ padding: '6px 10px', border: '1px solid var(--border)', borderRadius: 5, fontSize: 14, background: 'var(--bg)', color: 'var(--ink)', fontFamily: 'var(--font-sans)' }} />
         </div>
         <span style={{ color: 'var(--muted)', fontSize: 18 }}>→</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink-2)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Al</label>
-          <input type="date" value={al} min={dal}
+          <DateField value={al} min={dal}
             onChange={e => setAl(e.target.value)}
             style={{ padding: '6px 10px', border: '1px solid var(--border)', borderRadius: 5, fontSize: 14, background: 'var(--bg)', color: 'var(--ink)', fontFamily: 'var(--font-sans)' }} />
         </div>
@@ -11315,7 +11313,7 @@ function CassaFormModal({ onSave, onClose, prenotazioni, customers, operator }) 
 
         <div style={fieldStyle}>
           <label style={labelStyle}>Data</label>
-          <input type="date" value={form.data} onChange={e => set('data', e.target.value)} style={inputStyle} />
+          <DateField value={form.data} onChange={e => set('data', e.target.value)} style={inputStyle} />
         </div>
 
         <div style={fieldStyle}>
@@ -11433,7 +11431,7 @@ function ChiusuraGiornalieraModal({ cassa, initialDate, onClose }) {
         {/* Selettore data */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 18 }}>
           <label style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--ink-2)' }}>Data</label>
-          <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)}
+          <DateField value={selectedDate} onChange={e => setSelectedDate(e.target.value)}
             style={{ padding: '6px 10px', border: '1px solid var(--border)', borderRadius: 5, fontSize: 13, background: 'var(--bg)', color: 'var(--ink)', fontFamily: 'monospace' }} />
         </div>
 
@@ -11982,7 +11980,7 @@ function ScadenzeModal({ vehicle, scadenze, onSave, onClose }) {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                   <div>
                     <label style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--ink-2)', display: 'block', marginBottom: 4 }}>Data scadenza</label>
-                    <input type="date" value={val.data} onChange={e => set(tipo, 'data', e.target.value)} style={inputStyle} />
+                    <DateField value={val.data} onChange={e => set(tipo, 'data', e.target.value)} style={inputStyle} />
                   </div>
                   <div>
                     <label style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--ink-2)', display: 'block', marginBottom: 4 }}>Nota</label>
@@ -14315,13 +14313,13 @@ function OggiPage({ prenotazioni, setPrenotazioni, fleet, scadenze, customers, s
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--ink-2)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Dal</label>
-                <input type="date" value={walkInDal}
+                <DateField value={walkInDal}
                   onChange={e => { setWalkInDal(e.target.value); if (e.target.value > walkInAl) setWalkInAl(e.target.value); }}
                   style={{ fontSize: 13, border: '1px solid var(--border)', borderRadius: 6, padding: '5px 8px', background: 'var(--bg)', color: 'var(--ink)' }} />
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--ink-2)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Al</label>
-                <input type="date" value={walkInAl} min={walkInDal}
+                <DateField value={walkInAl} min={walkInDal}
                   onChange={e => setWalkInAl(e.target.value)}
                   style={{ fontSize: 13, border: '1px solid var(--border)', borderRadius: 6, padding: '5px 8px', background: 'var(--bg)', color: 'var(--ink)' }} />
               </div>
@@ -17933,10 +17931,10 @@ function CuoreAnteprimaPage({ rentmeVehicles, targhe, fleet, prenotazioni, scade
 
       <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', marginBottom: 16, flexWrap: 'wrap' }}>
         <label style={{ fontSize: 12, color: 'var(--ink-2)' }}>Dal<br />
-          <input type="date" value={dal} onChange={e => setDal(e.target.value)} style={{ padding: 6, border: '1px solid var(--border)', borderRadius: 6 }} />
+          <DateField value={dal} onChange={e => setDal(e.target.value)} style={{ padding: 6, border: '1px solid var(--border)', borderRadius: 6 }} />
         </label>
         <label style={{ fontSize: 12, color: 'var(--ink-2)' }}>Al<br />
-          <input type="date" value={al} onChange={e => setAl(e.target.value)} style={{ padding: 6, border: '1px solid var(--border)', borderRadius: 6 }} />
+          <DateField value={al} onChange={e => setAl(e.target.value)} style={{ padding: 6, border: '1px solid var(--border)', borderRadius: 6 }} />
         </label>
       </div>
 
@@ -18553,6 +18551,82 @@ function CuoreOggiPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazioni, 
 }
 
 // ═══════════════════════════════════════════════════════════════════
+// 📅 DateField — calendario NOSTRO, grande e adatto al tocco, in sostituzione
+// del campo data NATIVO del browser (la cui finestra-popup la disegna il browser
+// e NON è ridimensionabile via CSS/JS — limite noto del componente nativo).
+// Drop-in: stessi value (stringa 'YYYY-MM-DD') · onChange({target:{value}}) ·
+// min · max · required · style · className · disabled. Apre un overlay centrato
+// (robusto dentro i contenitori in overflow, niente clipping) con celle ampie.
+// ═══════════════════════════════════════════════════════════════════
+function DateField({ value, onChange, min, max, required, style, className, disabled, placeholder = 'gg/mm/aaaa', id }) {
+  const [open, setOpen] = useState(false);
+  const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const parse = (s) => { if (!s) return null; const [y, m, g] = String(s).split('-').map(Number); if (!y || !m || !g) return null; return new Date(y, m - 1, g, 12, 0, 0); };
+  const oggi = new Date(); oggi.setHours(12, 0, 0, 0);
+  const sel = parse(value);
+  const minD = parse(min), maxD = parse(max);
+  const disabledDay = (d) => (minD && iso(d) < iso(minD)) || (maxD && iso(d) > iso(maxD));
+  const [viewYM, setViewYM] = useState(() => { const b = sel || oggi; return { y: b.getFullYear(), m: b.getMonth() }; });
+  useEffect(() => { if (open) { const b = parse(value) || oggi; setViewYM({ y: b.getFullYear(), m: b.getMonth() }); } }, [open]);
+  const fmt = (s) => { const d = parse(s); return d ? d.toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric' }) : ''; };
+
+  const first = new Date(viewYM.y, viewYM.m, 1, 12);
+  const startDow = (first.getDay() + 6) % 7;          // lunedì = 0
+  const nGiorni = new Date(viewYM.y, viewYM.m + 1, 0).getDate();
+  const cells = [];
+  for (let i = 0; i < startDow; i++) cells.push(null);
+  for (let g = 1; g <= nGiorni; g++) cells.push(new Date(viewYM.y, viewYM.m, g, 12));
+  const meseLabel = first.toLocaleDateString('it-IT', { month: 'long', year: 'numeric' });
+
+  const pick = (d) => { if (disabledDay(d)) return; onChange && onChange({ target: { value: iso(d) } }); setOpen(false); };
+  const shift = (n) => setViewYM(v => { const d = new Date(v.y, v.m + n, 1); return { y: d.getFullYear(), m: d.getMonth() }; });
+  const fieldStyle = { fontFamily: 'var(--font-sans)', background: 'var(--bg)', color: 'var(--ink)', ...(style || {}), cursor: disabled ? 'not-allowed' : 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, opacity: disabled ? 0.6 : 1 };
+
+  return (
+    <div style={{ position: 'relative', width: (style && style.width) || 'auto' }}>
+      <button type="button" id={id} className={className} disabled={disabled} onClick={() => !disabled && setOpen(true)} style={fieldStyle}>
+        <span style={{ color: value ? 'var(--ink)' : 'var(--muted)' }}>{value ? fmt(value) : placeholder}</span>
+        <span aria-hidden style={{ fontSize: 15, opacity: 0.7 }}>📅</span>
+      </button>
+      {open && (
+        <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 90 }}>
+          <div onClick={e => e.stopPropagation()} className="card-paper" style={{ padding: 16, width: 360, maxWidth: '94vw' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+              <button type="button" onClick={() => shift(-1)} style={{ width: 42, height: 42, border: '1px solid var(--border)', borderRadius: 8, background: 'transparent', cursor: 'pointer', fontSize: 20 }}>‹</button>
+              <div style={{ fontFamily: 'var(--font-serif)', fontSize: 18, textTransform: 'capitalize' }}>{meseLabel}</div>
+              <button type="button" onClick={() => shift(1)} style={{ width: 42, height: 42, border: '1px solid var(--border)', borderRadius: 8, background: 'transparent', cursor: 'pointer', fontSize: 20 }}>›</button>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 5, marginBottom: 5 }}>
+              {['L', 'M', 'M', 'G', 'V', 'S', 'D'].map((d, i) => <div key={i} style={{ textAlign: 'center', fontSize: 11, fontWeight: 700, color: i >= 5 ? '#b06a5a' : 'var(--ink-2)' }}>{d}</div>)}
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 5 }}>
+              {cells.map((d, i) => {
+                if (!d) return <div key={i} />;
+                const isSel = sel && iso(d) === iso(sel);
+                const isOggi = iso(d) === iso(oggi);
+                const dis = disabledDay(d);
+                const wknd = d.getDay() === 0 || d.getDay() === 6;
+                return (
+                  <button key={i} type="button" disabled={dis} onClick={() => pick(d)}
+                    style={{ height: 46, border: isSel ? '1px solid var(--sea)' : isOggi ? '2px solid var(--sea)' : '1px solid var(--border)', borderRadius: 8, fontSize: 16, fontWeight: isSel ? 700 : 500, background: isSel ? 'var(--sea)' : dis ? 'var(--surface-2)' : wknd ? 'rgba(176,106,90,0.10)' : 'var(--bg)', color: isSel ? '#fff' : dis ? 'var(--muted)' : 'var(--ink)', cursor: dis ? 'not-allowed' : 'pointer', opacity: dis ? 0.45 : 1 }}>
+                    {d.getDate()}
+                  </button>
+                );
+              })}
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+              <button type="button" onClick={() => { if (!disabledDay(oggi)) pick(oggi); }} style={{ flex: 1, padding: '10px', border: 'none', borderRadius: 8, background: 'var(--sea)', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: 14 }}>Oggi</button>
+              {!required && <button type="button" onClick={() => { onChange && onChange({ target: { value: '' } }); setOpen(false); }} style={{ padding: '10px 16px', border: '1px solid var(--border)', borderRadius: 8, background: 'transparent', cursor: 'pointer', fontSize: 14 }}>Svuota</button>}
+              <button type="button" onClick={() => setOpen(false)} style={{ padding: '10px 16px', border: '1px solid var(--border)', borderRadius: 8, background: 'transparent', cursor: 'pointer', fontSize: 14 }}>Chiudi</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
 // 🫀 CALENDARIO NUOVO (Fase 4, dietro interruttore). Mese intero · barre per
 // NUMERO mezzo (non spariscono) · targa SEMPRE dalla tabella ("(manca)" se assente)
 // · fascia "da assegnare" per categoria · colonne a larghezza piena (no scroll
@@ -18598,12 +18672,44 @@ function CuoreCalendarioPage({ rentmeVehicles, targhe, fleet, prenotazioni, scad
   }, [days]);
 
   const [tipoFiltro, setTipoFiltro] = useState('');
+  const [catFiltro, setCatFiltro]   = useState('');
+  const [cerca, setCerca]           = useState('');
+  const [statoOggi, setStatoOggi]   = useState(''); // '' | 'occupati' | 'liberi'
+  const [soloAttesa, setSoloAttesa] = useState(false);
   const tipi = useMemo(() => [...new Set(parco.map(m => m.tipo).filter(Boolean))].sort(), [parco]);
-
-  const mezziVisibili = useMemo(() => parco
+  // Categorie disponibili: ristrette al tipo selezionato, se attivo
+  const categorie = useMemo(() => [...new Set(parco
     .filter(m => !tipoFiltro || m.tipo === tipoFiltro)
-    .sort((a, b) => (a.tipo + a.categoria).localeCompare(b.tipo + b.categoria) || (parseInt(a.numero) - parseInt(b.numero))),
-    [parco, tipoFiltro]);
+    .map(m => m.categoria).filter(Boolean))].sort(), [parco, tipoFiltro]);
+
+  // Indice per-mezzo (numero): è occupato OGGI? ha una prenotazione IN ATTESA nella finestra?
+  // Calcolato da prenoNuove (non da mezziVisibili) per non creare dipendenze circolari.
+  const mezzoStato = useMemo(() => {
+    const idx = {};
+    prenoNuove.forEach(p => {
+      cuoreSegmenti(p).forEach(s => {
+        if (!s.dal || !s.al) return;
+        const e = (idx[String(s.numero)] ||= { occupatoOggi: false, attesa: false });
+        if (s.dal <= oggi && s.al >= oggi) e.occupatoOggi = true;
+        if (String(p.stato) === 'attesa' && s.dal <= winEnd && s.al >= winStart) e.attesa = true;
+      });
+    });
+    return idx;
+  }, [prenoNuove, oggi, winStart, winEnd]);
+
+  const mezziVisibili = useMemo(() => {
+    const q = cerca.trim().toLowerCase();
+    return parco
+      .filter(m => !tipoFiltro || m.tipo === tipoFiltro)
+      .filter(m => !catFiltro || String(m.categoria) === catFiltro)
+      .filter(m => !q || (m.targa || '').toLowerCase().includes(q) || (m.modello || '').toLowerCase().includes(q) || String(m.numero).includes(q))
+      .filter(m => { if (!statoOggi) return true; const occ = !!mezzoStato[String(m.numero)]?.occupatoOggi; return statoOggi === 'occupati' ? occ : !occ; })
+      .filter(m => !soloAttesa || !!mezzoStato[String(m.numero)]?.attesa)
+      .sort((a, b) => (a.tipo + a.categoria).localeCompare(b.tipo + b.categoria) || (parseInt(a.numero) - parseInt(b.numero)));
+  }, [parco, tipoFiltro, catFiltro, cerca, statoOggi, soloAttesa, mezzoStato]);
+
+  const filtriAttivi = !!(tipoFiltro || catFiltro || cerca.trim() || statoOggi || soloAttesa);
+  const pulisciFiltri = () => { setTipoFiltro(''); setCatFiltro(''); setCerca(''); setStatoOggi(''); setSoloAttesa(false); };
 
   // Gruppi per categoria (tipo|categoria), in ordine
   const gruppi = useMemo(() => {
@@ -18660,7 +18766,7 @@ function CuoreCalendarioPage({ rentmeVehicles, targhe, fleet, prenotazioni, scad
   const w0 = new Date(winStart + 'T12:00:00').getDay();
   const iSab = (6 - w0 + 7) % 7, iDom = (7 - w0) % 7;
   const trackBg = {
-    backgroundImage: `repeating-linear-gradient(90deg, var(--surface-2) 0, var(--surface-2) ${COL_W}px, transparent ${COL_W}px, transparent ${COL_W * 7}px), repeating-linear-gradient(90deg, var(--surface-2) 0, var(--surface-2) ${COL_W}px, transparent ${COL_W}px, transparent ${COL_W * 7}px), repeating-linear-gradient(90deg, transparent 0, transparent ${COL_W - 1}px, var(--border) ${COL_W - 1}px, var(--border) ${COL_W}px)`,
+    backgroundImage: `repeating-linear-gradient(90deg, rgba(176,106,90,0.14) 0, rgba(176,106,90,0.14) ${COL_W}px, transparent ${COL_W}px, transparent ${COL_W * 7}px), repeating-linear-gradient(90deg, rgba(176,106,90,0.14) 0, rgba(176,106,90,0.14) ${COL_W}px, transparent ${COL_W}px, transparent ${COL_W * 7}px), repeating-linear-gradient(90deg, transparent 0, transparent ${COL_W - 1}px, var(--border) ${COL_W - 1}px, var(--border) ${COL_W}px)`,
     backgroundPosition: `${iSab * COL_W}px 0, ${iDom * COL_W}px 0, 0 0`,
   };
 
@@ -18770,13 +18876,13 @@ function CuoreCalendarioPage({ rentmeVehicles, targhe, fleet, prenotazioni, scad
               {g.ritiri.map(p => (
                 <div key={'r' + p.id} style={{ display: 'flex', gap: 8, fontSize: 13, padding: '3px 0' }}>
                   <span style={{ color: '#2e6e3e', fontWeight: 700, whiteSpace: 'nowrap' }}>↑ Ritira</span>
-                  <span><strong>{cliente(p)}</strong> · {mezzoDi(p)}</span>
+                  <span><strong>{cliente(p)}</strong> · {mezzoDi(p)}{String(p.stato) === 'attesa' ? <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 999, background: '#fdf3e3', color: '#b87333', border: '1px solid #e9a44c' }}>⏳ in attesa</span> : ''}</span>
                 </div>
               ))}
               {g.rientri.map(p => (
                 <div key={'i' + p.id} style={{ display: 'flex', gap: 8, fontSize: 13, padding: '3px 0' }}>
                   <span style={{ color: '#1f5d83', fontWeight: 700, whiteSpace: 'nowrap' }}>↓ Rientra</span>
-                  <span><strong>{cliente(p)}</strong> · {mezzoDi(p)}</span>
+                  <span><strong>{cliente(p)}</strong> · {mezzoDi(p)}{String(p.stato) === 'attesa' ? <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 999, background: '#fdf3e3', color: '#b87333', border: '1px solid #e9a44c' }}>⏳ in attesa</span> : ''}</span>
                 </div>
               ))}
             </div>
@@ -18793,14 +18899,36 @@ function CuoreCalendarioPage({ rentmeVehicles, targhe, fleet, prenotazioni, scad
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
         <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: 22, letterSpacing: '-0.01em', margin: '2px 0', textTransform: 'capitalize' }}>{visMese}</h1>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <select value={tipoFiltro} onChange={e => setTipoFiltro(e.target.value)} style={{ padding: '5px 8px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 13 }}>
-            <option value="">Tutti i tipi</option>
-            {tipi.map(t => <option key={t} value={t}>{t}</option>)}
-          </select>
           <button type="button" onClick={() => scorri(-30)} style={{ padding: '5px 12px', border: '1px solid var(--border)', borderRadius: 6, background: 'transparent', cursor: 'pointer' }}>‹</button>
           <button type="button" onClick={() => vaiA(oggi)} style={{ padding: '5px 12px', border: '1px solid var(--border)', borderRadius: 6, background: 'transparent', cursor: 'pointer', fontSize: 12 }}>Oggi</button>
           <button type="button" onClick={() => scorri(30)} style={{ padding: '5px 12px', border: '1px solid var(--border)', borderRadius: 6, background: 'transparent', cursor: 'pointer' }}>›</button>
         </div>
+      </div>
+
+      {/* ── Barra filtri mezzi: tipo · categoria · ricerca · stato oggi · solo in attesa ── */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+        <select value={tipoFiltro} onChange={e => { setTipoFiltro(e.target.value); setCatFiltro(''); }} style={{ padding: '5px 8px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 13, background: 'var(--bg)' }}>
+          <option value="">Tutti i tipi</option>
+          {tipi.map(t => <option key={t} value={t}>{t}</option>)}
+        </select>
+        <select value={catFiltro} onChange={e => setCatFiltro(e.target.value)} disabled={categorie.length === 0} style={{ padding: '5px 8px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 13, background: 'var(--bg)', opacity: categorie.length === 0 ? 0.5 : 1 }}>
+          <option value="">Tutte le categorie</option>
+          {categorie.map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <input value={cerca} onChange={e => setCerca(e.target.value)} placeholder="🔎 targa / modello / n°" style={{ padding: '5px 10px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 13, background: 'var(--bg)', width: 180 }} />
+        <select value={statoOggi} onChange={e => setStatoOggi(e.target.value)} style={{ padding: '5px 8px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 13, background: 'var(--bg)' }}>
+          <option value="">Tutti (oggi)</option>
+          <option value="liberi">Liberi oggi</option>
+          <option value="occupati">Occupati oggi</option>
+        </select>
+        <button type="button" onClick={() => setSoloAttesa(v => !v)} title="Mostra solo i mezzi con una prenotazione in attesa di conferma"
+          style={{ padding: '5px 12px', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: 'pointer', border: `1px solid ${soloAttesa ? '#e9a44c' : 'var(--border)'}`, background: soloAttesa ? '#fdf3e3' : 'transparent', color: soloAttesa ? '#b87333' : 'var(--ink-2)' }}>
+          ⏳ Solo in attesa
+        </button>
+        <span style={{ fontSize: 12, color: 'var(--ink-2)' }}>{mezziVisibili.length} {mezziVisibili.length === 1 ? 'mezzo' : 'mezzi'}</span>
+        {filtriAttivi && (
+          <button type="button" onClick={pulisciFiltri} style={{ padding: '5px 10px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 12, background: 'transparent', cursor: 'pointer', color: 'var(--accent, #c0392b)' }}>✕ Pulisci filtri</button>
+        )}
       </div>
 
       <div className="card-paper" style={{ padding: 0, overflow: 'hidden' }}>
@@ -18819,7 +18947,7 @@ function CuoreCalendarioPage({ rentmeVehicles, targhe, fleet, prenotazioni, scad
                 {days.map((d, i) => {
                   const dow = new Date(d + 'T12:00:00').getDay();
                   return (
-                    <div key={i} style={{ width: COL_W, flexShrink: 0, boxSizing: 'border-box', textAlign: 'center', padding: '3px 0', fontSize: 10, borderRight: '1px solid #2c2e35', background: d === oggi ? 'rgba(31,93,131,0.5)' : 'transparent' }}>
+                    <div key={i} style={{ width: COL_W, flexShrink: 0, boxSizing: 'border-box', textAlign: 'center', padding: '3px 0', fontSize: 10, borderRight: '1px solid #2c2e35', background: d === oggi ? 'rgba(31,93,131,0.65)' : (dow === 0 || dow === 6) ? 'rgba(176,106,90,0.28)' : 'transparent' }}>
                       <div style={{ fontFamily: 'var(--font-mono, monospace)', fontWeight: 700, color: '#f5f2ec' }}>{parseInt(d.slice(8), 10)}</div>
                       <div style={{ color: (dow === 0 || dow === 6) ? '#b06a5a' : '#8e887e' }}>{'DLMMGVS'[dow]}</div>
                     </div>
@@ -18864,7 +18992,7 @@ function CuoreCalendarioPage({ rentmeVehicles, targhe, fleet, prenotazioni, scad
                   <div key={gi}>
                     {/* fascia categoria / "da assegnare" */}
                     <div style={{ height: H_CAT, boxSizing: 'border-box', position: 'relative', background: 'var(--surface-2)', borderBottom: '1px solid var(--border)' }}>
-                      <div style={{ position: 'absolute', top: 0, bottom: 0, left: oggiX, width: COL_W, background: 'rgba(31,93,131,0.10)', pointerEvents: 'none' }} />
+                      <div style={{ position: 'absolute', top: 0, bottom: 0, left: oggiX, width: COL_W, background: 'rgba(31,93,131,0.18)', borderLeft: '2px solid var(--sea)', borderRight: '2px solid var(--sea)', boxSizing: 'border-box', pointerEvents: 'none' }} />
                       {daAss.map(p => (
                         <div key={p.id} onClick={() => setPrenotazioni && setAssegna(p)} title={`${cliente(p)} · clicca per assegnare un mezzo`} style={{ position: 'absolute', top: 3, height: 19, ...barStyle(p.dal, p.al), background: 'repeating-linear-gradient(45deg,#c0392b,#c0392b 4px,#a93226 4px,#a93226 8px)', opacity: 0.85, borderRadius: 4, color: '#fff', fontSize: 10, padding: '2px 5px', overflow: 'hidden', whiteSpace: 'nowrap', cursor: setPrenotazioni ? 'pointer' : 'default', boxSizing: 'border-box' }}>{cliente(p)}</div>
                       ))}
@@ -18875,13 +19003,18 @@ function CuoreCalendarioPage({ rentmeVehicles, targhe, fleet, prenotazioni, scad
                       return (
                         <div key={m.numero} onClick={clickTrack(m)} title={`${m.targa || 'n.' + m.numero} — clicca un giorno libero per una nuova prenotazione`}
                           style={{ height: H_ROW, boxSizing: 'border-box', position: 'relative', borderBottom: '1px solid var(--border)', cursor: (setPage && setCuorePrefill) ? 'pointer' : 'default', ...trackBg }}>
-                          <div style={{ position: 'absolute', top: 0, bottom: 0, left: oggiX, width: COL_W, background: 'rgba(31,93,131,0.10)', pointerEvents: 'none' }} />
+                          <div style={{ position: 'absolute', top: 0, bottom: 0, left: oggiX, width: COL_W, background: 'rgba(31,93,131,0.18)', borderLeft: '2px solid var(--sea)', borderRight: '2px solid var(--sea)', boxSizing: 'border-box', pointerEvents: 'none' }} />
                           {(fermiPerNumero[String(m.numero)] || []).map((f, i) => (
                             <div key={'f' + i} onClick={e => e.stopPropagation()} title={`🔧 Fermo${f.motivo ? ': ' + f.motivo : ''} · ${formatDate(f.dal)} → ${formatDate(f.al)}`} style={{ position: 'absolute', top: 5, height: 23, ...barStyle(f.dal, f.al), background: 'repeating-linear-gradient(45deg,#9a958c,#9a958c 4px,#7d786f 4px,#7d786f 8px)', borderRadius: 4, color: '#fff', fontSize: 10, padding: '4px 6px', overflow: 'hidden', whiteSpace: 'nowrap', boxSizing: 'border-box' }}>🔧 {f.motivo || 'fermo'}</div>
                           ))}
-                          {barre.map((b, i) => (
-                            <div key={i} onClick={e => { e.stopPropagation(); setDettaglio({ p: b.p, m }); }} title={`${cliente(b.p)} · ${b.dal} → ${b.al} — clicca per i dettagli`} style={{ position: 'absolute', top: 5, height: 23, ...barStyle(b.dal, b.al), background: coloreCliente(b.p), borderRadius: 4, color: '#fff', fontSize: 11, padding: '4px 6px', overflow: 'hidden', whiteSpace: 'nowrap', boxShadow: '0 1px 2px rgba(0,0,0,0.2)', cursor: 'pointer', boxSizing: 'border-box' }}>{cliente(b.p)}</div>
-                          ))}
+                          {barre.map((b, i) => {
+                            // In attesa (flag "bloccata" lato Pratica) = barra a righe ambra +
+                            // bordo tratteggiato: si legge "provvisoria, non confermata". Alla
+                            // conferma il flag cade → barra piena col colore-cliente come le altre.
+                            const inAttesa = String(b.p.stato) === 'attesa';
+                            return (
+                            <div key={i} onClick={e => { e.stopPropagation(); setDettaglio({ p: b.p, m }); }} title={`${cliente(b.p)} · ${b.dal} → ${b.al}${inAttesa ? ' · IN ATTESA (non confermata)' : ''} — clicca per i dettagli`} style={{ position: 'absolute', top: 5, height: 23, ...barStyle(b.dal, b.al), background: inAttesa ? 'repeating-linear-gradient(45deg,#d29b3f,#d29b3f 5px,#b87333 5px,#b87333 10px)' : coloreCliente(b.p), border: inAttesa ? '1px dashed #fff7e8' : 'none', borderRadius: 4, color: '#fff', fontSize: 11, padding: '4px 6px', overflow: 'hidden', whiteSpace: 'nowrap', boxShadow: '0 1px 2px rgba(0,0,0,0.2)', cursor: 'pointer', boxSizing: 'border-box' }}>{inAttesa ? '⏳ ' : ''}{cliente(b.p)}</div>
+                          );})}
                         </div>
                       );
                     })}
@@ -18898,7 +19031,8 @@ function CuoreCalendarioPage({ rentmeVehicles, targhe, fleet, prenotazioni, scad
         "Oggi" ricentra) · barre per <strong>numero</strong> · targa dalla <strong>tabella</strong> · fascia
         <strong> "da assegnare"</strong> cliccabile → assegna il mezzo · <strong>clicca un giorno libero</strong> →
         nuova prenotazione su quel mezzo · <strong>clicca una barra</strong> → dettagli · <strong>clicca il
-        mezzo a sinistra</strong> → scheda (stato, scadenze, prenotazioni) · 🔧 fermi visibili.
+        mezzo a sinistra</strong> → scheda (stato, scadenze, prenotazioni) · 🔧 fermi visibili ·
+        <strong> ⏳ barre a righe ambra</strong> = in attesa di conferma (clicca → "Conferma").
         Su smartphone: vista agenda.
       </p>
 
@@ -19063,7 +19197,21 @@ function CuoreCalendarioPage({ rentmeVehicles, targhe, fleet, prenotazioni, scad
               {riga('Acconto', Number(p.acconto) > 0 ? `€${p.acconto}` : null)}
               {riga('Telefono', p.clienteTel)}
               {riga('Note', p.note)}
-              <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+              {String(p.stato) === 'attesa' && setPrenotazioni && (
+                <button type="button"
+                  onClick={() => {
+                    // Deseleziona il flag "in attesa" → confermata. Solo prenotazioni
+                    // locali sono in attesa (le RentMe nascono confermata): nessun
+                    // rischio di regressione dal merge RentMe (tocca solo fonte=rentme).
+                    setPrenotazioni(prev => (prev || []).map(x => x.id === p.id ? { ...x, stato: 'confermata', updatedAt: new Date().toISOString() } : x));
+                    pushToast && pushToast({ tone: 'success', title: 'Prenotazione confermata', message: cliente(p) });
+                    setDettaglio(null);
+                  }}
+                  style={{ width: '100%', marginTop: 14, padding: '9px 14px', border: 'none', borderRadius: 6, background: '#2e6e3e', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: 13 }}>
+                  ✓ Conferma prenotazione
+                </button>
+              )}
+              <div style={{ display: 'flex', gap: 8, marginTop: String(p.stato) === 'attesa' ? 8 : 14 }}>
                 {setPage && setCuorePrefill && (
                   <button type="button"
                     onClick={() => { setCuorePrefill({ focusId: p.id }); setDettaglio(null); setPage('cuore_prenotazioni'); }}
@@ -19235,8 +19383,8 @@ function CuorePrenotaPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazion
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          <div><label style={lbl}>Dal</label><input type="date" style={inp} value={dal} onChange={e => setDal(e.target.value)} /></div>
-          <div><label style={lbl}>Al</label><input type="date" style={inp} value={al} onChange={e => setAl(e.target.value)} /></div>
+          <div><label style={lbl}>Dal</label><DateField style={inp} value={dal} onChange={e => setDal(e.target.value)} /></div>
+          <div><label style={lbl}>Al</label><DateField style={inp} value={al} min={dal} onChange={e => setAl(e.target.value)} /></div>
         </div>
 
         {/* banner disponibilità */}
@@ -19591,7 +19739,7 @@ function CuoreConsegnaPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazio
       </p>
 
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 14, flexWrap: 'wrap' }}>
-        <label style={{ fontSize: 12, color: 'var(--ink-2)' }}>Ritiri fino al <input type="date" value={quando} onChange={e => setQuando(e.target.value)} style={{ padding: 6, border: '1px solid var(--border)', borderRadius: 6, marginLeft: 6 }} /></label>
+        <label style={{ fontSize: 12, color: 'var(--ink-2)' }}>Ritiri fino al <DateField value={quando} onChange={e => setQuando(e.target.value)} style={{ padding: 6, border: '1px solid var(--border)', borderRadius: 6, marginLeft: 6 }} /></label>
         <span style={{ fontSize: 12, color: 'var(--muted)' }}>{daConsegnare.length} da consegnare</span>
       </div>
 
@@ -19762,8 +19910,8 @@ function CuoreWalkIn({ rentmeVehicles, targhe, fleet, scadenze, prenotazioni, se
     <>
 
       <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', marginBottom: 16, flexWrap: 'wrap' }}>
-        <label style={{ fontSize: 12, color: 'var(--ink-2)' }}>Dal<br /><input type="date" value={dal} onChange={e => { setDal(e.target.value); if (e.target.value > al) setAl(e.target.value); }} style={{ padding: 6, border: '1px solid var(--border)', borderRadius: 6 }} /></label>
-        <label style={{ fontSize: 12, color: 'var(--ink-2)' }}>Al<br /><input type="date" value={al} min={dal} onChange={e => setAl(e.target.value)} style={{ padding: 6, border: '1px solid var(--border)', borderRadius: 6 }} /></label>
+        <label style={{ fontSize: 12, color: 'var(--ink-2)' }}>Dal<br /><DateField value={dal} onChange={e => { setDal(e.target.value); if (e.target.value > al) setAl(e.target.value); }} style={{ padding: 6, border: '1px solid var(--border)', borderRadius: 6 }} /></label>
+        <label style={{ fontSize: 12, color: 'var(--ink-2)' }}>Al<br /><DateField value={al} min={dal} onChange={e => setAl(e.target.value)} style={{ padding: 6, border: '1px solid var(--border)', borderRadius: 6 }} /></label>
         <button type="button" onClick={() => { setDal(oggi); setAl(oggi); }} style={{ padding: '7px 12px', fontSize: 12, border: '1px solid var(--border)', borderRadius: 6, background: 'transparent', cursor: 'pointer', color: 'var(--ink-2)' }}>Oggi</button>
       </div>
 
@@ -20619,8 +20767,8 @@ function CuoreEditDate({ p, m, oggi, numeroLibero, parco, prenoConFermi, onSave 
   return (
     <div style={{ marginTop: 12 }}>
       <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-        <div><label style={lbl}>Dal</label><input type="date" style={inp} value={dal} onChange={e => { setDal(e.target.value); if (e.target.value > al) setAl(e.target.value); }} /></div>
-        <div><label style={lbl}>Al</label><input type="date" style={inp} value={al} min={dal} onChange={e => setAl(e.target.value)} /></div>
+        <div><label style={lbl}>Dal</label><DateField style={inp} value={dal} onChange={e => { setDal(e.target.value); if (e.target.value > al) setAl(e.target.value); }} /></div>
+        <div><label style={lbl}>Al</label><DateField style={inp} value={al} min={dal} onChange={e => setAl(e.target.value)} /></div>
         <div style={{ display: 'flex', gap: 4 }}>
           {[1, 2, 3].map(n => <button key={n} type="button" onClick={() => plusG(n)} style={{ padding: '6px 9px', fontSize: 11, border: '1px solid var(--border)', borderRadius: 12, background: 'transparent', cursor: 'pointer', color: 'var(--ink-2)' }}>proroga +{n}g</button>)}
         </div>
@@ -20824,8 +20972,8 @@ function CuorePreventiviPage({ listino, fleet, rentmeVehicles, prenotazioni, tar
       </p>
 
       <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', marginBottom: 16, flexWrap: 'wrap' }}>
-        <label style={{ fontSize: 12, color: 'var(--ink-2)' }}>Dal<br /><input type="date" value={dal} onChange={e => setDal(e.target.value)} style={{ padding: 6, border: '1px solid var(--border)', borderRadius: 6 }} /></label>
-        <label style={{ fontSize: 12, color: 'var(--ink-2)' }}>Al<br /><input type="date" value={al} onChange={e => setAl(e.target.value)} style={{ padding: 6, border: '1px solid var(--border)', borderRadius: 6 }} /></label>
+        <label style={{ fontSize: 12, color: 'var(--ink-2)' }}>Dal<br /><DateField value={dal} onChange={e => setDal(e.target.value)} style={{ padding: 6, border: '1px solid var(--border)', borderRadius: 6 }} /></label>
+        <label style={{ fontSize: 12, color: 'var(--ink-2)' }}>Al<br /><DateField value={al} onChange={e => setAl(e.target.value)} style={{ padding: 6, border: '1px solid var(--border)', borderRadius: 6 }} /></label>
         {righe[0] && righe[0].giorni > 0 && <span style={{ fontSize: 12, color: 'var(--ink-2)' }}>{righe[0].giorni} giorni</span>}
         {dal && al && (
           <button type="button" onClick={copiaLink} title="Copia link condivisibile con queste date"
@@ -22072,7 +22220,7 @@ function ManutenzioniModal({ vehicle, manutenzioni, setManutenzioni, onClose }) 
             </div>
             <div>
               <label className="label">Data scadenza <span style={{ color: 'var(--accent)' }}>*</span></label>
-              <input type="date" className="input" value={form.dataScadenza}
+              <DateField className="input" value={form.dataScadenza}
                 onChange={e => setForm(f => ({ ...f, dataScadenza: e.target.value }))} />
             </div>
             <div className="col-span-2">
@@ -22776,11 +22924,11 @@ function FermiFlottaSection({ fleet, fermiFlotta, setFermiFlotta }) {
             </div>
             <div>
               <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--ink-2)', marginBottom: 4 }}>Dal</label>
-              <input type="date" style={{ ...inp, width: '100%' }} value={form.dal} onChange={e => setForm(f => ({ ...f, dal: e.target.value }))} />
+              <DateField style={{ ...inp, width: '100%' }} value={form.dal} onChange={e => setForm(f => ({ ...f, dal: e.target.value }))} />
             </div>
             <div>
               <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--ink-2)', marginBottom: 4 }}>Al</label>
-              <input type="date" style={{ ...inp, width: '100%' }} min={form.dal} value={form.al} onChange={e => setForm(f => ({ ...f, al: e.target.value }))} />
+              <DateField style={{ ...inp, width: '100%' }} min={form.dal} value={form.al} onChange={e => setForm(f => ({ ...f, al: e.target.value }))} />
             </div>
           </div>
           <div style={{ marginBottom: 12 }}>
