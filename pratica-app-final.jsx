@@ -12831,7 +12831,7 @@ function useRitardiNotifications(prenotazioni) {
     if (!prenotazioni || prenotazioni.length === 0) return;
 
     const today = todayISO();
-    const STATI_ATTIVI = new Set(['confermata', 'in_corso', 'prorogata']);
+    const STATI_ATTIVI = new Set(['confermata', 'in_corso']); // stati reali (PRENO_STATI); rimosso ghost 'prorogata'. 'attesa' escluso: una preno non consegnata non e' un "rientro in ritardo".
 
     const ritardi = prenotazioni.filter(p => {
       if (!STATI_ATTIVI.has(p.stato)) return false;
@@ -16212,7 +16212,7 @@ export default function App() {
       const cutoff = new Date();
       cutoff.setMonth(cutoff.getMonth() - 6);
       const cutoffStr = cutoff.toISOString().slice(0, 10);
-      const STATI_ATTIVI = new Set(['bozza', 'confermata', 'in_corso', 'prorogata']);
+      const STATI_ATTIVI = new Set(['attesa', 'confermata', 'in_corso']); // stati reali (PRENO_STATI); + 'attesa' (post-#95: le preno in attesa locali devono sincronizzarsi); rimossi ghost 'bozza'/'prorogata'.
       // Una prenotazione RentMe va inviata al backend SOLO se l'operatore ci ha
       // lavorato (consegna/riconsegna o stato avanzato): quel lavoro vive solo in
       // locale e DEVE sincronizzarsi sugli altri dispositivi (il banco e il Mac).
@@ -20680,7 +20680,7 @@ function CuorePrenotazioniPage({ rentmeVehicles, targhe, fleet, scadenze, prenot
                   ? <>
                       <span style={{ fontSize: 12, color: 'var(--accent, #c0392b)', fontWeight: 600 }}>Confermi?</span>
                       <button type="button" style={{ ...btnSec, borderColor: 'var(--accent, #c0392b)', color: 'var(--accent, #c0392b)', fontWeight: 700 }}
-                        onClick={() => { aggiorna(p.id, { stato: 'annullata' }); pushToast && pushToast({ tone: 'info', title: 'Prenotazione annullata' }); setAzione(null); }}>
+                        onClick={() => { aggiorna(p.id, { stato: 'cancellata' }); pushToast && pushToast({ tone: 'info', title: 'Prenotazione annullata' }); setAzione(null); }}>
                         Annulla prenotazione
                       </button>
                       <button type="button" style={btnSec} onClick={() => setAzione(null)}>No</button>
@@ -22636,9 +22636,13 @@ function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, on
               cliente: `${p.clienteCognome || ''} ${p.clienteNome || ''}`.trim() || 'Cliente',
               luogo,
               al: p.al,
+              contractId: p.contractId || null,
             };
           });
         if (out.length === 0) return null;
+        // C1 — principio "mezzo fuori => contratto": evidenzia i consegnati SENZA contratto collegato
+        // (di norma raro: chi esce ha un contratto). Solo informativo.
+        const senzaContratto = out.filter(o => !o.contractId).length;
         const groups = {};
         out.forEach(o => { (groups[o.tipo] ||= []).push(o); });
         const tipi = Object.keys(groups).sort();
@@ -22654,6 +22658,10 @@ function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, on
               style={{ display: 'flex', alignItems: 'baseline', gap: 8, width: '100%', background: 'none', border: 'none', cursor: 'pointer', padding: 0, textAlign: 'left' }}>
               <span style={{ fontFamily: 'var(--font-serif)', fontWeight: 600, fontSize: 15, color: 'var(--ink)' }}>Mezzi fuori ora</span>
               <span className="label" style={{ color: 'var(--edo-sea)' }}>{out.length} consegnati</span>
+              {senzaContratto > 0 && (
+                <span className="label" title="Consegnati senza contratto collegato — di norma chi esce ha un contratto"
+                  style={{ color: 'var(--accent, #c0392b)' }}>⚠ {senzaContratto} senza contratto</span>
+              )}
               <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--muted)' }}>{outOpen ? '▾' : '▸'}</span>
             </button>
             {outOpen && (
