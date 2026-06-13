@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useRef, useCallback, memo, Component, Fragment } from 'react';
+import { createPortal } from 'react-dom';
 import { CalendarDays, Receipt, BarChart2,
   LayoutDashboard, FileText, Car, Users, Settings, Plus, Search,
   ChevronRight, Check, AlertCircle, Clock, Send, Camera, ScanLine,
@@ -18560,6 +18561,7 @@ function CuoreOggiPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazioni, 
 // ═══════════════════════════════════════════════════════════════════
 function DateField({ value, onChange, min, max, required, style, className, disabled, placeholder = 'gg/mm/aaaa', id }) {
   const [open, setOpen] = useState(false);
+  const hostRef = useRef(null);
   const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   const parse = (s) => { if (!s) return null; const [y, m, g] = String(s).split('-').map(Number); if (!y || !m || !g) return null; return new Date(y, m - 1, g, 12, 0, 0); };
   const oggi = new Date(); oggi.setHours(12, 0, 0, 0);
@@ -18583,13 +18585,17 @@ function DateField({ value, onChange, min, max, required, style, className, disa
   const fieldStyle = { fontFamily: 'var(--font-sans)', background: 'var(--bg)', color: 'var(--ink)', ...(style || {}), cursor: disabled ? 'not-allowed' : 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, opacity: disabled ? 0.6 : 1 };
 
   return (
-    <div style={{ position: 'relative', width: (style && style.width) || 'auto' }}>
+    <div ref={hostRef} style={{ position: 'relative', width: (style && style.width) || 'auto' }}>
       <button type="button" id={id} className={className} disabled={disabled} onClick={() => !disabled && setOpen(true)} style={fieldStyle}>
         <span style={{ color: value ? 'var(--ink)' : 'var(--muted)' }}>{value ? fmt(value) : placeholder}</span>
         <span aria-hidden style={{ fontSize: 15, opacity: 0.7 }}>📅</span>
       </button>
-      {open && (
-        <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 90 }}>
+      {/* Popup in PORTAL sul wrapper .pratica-app: esce dallo stacking dei modali
+          (prima a zIndex 90 finiva SOTTO i modali z>=200 -> click inerti) e mantiene il
+          tema/dark-mode (le variabili --bg/--ink sono ridefinite su .dark-mode del wrapper,
+          non su :root). z-index 10050 = sopra ogni overlay dell'app (max 10000). */}
+      {open && createPortal((
+        <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10050 }}>
           <div onClick={e => e.stopPropagation()} className="card-paper" style={{ padding: 16, width: 360, maxWidth: '94vw' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
               <button type="button" onClick={() => shift(-1)} style={{ width: 42, height: 42, border: '1px solid var(--border)', borderRadius: 8, background: 'transparent', cursor: 'pointer', fontSize: 20 }}>‹</button>
@@ -18621,7 +18627,7 @@ function DateField({ value, onChange, min, max, required, style, className, disa
             </div>
           </div>
         </div>
-      )}
+      ), (hostRef.current && hostRef.current.closest('.pratica-app')) || document.body)}
     </div>
   );
 }
