@@ -12196,6 +12196,12 @@ function CuoreCalendarioPage({ rentmeVehicles, targhe, fleet, prenotazioni, scad
 
   const LABEL_W = 160;
   const cliente = (p) => `${p.clienteCognome || ''} ${p.clienteNome || ''}`.trim() || p.cliente || '—';
+  // Ricerca: filtra anche le BARRE, non solo le righe. Se cerchi una targa/modello/numero
+  // vedi TUTTE le barre del mezzo; se cerchi un cognome vedi SOLO le prenotazioni di quel
+  // cliente (altrimenti la riga compariva piena di altri nomi → "non funziona").
+  const qCerca = cerca.trim().toLowerCase();
+  const vehMatchesCerca = (m) => !qCerca || (m?.targa || '').toLowerCase().includes(qCerca) || (m?.modello || '').toLowerCase().includes(qCerca) || String(m?.numero ?? '').includes(qCerca);
+  const prenoMatchesCerca = (p, m) => !qCerca || vehMatchesCerca(m) || cliente(p).toLowerCase().includes(qCerca);
   // Colore per CLIENTE: ogni cliente un colore stabile (stessa persona → stesso colore su
   // tutte le sue prenotazioni). Hash del nome → tonalità; luminosità fissa per testo bianco.
   const coloreCliente = (p) => {
@@ -12437,7 +12443,7 @@ function CuoreCalendarioPage({ rentmeVehicles, targhe, fleet, prenotazioni, scad
                     {/* fascia categoria / "da assegnare" */}
                     <div style={{ height: H_CAT, boxSizing: 'border-box', position: 'relative', background: 'var(--surface-2)', borderBottom: '1px solid var(--border)' }}>
                       <div style={{ position: 'absolute', top: 0, bottom: 0, left: oggiX, width: COL_W, background: 'rgba(31,93,131,0.18)', borderLeft: '2px solid var(--sea)', borderRight: '2px solid var(--sea)', boxSizing: 'border-box', pointerEvents: 'none' }} />
-                      {daAss.filter(p => !soloAttesa || String(p.stato) === 'attesa').map(p => (
+                      {daAss.filter(p => (!soloAttesa || String(p.stato) === 'attesa') && prenoMatchesCerca(p, null)).map(p => (
                         <div key={p.id} onClick={() => setPrenotazioni && setAssegna(p)} title={`${cliente(p)} · clicca per assegnare un mezzo`} style={{ position: 'absolute', top: 3, height: 19, ...barStyle(p.dal, p.al), background: 'repeating-linear-gradient(45deg,#c0392b,#c0392b 4px,#a93226 4px,#a93226 8px)', opacity: 0.85, borderRadius: 4, color: '#fff', fontSize: 10, padding: '2px 5px', overflow: 'hidden', whiteSpace: 'nowrap', cursor: setPrenotazioni ? 'pointer' : 'default', boxSizing: 'border-box' }}>{cliente(p)}</div>
                       ))}
                     </div>
@@ -12451,7 +12457,7 @@ function CuoreCalendarioPage({ rentmeVehicles, targhe, fleet, prenotazioni, scad
                           {(soloAttesa ? [] : (fermiPerNumero[String(m.numero)] || [])).map((f, i) => (
                             <div key={'f' + i} onClick={e => e.stopPropagation()} title={`🔧 Fermo${f.motivo ? ': ' + f.motivo : ''} · ${formatDate(f.dal)} → ${formatDate(f.al)}`} style={{ position: 'absolute', top: 5, height: 23, ...barStyle(f.dal, f.al), background: 'repeating-linear-gradient(45deg,#9a958c,#9a958c 4px,#7d786f 4px,#7d786f 8px)', borderRadius: 4, color: '#fff', fontSize: 10, padding: '4px 6px', overflow: 'hidden', whiteSpace: 'nowrap', boxSizing: 'border-box' }}>🔧 {f.motivo || 'fermo'}</div>
                           ))}
-                          {barre.filter(b => !soloAttesa || String(b.p.stato) === 'attesa').map((b, i) => {
+                          {barre.filter(b => (!soloAttesa || String(b.p.stato) === 'attesa') && prenoMatchesCerca(b.p, m)).map((b, i) => {
                             // In attesa (flag "bloccata" lato Pratica) = barra a righe ambra +
                             // bordo tratteggiato: si legge "provvisoria, non confermata". Alla
                             // conferma il flag cade → barra piena col colore-cliente come le altre.
