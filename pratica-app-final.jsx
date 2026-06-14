@@ -10909,7 +10909,7 @@ export default function App() {
               {page === 'cuore_consegna' && <CuoreConsegnaPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} pushToast={pushToast} operator={operator} fermiFlotta={fermiFlotta} partners={partners} contracts={localContracts} onApriContratto={openWizardForBooking} />}
               {page === 'cuore_rientro' && <CuoreRientroPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} pushToast={pushToast} setCassa={setCassa} operator={operator} />}
               {page === 'cuore_flotta' && <CuoreFlottaPage rentmeVehicles={rentmeVehicles} targhe={targhe} setTarghe={setTarghe} fleet={fleet} scadenze={scadenze} admin={admin} />}
-              {page === 'fleet'      && <FleetPage fleet={unifiedFleet} prenotazioni={prenotazioni} admin={admin} onAddVehicle={() => setModal('newVehicle')} onEditVehicle={(v) => setModal({ type: 'editVehicle', vehicle: v })} onDeleteVehicle={requestDeleteVehicle} onImportCSV={() => setShowCsvImport(true)} onResetFleet={() => setModal({ type: 'confirm', title: 'Azzera flotta?', message: <><strong>Tutti i {fleet.length} veicoli</strong> verranno eliminati dalla flotta. Le prenotazioni esistenti restano invariate. Dopo puoi reimportare con un CSV aggiornato. <strong>Azione irreversibile.</strong></>, confirmLabel: 'Azzera flotta', variant: 'danger', onConfirm: () => { setFleet([]); pushToast({ tone: 'info', title: 'Flotta azzerata', message: 'Tutti i veicoli rimossi. Importa un nuovo CSV per ricaricare.' }); } })} onSetFleet={setFleet} scadenze={scadenze} setScadenze={setScadenze} fermiFlotta={fermiFlotta} setFermiFlotta={setFermiFlotta} rentmeVehicles={rentmeVehicles} manutenzioni={manutenzioni} setManutenzioni={setManutenzioni} partners={partners} targhe={targhe} setTarghe={setTarghe} contracts={localContracts} />}
+              {page === 'fleet'      && <FleetPage fleet={unifiedFleet} prenotazioni={prenotazioni} admin={admin} onAddVehicle={() => setModal('newVehicle')} onEditVehicle={(v) => setModal({ type: 'editVehicle', vehicle: v })} onDeleteVehicle={requestDeleteVehicle} onImportCSV={() => setShowCsvImport(true)} onResetFleet={() => setModal({ type: 'confirm', title: 'Azzera flotta?', message: <><strong>Tutti i {fleet.length} veicoli</strong> verranno eliminati dalla flotta. Le prenotazioni esistenti restano invariate. Dopo puoi reimportare con un CSV aggiornato. <strong>Azione irreversibile.</strong></>, confirmLabel: 'Azzera flotta', variant: 'danger', onConfirm: () => { setFleet([]); pushToast({ tone: 'info', title: 'Flotta azzerata', message: 'Tutti i veicoli rimossi. Importa un nuovo CSV per ricaricare.' }); } })} onSetFleet={setFleet} scadenze={scadenze} setScadenze={setScadenze} fermiFlotta={fermiFlotta} setFermiFlotta={setFermiFlotta} rentmeVehicles={rentmeVehicles} manutenzioni={manutenzioni} setManutenzioni={setManutenzioni} partners={partners} targhe={targhe} setTarghe={setTarghe} contracts={localContracts} onApriContratto={openWizardForBooking} />}
               {page === 'customers'  && <CustomersPage customers={customers} setCustomers={setCustomers} prenotazioni={prenotazioni} admin={admin} onShowQR={(c) => setModal({ type: 'qr', customer: c })} onNewWithCustomer={openWizard} onAddCustomer={() => setModal('newCustomer')} onEditCustomer={(c) => setModal({ type: 'editCustomer', customer: c })} onDeleteCustomer={deleteCustomer} onShowStorico={(c) => setStorioClienteId(c.id)} />}
               {page === 'partners'   && <PartnersPage partners={partners} admin={admin} onAddPartner={() => setModal('newPartner')} onEditPartner={(p) => setModal({ type: 'editPartner', partner: p })} onDeletePartner={requestDeletePartner} />}
               {page === 'listino'    && <div style={{padding:'28px 32px',maxWidth:900,margin:'0 auto'}}>
@@ -12196,6 +12196,12 @@ function CuoreCalendarioPage({ rentmeVehicles, targhe, fleet, prenotazioni, scad
 
   const LABEL_W = 160;
   const cliente = (p) => `${p.clienteCognome || ''} ${p.clienteNome || ''}`.trim() || p.cliente || '—';
+  // Ricerca: filtra anche le BARRE, non solo le righe. Se cerchi una targa/modello/numero
+  // vedi TUTTE le barre del mezzo; se cerchi un cognome vedi SOLO le prenotazioni di quel
+  // cliente (altrimenti la riga compariva piena di altri nomi → "non funziona").
+  const qCerca = cerca.trim().toLowerCase();
+  const vehMatchesCerca = (m) => !qCerca || (m?.targa || '').toLowerCase().includes(qCerca) || (m?.modello || '').toLowerCase().includes(qCerca) || String(m?.numero ?? '').includes(qCerca);
+  const prenoMatchesCerca = (p, m) => !qCerca || vehMatchesCerca(m) || cliente(p).toLowerCase().includes(qCerca);
   // Colore per CLIENTE: ogni cliente un colore stabile (stessa persona → stesso colore su
   // tutte le sue prenotazioni). Hash del nome → tonalità; luminosità fissa per testo bianco.
   const coloreCliente = (p) => {
@@ -12437,7 +12443,7 @@ function CuoreCalendarioPage({ rentmeVehicles, targhe, fleet, prenotazioni, scad
                     {/* fascia categoria / "da assegnare" */}
                     <div style={{ height: H_CAT, boxSizing: 'border-box', position: 'relative', background: 'var(--surface-2)', borderBottom: '1px solid var(--border)' }}>
                       <div style={{ position: 'absolute', top: 0, bottom: 0, left: oggiX, width: COL_W, background: 'rgba(31,93,131,0.18)', borderLeft: '2px solid var(--sea)', borderRight: '2px solid var(--sea)', boxSizing: 'border-box', pointerEvents: 'none' }} />
-                      {daAss.filter(p => !soloAttesa || String(p.stato) === 'attesa').map(p => (
+                      {daAss.filter(p => (!soloAttesa || String(p.stato) === 'attesa') && prenoMatchesCerca(p, null)).map(p => (
                         <div key={p.id} onClick={() => setPrenotazioni && setAssegna(p)} title={`${cliente(p)} · clicca per assegnare un mezzo`} style={{ position: 'absolute', top: 3, height: 19, ...barStyle(p.dal, p.al), background: 'repeating-linear-gradient(45deg,#c0392b,#c0392b 4px,#a93226 4px,#a93226 8px)', opacity: 0.85, borderRadius: 4, color: '#fff', fontSize: 10, padding: '2px 5px', overflow: 'hidden', whiteSpace: 'nowrap', cursor: setPrenotazioni ? 'pointer' : 'default', boxSizing: 'border-box' }}>{cliente(p)}</div>
                       ))}
                     </div>
@@ -12451,7 +12457,7 @@ function CuoreCalendarioPage({ rentmeVehicles, targhe, fleet, prenotazioni, scad
                           {(soloAttesa ? [] : (fermiPerNumero[String(m.numero)] || [])).map((f, i) => (
                             <div key={'f' + i} onClick={e => e.stopPropagation()} title={`🔧 Fermo${f.motivo ? ': ' + f.motivo : ''} · ${formatDate(f.dal)} → ${formatDate(f.al)}`} style={{ position: 'absolute', top: 5, height: 23, ...barStyle(f.dal, f.al), background: 'repeating-linear-gradient(45deg,#9a958c,#9a958c 4px,#7d786f 4px,#7d786f 8px)', borderRadius: 4, color: '#fff', fontSize: 10, padding: '4px 6px', overflow: 'hidden', whiteSpace: 'nowrap', boxSizing: 'border-box' }}>🔧 {f.motivo || 'fermo'}</div>
                           ))}
-                          {barre.filter(b => !soloAttesa || String(b.p.stato) === 'attesa').map((b, i) => {
+                          {barre.filter(b => (!soloAttesa || String(b.p.stato) === 'attesa') && prenoMatchesCerca(b.p, m)).map((b, i) => {
                             // In attesa (flag "bloccata" lato Pratica) = barra a righe ambra +
                             // bordo tratteggiato: si legge "provvisoria, non confermata". Alla
                             // conferma il flag cade → barra piena col colore-cliente come le altre.
@@ -15761,7 +15767,7 @@ function ManutenzioniModal({ vehicle, manutenzioni, setManutenzioni, onClose }) 
 // ═══════════════════════════════════════════════════════════════════
 // FLEET
 // ═══════════════════════════════════════════════════════════════════
-function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, onDeleteVehicle, onImportCSV, onResetFleet, onSetFleet, scadenze, setScadenze, fermiFlotta, setFermiFlotta, rentmeVehicles, manutenzioni, setManutenzioni, partners, targhe, setTarghe, contracts }) {
+function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, onDeleteVehicle, onImportCSV, onResetFleet, onSetFleet, scadenze, setScadenze, fermiFlotta, setFermiFlotta, rentmeVehicles, manutenzioni, setManutenzioni, partners, targhe, setTarghe, contracts, onApriContratto }) {
   const [targaEdit, setTargaEdit] = useState(null); // {code,val} — modifica targa inline (Flotta unificata)
   const saveTarga = (code, val) => { if (setTarghe) setTarghe({ ...(targhe || {}), [code]: (val || '').toUpperCase().replace(/\s+/g, '') }); setTargaEdit(null); };
   const [typeFilter, setTypeFilter] = useState('all');
@@ -16086,6 +16092,7 @@ function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, on
               // C1-bis: collegamento VERO via contratto registrato (EDO-anno-codice),
               // non il campo p.contractId (che non veniva mai riempito → falso "tutti senza").
               hasContract: bookingHasContract(p, contracts),
+              p,  // la prenotazione: serve per aprire "Completa contratto" da qui
             };
           });
         if (out.length === 0) return null;
@@ -16134,7 +16141,11 @@ function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, on
                               </span>
                               <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)', marginLeft: 'auto', whiteSpace: 'nowrap' }}>{o.cliente}</span>
                               {!o.hasContract && (
-                                <span title="Pratica non ancora registrata per questo mezzo" style={{ fontSize: 10, fontWeight: 700, color: 'var(--accent, #c0392b)', whiteSpace: 'nowrap', flexShrink: 0 }}>⚠ no contratto</span>
+                                onApriContratto
+                                  ? <button type="button" onClick={() => onApriContratto(o.p)}
+                                      title="Completa la pratica per questo mezzo (auto → CARGOS, altri → contratto interno) — direttamente da qui"
+                                      style={{ fontSize: 10, fontWeight: 700, color: '#fff', background: 'var(--accent, #c0392b)', border: 'none', borderRadius: 999, padding: '2px 9px', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}>⚠ Completa contratto</button>
+                                  : <span title="Pratica non ancora registrata per questo mezzo" style={{ fontSize: 10, fontWeight: 700, color: 'var(--accent, #c0392b)', whiteSpace: 'nowrap', flexShrink: 0 }}>⚠ no contratto</span>
                               )}
                               <span style={{ fontSize: 11, fontWeight: 600, color: r.color, minWidth: 92, textAlign: 'right' }}>{r.txt}</span>
                             </div>
@@ -18281,6 +18292,18 @@ function Wizard({ onClose, prefillCustomer, operator, fleet, customers, partners
     return true;
   }, [step, data.tipoVeicolo, data.cliente, data.ritiroData, data.consegnaData, data.veicolo]);
 
+  // Stepper cliccabile: vai a uno step solo se i passi PRECEDENTI sono compilati (altrimenti
+  // salteresti su una schermata senza dati). Indietro è sempre permesso (i requisiti ci sono già).
+  const stepReqMet = (n) => {
+    if (n <= 1) return true;
+    if (n === 2) return data.tipoVeicolo != null;
+    if (n === 3) return data.cliente != null;
+    if (n === 4) return !!(data.ritiroData && data.consegnaData);
+    if (n === 5) return data.veicolo != null;
+    return false;
+  };
+  const canGoToStep = (n) => { for (let k = 2; k <= n; k++) { if (!stepReqMet(k)) return false; } return true; };
+
   // Conferma finale: chiama submitContract dall'App, mostra spinner, poi ResultScreen
   // Inietta contractId e contractDate nel payload — submitContract li legge da data.contractId/contractDate
   const handleConfirm = useCallback(async () => {
@@ -18325,18 +18348,29 @@ function Wizard({ onClose, prefillCustomer, operator, fleet, customers, partners
 
             {/* Step indicator */}
             <div className="flex-1 flex items-center justify-center gap-2" role="list" aria-label="Progressione wizard">
-              {!sent && STEPS.map((s, i) => (
+              {!sent && STEPS.map((s, i) => {
+                const n = i + 1;
+                const reachable = canGoToStep(n) && !submitting;
+                return (
                 <div key={s} className="flex items-center gap-2" role="listitem">
-                  <div
-                    className={`step-num ${i + 1 === step ? 'active' : i + 1 < step ? 'done' : 'todo'}`}
-                    aria-label={`Passo ${i + 1}: ${s}${i + 1 < step ? ' (completato)' : i + 1 === step ? ' (corrente)' : ''}`}
+                  <button
+                    type="button"
+                    disabled={!reachable}
+                    onClick={() => reachable && setStep(n)}
+                    title={reachable ? `Vai a "${s}"` : `Completa i passi precedenti per andare a "${s}"`}
+                    className="flex items-center gap-2"
+                    style={{ background: 'none', border: 'none', padding: 0, cursor: reachable ? 'pointer' : 'default' }}
+                    aria-label={`Passo ${n}: ${s}${n < step ? ' (completato)' : n === step ? ' (corrente)' : ''}`}
                   >
-                    {i + 1 < step ? <Check className="w-3 h-3" aria-hidden="true" /> : i + 1}
-                  </div>
-                  <span className={`text-xs ${i + 1 === step ? 'font-semibold' : ''}`} style={{ color: i + 1 <= step ? 'var(--ink)' : 'var(--muted)' }} aria-hidden="true">{s}</span>
+                    <div className={`step-num ${n === step ? 'active' : n < step ? 'done' : 'todo'}`} aria-hidden="true">
+                      {n < step ? <Check className="w-3 h-3" aria-hidden="true" /> : n}
+                    </div>
+                    <span className={`text-xs ${n === step ? 'font-semibold' : ''}`} style={{ color: n <= step ? 'var(--ink)' : 'var(--muted)' }} aria-hidden="true">{s}</span>
+                  </button>
                   {i < STEPS.length - 1 && <div className="w-6 h-px" style={{ background: 'var(--border-strong)' }} aria-hidden="true" />}
                 </div>
-              ))}
+                );
+              })}
             </div>
 
             <button type="button" onClick={onClose} className="btn-ghost p-2 rounded" aria-label="Chiudi wizard">
@@ -18478,7 +18512,10 @@ function Step1Type({ data, update }) {
 function Step2Customer({ data, update, customers }) {
   const [mode, setMode] = useState(data.cliente ? 'new' : 'qr');
   const [form, setForm] = useState(() => {
-    if (data.cliente?.full) return data.cliente.full;
+    // fatturazione: null di default → se il cliente è pre-caricato da una prenotazione
+    // (prefill senza il campo), evita che billingActive diventi true e BillingForm crashi
+    // su undefined (pagina bianca tornando "Indietro" dal wizard). Root-fix.
+    if (data.cliente?.full) return { fatturazione: null, ...data.cliente.full };
     if (data.cliente) return {
       cognome: data.cliente.cognome || '', nome: data.cliente.nome || '',
       nascita: data.cliente.nascita || '', luogoNascita: data.cliente.luogoNascita || '',
@@ -18523,7 +18560,7 @@ function Step2Customer({ data, update, customers }) {
     });
   }, [update]);
 
-  const billingActive = form.fatturazione !== null;
+  const billingActive = form.fatturazione != null;  // != (lasco): false anche se undefined
 
   const MODES = [
     { id: 'qr',     label: 'QR cliente',     Icon: QrCode },
@@ -18829,6 +18866,33 @@ function fromDatetimeLocal(dtLocal) {
   return `${dd}/${mm}/${yyyy} ${timePart}`;
 }
 
+// Data + ORA col nostro calendario grande (niente più mini-calendario nativo del wizard).
+// value/onChange/min in formato italiano "GG/MM/AAAA HH:mm" (come data.ritiroData/consegnaData).
+function DateTimeField({ value, onChange, min, id, required }) {
+  const dl = toDatetimeLocal(value);            // "YYYY-MM-DDTHH:mm" o ''
+  const isoDate = dl ? dl.slice(0, 10) : '';    // YYYY-MM-DD
+  const time = dl ? dl.slice(11, 16) : '';      // HH:mm
+  const minDl = toDatetimeLocal(min);
+  const minDate = minDl ? minDl.slice(0, 10) : undefined;
+  const setDate = (newIsoDate) => {
+    if (!newIsoDate) { onChange(''); return; }
+    onChange(fromDatetimeLocal(`${newIsoDate}T${time || '12:00'}`));
+  };
+  const setTime = (newTime) => {
+    const d = isoDate || minDate || todayISO();
+    onChange(fromDatetimeLocal(`${d}T${newTime || '00:00'}`));
+  };
+  return (
+    <div style={{ display: 'flex', gap: 8, alignItems: 'stretch' }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <DateField id={id} value={isoDate} min={minDate} required={required} onChange={e => setDate(e.target.value)} />
+      </div>
+      <input type="time" className="input mono" style={{ width: 104, flexShrink: 0 }} value={time}
+        onChange={e => setTime(e.target.value)} required={required} aria-label="Ora" />
+    </div>
+  );
+}
+
 function Step4Period({ data, update, partners }) {
   return (
     <div className="max-w-4xl mx-auto">
@@ -18839,13 +18903,11 @@ function Step4Period({ data, update, partners }) {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label htmlFor="p4-ritiroData" className="label">Data e ora ritiro <span aria-hidden="true" style={{ color: 'var(--accent)' }}>*</span></label>
-              <input
+              <DateTimeField
                 id="p4-ritiroData"
-                type="datetime-local"
                 required
-                className="input mono"
-                value={toDatetimeLocal(data.ritiroData)}
-                onChange={e => { update('ritiroData', fromDatetimeLocal(e.target.value)); update('veicolo', null); }}
+                value={data.ritiroData}
+                onChange={v => { update('ritiroData', v); update('veicolo', null); }}
               />
             </div>
             <StructureSelect label="Luogo di ritiro" req partners={partners} structureId={data.ritiroStruttura} onStructureChange={v => update('ritiroStruttura', v)} freeText={data.ritiroIndirizzo} onFreeTextChange={v => update('ritiroIndirizzo', v)} />
@@ -18856,14 +18918,12 @@ function Step4Period({ data, update, partners }) {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label htmlFor="p4-consegnaData" className="label">Data e ora consegna <span aria-hidden="true" style={{ color: 'var(--accent)' }}>*</span></label>
-              <input
+              <DateTimeField
                 id="p4-consegnaData"
-                type="datetime-local"
                 required
-                className="input mono"
-                min={toDatetimeLocal(data.ritiroData)}
-                value={toDatetimeLocal(data.consegnaData)}
-                onChange={e => { update('consegnaData', fromDatetimeLocal(e.target.value)); update('veicolo', null); }}
+                min={data.ritiroData}
+                value={data.consegnaData}
+                onChange={v => { update('consegnaData', v); update('veicolo', null); }}
               />
             </div>
             <StructureSelect label="Luogo di consegna" req partners={partners} structureId={data.consegnaStruttura} onStructureChange={v => update('consegnaStruttura', v)} freeText={data.consegnaIndirizzo} onFreeTextChange={v => update('consegnaIndirizzo', v)} />
@@ -20210,7 +20270,7 @@ function NewCustomerModal({ customer, onClose, onSave }) {
   });
   const upd = useCallback((k, v) => setForm(f => ({ ...f, [k]: v })), []);
   const [scanOpen, setScanOpen] = useState(false);
-  const billingActive = form.fatturazione !== null;
+  const billingActive = form.fatturazione != null;  // != (lasco): false anche se undefined
   const valid = form.cognome && form.nome && form.docNum;
 
   return (
