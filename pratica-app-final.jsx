@@ -10909,7 +10909,7 @@ export default function App() {
               {page === 'cuore_consegna' && <CuoreConsegnaPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} pushToast={pushToast} operator={operator} fermiFlotta={fermiFlotta} partners={partners} contracts={localContracts} onApriContratto={openWizardForBooking} />}
               {page === 'cuore_rientro' && <CuoreRientroPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} pushToast={pushToast} setCassa={setCassa} operator={operator} />}
               {page === 'cuore_flotta' && <CuoreFlottaPage rentmeVehicles={rentmeVehicles} targhe={targhe} setTarghe={setTarghe} fleet={fleet} scadenze={scadenze} admin={admin} />}
-              {page === 'fleet'      && <FleetPage fleet={unifiedFleet} prenotazioni={prenotazioni} admin={admin} onAddVehicle={() => setModal('newVehicle')} onEditVehicle={(v) => setModal({ type: 'editVehicle', vehicle: v })} onDeleteVehicle={requestDeleteVehicle} onImportCSV={() => setShowCsvImport(true)} onResetFleet={() => setModal({ type: 'confirm', title: 'Azzera flotta?', message: <><strong>Tutti i {fleet.length} veicoli</strong> verranno eliminati dalla flotta. Le prenotazioni esistenti restano invariate. Dopo puoi reimportare con un CSV aggiornato. <strong>Azione irreversibile.</strong></>, confirmLabel: 'Azzera flotta', variant: 'danger', onConfirm: () => { setFleet([]); pushToast({ tone: 'info', title: 'Flotta azzerata', message: 'Tutti i veicoli rimossi. Importa un nuovo CSV per ricaricare.' }); } })} onSetFleet={setFleet} scadenze={scadenze} setScadenze={setScadenze} fermiFlotta={fermiFlotta} setFermiFlotta={setFermiFlotta} rentmeVehicles={rentmeVehicles} manutenzioni={manutenzioni} setManutenzioni={setManutenzioni} partners={partners} targhe={targhe} setTarghe={setTarghe} contracts={localContracts} />}
+              {page === 'fleet'      && <FleetPage fleet={unifiedFleet} prenotazioni={prenotazioni} admin={admin} onAddVehicle={() => setModal('newVehicle')} onEditVehicle={(v) => setModal({ type: 'editVehicle', vehicle: v })} onDeleteVehicle={requestDeleteVehicle} onImportCSV={() => setShowCsvImport(true)} onResetFleet={() => setModal({ type: 'confirm', title: 'Azzera flotta?', message: <><strong>Tutti i {fleet.length} veicoli</strong> verranno eliminati dalla flotta. Le prenotazioni esistenti restano invariate. Dopo puoi reimportare con un CSV aggiornato. <strong>Azione irreversibile.</strong></>, confirmLabel: 'Azzera flotta', variant: 'danger', onConfirm: () => { setFleet([]); pushToast({ tone: 'info', title: 'Flotta azzerata', message: 'Tutti i veicoli rimossi. Importa un nuovo CSV per ricaricare.' }); } })} onSetFleet={setFleet} scadenze={scadenze} setScadenze={setScadenze} fermiFlotta={fermiFlotta} setFermiFlotta={setFermiFlotta} rentmeVehicles={rentmeVehicles} manutenzioni={manutenzioni} setManutenzioni={setManutenzioni} partners={partners} targhe={targhe} setTarghe={setTarghe} contracts={localContracts} onApriContratto={openWizardForBooking} />}
               {page === 'customers'  && <CustomersPage customers={customers} setCustomers={setCustomers} prenotazioni={prenotazioni} admin={admin} onShowQR={(c) => setModal({ type: 'qr', customer: c })} onNewWithCustomer={openWizard} onAddCustomer={() => setModal('newCustomer')} onEditCustomer={(c) => setModal({ type: 'editCustomer', customer: c })} onDeleteCustomer={deleteCustomer} onShowStorico={(c) => setStorioClienteId(c.id)} />}
               {page === 'partners'   && <PartnersPage partners={partners} admin={admin} onAddPartner={() => setModal('newPartner')} onEditPartner={(p) => setModal({ type: 'editPartner', partner: p })} onDeletePartner={requestDeletePartner} />}
               {page === 'listino'    && <div style={{padding:'28px 32px',maxWidth:900,margin:'0 auto'}}>
@@ -15767,7 +15767,7 @@ function ManutenzioniModal({ vehicle, manutenzioni, setManutenzioni, onClose }) 
 // ═══════════════════════════════════════════════════════════════════
 // FLEET
 // ═══════════════════════════════════════════════════════════════════
-function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, onDeleteVehicle, onImportCSV, onResetFleet, onSetFleet, scadenze, setScadenze, fermiFlotta, setFermiFlotta, rentmeVehicles, manutenzioni, setManutenzioni, partners, targhe, setTarghe, contracts }) {
+function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, onDeleteVehicle, onImportCSV, onResetFleet, onSetFleet, scadenze, setScadenze, fermiFlotta, setFermiFlotta, rentmeVehicles, manutenzioni, setManutenzioni, partners, targhe, setTarghe, contracts, onApriContratto }) {
   const [targaEdit, setTargaEdit] = useState(null); // {code,val} — modifica targa inline (Flotta unificata)
   const saveTarga = (code, val) => { if (setTarghe) setTarghe({ ...(targhe || {}), [code]: (val || '').toUpperCase().replace(/\s+/g, '') }); setTargaEdit(null); };
   const [typeFilter, setTypeFilter] = useState('all');
@@ -16092,6 +16092,7 @@ function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, on
               // C1-bis: collegamento VERO via contratto registrato (EDO-anno-codice),
               // non il campo p.contractId (che non veniva mai riempito → falso "tutti senza").
               hasContract: bookingHasContract(p, contracts),
+              p,  // la prenotazione: serve per aprire "Completa contratto" da qui
             };
           });
         if (out.length === 0) return null;
@@ -16140,7 +16141,11 @@ function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, on
                               </span>
                               <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)', marginLeft: 'auto', whiteSpace: 'nowrap' }}>{o.cliente}</span>
                               {!o.hasContract && (
-                                <span title="Pratica non ancora registrata per questo mezzo" style={{ fontSize: 10, fontWeight: 700, color: 'var(--accent, #c0392b)', whiteSpace: 'nowrap', flexShrink: 0 }}>⚠ no contratto</span>
+                                onApriContratto
+                                  ? <button type="button" onClick={() => onApriContratto(o.p)}
+                                      title="Completa la pratica per questo mezzo (auto → CARGOS, altri → contratto interno) — direttamente da qui"
+                                      style={{ fontSize: 10, fontWeight: 700, color: '#fff', background: 'var(--accent, #c0392b)', border: 'none', borderRadius: 999, padding: '2px 9px', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}>⚠ Completa contratto</button>
+                                  : <span title="Pratica non ancora registrata per questo mezzo" style={{ fontSize: 10, fontWeight: 700, color: 'var(--accent, #c0392b)', whiteSpace: 'nowrap', flexShrink: 0 }}>⚠ no contratto</span>
                               )}
                               <span style={{ fontSize: 11, fontWeight: 600, color: r.color, minWidth: 92, textAlign: 'right' }}>{r.txt}</span>
                             </div>
@@ -18484,7 +18489,10 @@ function Step1Type({ data, update }) {
 function Step2Customer({ data, update, customers }) {
   const [mode, setMode] = useState(data.cliente ? 'new' : 'qr');
   const [form, setForm] = useState(() => {
-    if (data.cliente?.full) return data.cliente.full;
+    // fatturazione: null di default → se il cliente è pre-caricato da una prenotazione
+    // (prefill senza il campo), evita che billingActive diventi true e BillingForm crashi
+    // su undefined (pagina bianca tornando "Indietro" dal wizard). Root-fix.
+    if (data.cliente?.full) return { fatturazione: null, ...data.cliente.full };
     if (data.cliente) return {
       cognome: data.cliente.cognome || '', nome: data.cliente.nome || '',
       nascita: data.cliente.nascita || '', luogoNascita: data.cliente.luogoNascita || '',
@@ -18529,7 +18537,7 @@ function Step2Customer({ data, update, customers }) {
     });
   }, [update]);
 
-  const billingActive = form.fatturazione !== null;
+  const billingActive = form.fatturazione != null;  // != (lasco): false anche se undefined
 
   const MODES = [
     { id: 'qr',     label: 'QR cliente',     Icon: QrCode },
@@ -20239,7 +20247,7 @@ function NewCustomerModal({ customer, onClose, onSave }) {
   });
   const upd = useCallback((k, v) => setForm(f => ({ ...f, [k]: v })), []);
   const [scanOpen, setScanOpen] = useState(false);
-  const billingActive = form.fatturazione !== null;
+  const billingActive = form.fatturazione != null;  // != (lasco): false anche se undefined
   const valid = form.cognome && form.nome && form.docNum;
 
   return (
