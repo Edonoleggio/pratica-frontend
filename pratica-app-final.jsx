@@ -18292,6 +18292,18 @@ function Wizard({ onClose, prefillCustomer, operator, fleet, customers, partners
     return true;
   }, [step, data.tipoVeicolo, data.cliente, data.ritiroData, data.consegnaData, data.veicolo]);
 
+  // Stepper cliccabile: vai a uno step solo se i passi PRECEDENTI sono compilati (altrimenti
+  // salteresti su una schermata senza dati). Indietro è sempre permesso (i requisiti ci sono già).
+  const stepReqMet = (n) => {
+    if (n <= 1) return true;
+    if (n === 2) return data.tipoVeicolo != null;
+    if (n === 3) return data.cliente != null;
+    if (n === 4) return !!(data.ritiroData && data.consegnaData);
+    if (n === 5) return data.veicolo != null;
+    return false;
+  };
+  const canGoToStep = (n) => { for (let k = 2; k <= n; k++) { if (!stepReqMet(k)) return false; } return true; };
+
   // Conferma finale: chiama submitContract dall'App, mostra spinner, poi ResultScreen
   // Inietta contractId e contractDate nel payload — submitContract li legge da data.contractId/contractDate
   const handleConfirm = useCallback(async () => {
@@ -18336,18 +18348,29 @@ function Wizard({ onClose, prefillCustomer, operator, fleet, customers, partners
 
             {/* Step indicator */}
             <div className="flex-1 flex items-center justify-center gap-2" role="list" aria-label="Progressione wizard">
-              {!sent && STEPS.map((s, i) => (
+              {!sent && STEPS.map((s, i) => {
+                const n = i + 1;
+                const reachable = canGoToStep(n) && !submitting;
+                return (
                 <div key={s} className="flex items-center gap-2" role="listitem">
-                  <div
-                    className={`step-num ${i + 1 === step ? 'active' : i + 1 < step ? 'done' : 'todo'}`}
-                    aria-label={`Passo ${i + 1}: ${s}${i + 1 < step ? ' (completato)' : i + 1 === step ? ' (corrente)' : ''}`}
+                  <button
+                    type="button"
+                    disabled={!reachable}
+                    onClick={() => reachable && setStep(n)}
+                    title={reachable ? `Vai a "${s}"` : `Completa i passi precedenti per andare a "${s}"`}
+                    className="flex items-center gap-2"
+                    style={{ background: 'none', border: 'none', padding: 0, cursor: reachable ? 'pointer' : 'default' }}
+                    aria-label={`Passo ${n}: ${s}${n < step ? ' (completato)' : n === step ? ' (corrente)' : ''}`}
                   >
-                    {i + 1 < step ? <Check className="w-3 h-3" aria-hidden="true" /> : i + 1}
-                  </div>
-                  <span className={`text-xs ${i + 1 === step ? 'font-semibold' : ''}`} style={{ color: i + 1 <= step ? 'var(--ink)' : 'var(--muted)' }} aria-hidden="true">{s}</span>
+                    <div className={`step-num ${n === step ? 'active' : n < step ? 'done' : 'todo'}`} aria-hidden="true">
+                      {n < step ? <Check className="w-3 h-3" aria-hidden="true" /> : n}
+                    </div>
+                    <span className={`text-xs ${n === step ? 'font-semibold' : ''}`} style={{ color: n <= step ? 'var(--ink)' : 'var(--muted)' }} aria-hidden="true">{s}</span>
+                  </button>
                   {i < STEPS.length - 1 && <div className="w-6 h-px" style={{ background: 'var(--border-strong)' }} aria-hidden="true" />}
                 </div>
-              ))}
+                );
+              })}
             </div>
 
             <button type="button" onClick={onClose} className="btn-ghost p-2 rounded" aria-label="Chiudi wizard">
