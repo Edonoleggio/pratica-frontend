@@ -17313,33 +17313,28 @@ export default function App() {
                 il boundary si resetta automaticamente (la key cambia → nuovo mount). */}
             <ErrorBoundary key={page}>
             <div key={page} className="page-fade">
-              {page === 'calendario' && cuoreNuovo && <CuoreCalendarioPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} prenotazioni={prenotazioni} scadenze={scadenze} setPrenotazioni={setPrenotazioni} pushToast={pushToast} fermiFlotta={fermiFlotta} setPage={setPage} setCuorePrefill={setCuorePrefill} />}
-              {page === 'calendario' && !cuoreNuovo && <CalendarioFlottaPage prenotazioni={prenotazioni} fleet={fleet} rentmeVehicles={rentmeVehicles} setPage={setPage} setPrenotazioniPrefill={setPrenotazioniPrefill} fermiFlotta={fermiFlotta} darkMode={darkMode} />}
-              {page === 'oggi'       && cuoreNuovo && <CuoreOggiPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} listino={listino} pushToast={pushToast} operator={operator} setPage={setPage} fermiFlotta={fermiFlotta} customers={customers} manutenzioni={manutenzioni} />}
-              {page === 'oggi'       && !cuoreNuovo && <OggiPage prenotazioni={prenotazioni} fleet={fleet} scadenze={scadenze} customers={customers} setPage={setPage} rentmeVehicles={rentmeVehicles} setPrenotazioniPrefill={setPrenotazioniPrefill} pushToast={pushToast} setPrenotazioni={setPrenotazioni} operator={operator} fermiFlotta={fermiFlotta} rentmePush={rentmeSync.pushBooking} rentmeConnected={rentmeSync.status === 'ok'} manutenzioni={manutenzioni} partners={partners} targhe={targhe} />}
+              {page === 'calendario' && <CuoreCalendarioPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} prenotazioni={prenotazioni} scadenze={scadenze} setPrenotazioni={setPrenotazioni} pushToast={pushToast} fermiFlotta={fermiFlotta} setPage={setPage} setCuorePrefill={setCuorePrefill} />}
+              {page === 'oggi'       && <CuoreOggiPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} listino={listino} pushToast={pushToast} operator={operator} setPage={setPage} fermiFlotta={fermiFlotta} customers={customers} manutenzioni={manutenzioni} />}
               {page === 'dashboard'  && <Dashboard onNew={() => openWizard()} setPage={setPage} operator={operator} fleet={fleet} contracts={localContracts} partners={partners} onMarkReturned={markContractReturned} scadenze={scadenze} prenotazioni={prenotazioni} agency={agency} />}
               {page === 'cassa'      && <RegistroCassaPage cassa={cassa} setCassa={setCassa} prenotazioni={prenotazioni} customers={customers} operator={operator} pushToast={pushToast} />}
-              {page === 'banco'      && cuoreNuovo && <CuoreBancoPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} listino={listino} pushToast={pushToast} operator={operator} fermiFlotta={fermiFlotta} rentmeSyncStatus={rentmeSync.status} onRentmeSync={rentmeSync.sync} rentmeLastSync={rentmeSync.lastSync} />}
-              {page === 'banco'      && !cuoreNuovo && <BancoRapidoPage rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} fleet={fleet} setPage={setPage} setPrenotazioniPrefill={setPrenotazioniPrefill} listino={listino} pushToast={pushToast} rentmeSyncStatus={rentmeSync.status} onRentmeSync={rentmeSync.sync} rentmeLastSync={rentmeSync.lastSync} fermiFlotta={fermiFlotta} targhe={targhe} />}
+              {page === 'banco'      && <CuoreBancoPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} listino={listino} pushToast={pushToast} operator={operator} fermiFlotta={fermiFlotta} rentmeSyncStatus={rentmeSync.status} onRentmeSync={rentmeSync.sync} rentmeLastSync={rentmeSync.lastSync} />}
               {page === 'report'        && <ReportOperativoPage prenotazioni={prenotazioni} contracts={localContracts} customers={customers} fleet={fleet} operators={operators} />}
               {page === 'finance'       && (admin
                 ? <ReportPage prenotazioni={prenotazioni} contracts={localContracts} cassa={cassa} customers={customers} fleet={fleet} operators={operators} pushToast={pushToast} financeMode />
                 : <FinanceGate />)}
-              {page === 'preventivi' && cuoreNuovo && <CuorePreventiviPage listino={listino} fleet={fleet} rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} targhe={targhe} scadenze={scadenze} setPage={setPage} setCuorePrefill={setCuorePrefill} pushToast={pushToast} fermiFlotta={fermiFlotta} />}
-              {page === 'preventivi'    && !cuoreNuovo && <PreventiviPage setPage={setPage} setPrenotazioniPrefill={setPrenotazioniPrefill} listino={listino} fleet={fleet} rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} pushToast={pushToast} fermiFlotta={fermiFlotta} targhe={targhe} />}
-              {page === 'prenotazioni' && cuoreNuovo && <CuorePrenotazioniPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} setCassa={setCassa} pushToast={pushToast} operator={operator} setPage={setPage} setCuorePrefill={setCuorePrefill} fermiFlotta={fermiFlotta} customers={customers} partners={partners} agency={agency} cuorePrefill={cuorePrefill} clearCuorePrefill={() => setCuorePrefill(null)} contracts={localContracts} onApriContratto={openWizardForBooking} />}
-              {page === 'prenotazioni' && !cuoreNuovo && <PrenotazioniPage prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} setCassa={setCassa} fleet={fleet} rentmeVehicles={rentmeVehicles} customers={customers} partners={partners} operator={operator} onOpenWizard={openWizard} pushToast={pushToast} prefill={prenotazioniPrefill} onClearPrefill={() => setPrenotazioniPrefill(null)} fermiFlotta={fermiFlotta} rentmePush={rentmeSync.pushBooking} rentmeConnected={rentmeSync.status === 'ok'} agency={agency} targhe={targhe} />}
+              {page === 'preventivi' && <CuorePreventiviPage listino={listino} fleet={fleet} rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} targhe={targhe} scadenze={scadenze} setPage={setPage} setCuorePrefill={setCuorePrefill} pushToast={pushToast} fermiFlotta={fermiFlotta} />}
+              {page === 'prenotazioni' && <CuorePrenotazioniPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} setCassa={setCassa} pushToast={pushToast} operator={operator} setPage={setPage} setCuorePrefill={setCuorePrefill} fermiFlotta={fermiFlotta} customers={customers} partners={partners} agency={agency} cuorePrefill={cuorePrefill} clearCuorePrefill={() => setCuorePrefill(null)} contracts={localContracts} onApriContratto={openWizardForBooking} />}
               {page === 'contracts'  && <ContractsList contracts={localContracts} operators={operators} onRetry={retryContract} onMarkReturned={markContractReturned} onSendPec={sendContractPec} pecStatus={pecStatus} online={online} />}
-              {page === 'cuore' && cuoreNuovo && <CuoreAnteprimaPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} prenotazioni={prenotazioni} scadenze={scadenze} fermiFlotta={fermiFlotta} />}
-              {page === 'cuore_oggi' && cuoreNuovo && <CuoreOggiPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} listino={listino} pushToast={pushToast} operator={operator} setPage={setPage} fermiFlotta={fermiFlotta} customers={customers} manutenzioni={manutenzioni} />}
-              {page === 'cuore_prenotazioni' && cuoreNuovo && <CuorePrenotazioniPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} setCassa={setCassa} pushToast={pushToast} operator={operator} setPage={setPage} setCuorePrefill={setCuorePrefill} fermiFlotta={fermiFlotta} customers={customers} partners={partners} agency={agency} cuorePrefill={cuorePrefill} clearCuorePrefill={() => setCuorePrefill(null)} contracts={localContracts} onApriContratto={openWizardForBooking} />}
-              {page === 'cuore_cal' && cuoreNuovo && <CuoreCalendarioPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} prenotazioni={prenotazioni} scadenze={scadenze} setPrenotazioni={setPrenotazioni} pushToast={pushToast} fermiFlotta={fermiFlotta} setPage={setPage} setCuorePrefill={setCuorePrefill} />}
-              {page === 'cuore_preno' && cuoreNuovo && <CuorePrenotaPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} pushToast={pushToast} prefill={cuorePrefill} fermiFlotta={fermiFlotta} listino={listino} setCassa={setCassa} operator={operator} partners={partners} rentmePush={rentmeSync.pushBooking} rentmeConnected={rentmeSync.status === 'ok'} />}
-              {page === 'cuore_banco' && cuoreNuovo && <CuoreBancoPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} listino={listino} pushToast={pushToast} operator={operator} fermiFlotta={fermiFlotta} rentmeSyncStatus={rentmeSync.status} onRentmeSync={rentmeSync.sync} rentmeLastSync={rentmeSync.lastSync} />}
-              {page === 'cuore_consegna' && cuoreNuovo && <CuoreConsegnaPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} pushToast={pushToast} operator={operator} fermiFlotta={fermiFlotta} partners={partners} contracts={localContracts} onApriContratto={openWizardForBooking} />}
-              {page === 'cuore_rientro' && cuoreNuovo && <CuoreRientroPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} pushToast={pushToast} setCassa={setCassa} operator={operator} />}
-              {page === 'cuore_prev' && cuoreNuovo && <CuorePreventiviPage listino={listino} fleet={fleet} rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} targhe={targhe} scadenze={scadenze} setPage={setPage} setCuorePrefill={setCuorePrefill} pushToast={pushToast} fermiFlotta={fermiFlotta} />}
-              {page === 'cuore_flotta' && cuoreNuovo && <CuoreFlottaPage rentmeVehicles={rentmeVehicles} targhe={targhe} setTarghe={setTarghe} fleet={fleet} scadenze={scadenze} admin={admin} />}
+              {page === 'cuore' && <CuoreAnteprimaPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} prenotazioni={prenotazioni} scadenze={scadenze} fermiFlotta={fermiFlotta} />}
+              {page === 'cuore_oggi' && <CuoreOggiPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} listino={listino} pushToast={pushToast} operator={operator} setPage={setPage} fermiFlotta={fermiFlotta} customers={customers} manutenzioni={manutenzioni} />}
+              {page === 'cuore_prenotazioni' && <CuorePrenotazioniPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} setCassa={setCassa} pushToast={pushToast} operator={operator} setPage={setPage} setCuorePrefill={setCuorePrefill} fermiFlotta={fermiFlotta} customers={customers} partners={partners} agency={agency} cuorePrefill={cuorePrefill} clearCuorePrefill={() => setCuorePrefill(null)} contracts={localContracts} onApriContratto={openWizardForBooking} />}
+              {page === 'cuore_cal' && <CuoreCalendarioPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} prenotazioni={prenotazioni} scadenze={scadenze} setPrenotazioni={setPrenotazioni} pushToast={pushToast} fermiFlotta={fermiFlotta} setPage={setPage} setCuorePrefill={setCuorePrefill} />}
+              {page === 'cuore_preno' && <CuorePrenotaPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} pushToast={pushToast} prefill={cuorePrefill} fermiFlotta={fermiFlotta} listino={listino} setCassa={setCassa} operator={operator} partners={partners} rentmePush={rentmeSync.pushBooking} rentmeConnected={rentmeSync.status === 'ok'} />}
+              {page === 'cuore_banco' && <CuoreBancoPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} listino={listino} pushToast={pushToast} operator={operator} fermiFlotta={fermiFlotta} rentmeSyncStatus={rentmeSync.status} onRentmeSync={rentmeSync.sync} rentmeLastSync={rentmeSync.lastSync} />}
+              {page === 'cuore_consegna' && <CuoreConsegnaPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} pushToast={pushToast} operator={operator} fermiFlotta={fermiFlotta} partners={partners} contracts={localContracts} onApriContratto={openWizardForBooking} />}
+              {page === 'cuore_rientro' && <CuoreRientroPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} pushToast={pushToast} setCassa={setCassa} operator={operator} />}
+              {page === 'cuore_prev' && <CuorePreventiviPage listino={listino} fleet={fleet} rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} targhe={targhe} scadenze={scadenze} setPage={setPage} setCuorePrefill={setCuorePrefill} pushToast={pushToast} fermiFlotta={fermiFlotta} />}
+              {page === 'cuore_flotta' && <CuoreFlottaPage rentmeVehicles={rentmeVehicles} targhe={targhe} setTarghe={setTarghe} fleet={fleet} scadenze={scadenze} admin={admin} />}
               {page === 'fleet'      && <FleetPage fleet={unifiedFleet} prenotazioni={prenotazioni} admin={admin} onAddVehicle={() => setModal('newVehicle')} onEditVehicle={(v) => setModal({ type: 'editVehicle', vehicle: v })} onDeleteVehicle={requestDeleteVehicle} onImportCSV={() => setShowCsvImport(true)} onResetFleet={() => setModal({ type: 'confirm', title: 'Azzera flotta?', message: <><strong>Tutti i {fleet.length} veicoli</strong> verranno eliminati dalla flotta. Le prenotazioni esistenti restano invariate. Dopo puoi reimportare con un CSV aggiornato. <strong>Azione irreversibile.</strong></>, confirmLabel: 'Azzera flotta', variant: 'danger', onConfirm: () => { setFleet([]); pushToast({ tone: 'info', title: 'Flotta azzerata', message: 'Tutti i veicoli rimossi. Importa un nuovo CSV per ricaricare.' }); } })} onSetFleet={setFleet} scadenze={scadenze} setScadenze={setScadenze} fermiFlotta={fermiFlotta} setFermiFlotta={setFermiFlotta} rentmeVehicles={rentmeVehicles} manutenzioni={manutenzioni} setManutenzioni={setManutenzioni} partners={partners} targhe={targhe} setTarghe={setTarghe} contracts={localContracts} />}
               {page === 'customers'  && <CustomersPage customers={customers} setCustomers={setCustomers} prenotazioni={prenotazioni} admin={admin} onShowQR={(c) => setModal({ type: 'qr', customer: c })} onNewWithCustomer={openWizard} onAddCustomer={() => setModal('newCustomer')} onEditCustomer={(c) => setModal({ type: 'editCustomer', customer: c })} onDeleteCustomer={deleteCustomer} onShowStorico={(c) => setStorioClienteId(c.id)} />}
               {page === 'partners'   && <PartnersPage partners={partners} admin={admin} onAddPartner={() => setModal('newPartner')} onEditPartner={(p) => setModal({ type: 'editPartner', partner: p })} onDeletePartner={requestDeletePartner} />}
@@ -17437,7 +17432,7 @@ export default function App() {
           contracts={localContracts}
           fleet={fleet}
           setPage={setPage}
-          setPrenotazioniPrefill={setPrenotazioniPrefill}
+          setPrenotazioniPrefill={setCuorePrefill}
           onClose={() => setShowGlobalSearch(false)}
         />
       )}
@@ -21144,17 +21139,12 @@ function Sidebar({ page, setPage, onNew, online, agency, rentmeSyncStatus, rentm
       badge: rentmeRetryCount > 0 ? rentmeRetryCount : (offlineSyncCount > 0 ? '!' : null),
       badgeColor: rentmeRetryCount > 0 ? '#e67e22' : '#c0392b' },
   ];
-  // 🫀 Voce visibile solo con l'interruttore "nuovo cuore" acceso (anteprima).
-  if (cuoreNuovo) {
-    items.push({ id: 'cuore', label: 'Cuore (anteprima)', icon: Sparkles });
-    // FASE 6a: le voci classiche (Oggi, Calendario, Banco, Prenotazioni, Preventivi)
-    // ora rendono le pagine CUORE → niente doppioni. Restano solo i flussi nuovi
-    // senza gemello classico + l'editor targhe.
-    items.push({ id: 'cuore_preno', label: 'Prenota', icon: Sparkles });
-    items.push({ id: 'cuore_consegna', label: 'Consegna', icon: Sparkles });
-    items.push({ id: 'cuore_rientro', label: 'Rientro', icon: Sparkles });
-    items.push({ id: 'cuore_flotta', label: 'Targhe mezzi', icon: Sparkles });
-  }
+  // Le voci classiche (Oggi, Calendario, Banco, Prenotazioni, Preventivi) rendono le pagine
+  // CUORE — è l'unico motore (Fase 6b). Più i flussi senza gemello classico + l'editor targhe.
+  items.push({ id: 'cuore_preno', label: 'Prenota', icon: Sparkles });
+  items.push({ id: 'cuore_consegna', label: 'Consegna', icon: Sparkles });
+  items.push({ id: 'cuore_rientro', label: 'Rientro', icon: Sparkles });
+  items.push({ id: 'cuore_flotta', label: 'Targhe mezzi', icon: Sparkles });
 
   const sidebarDark = '#16181d';
   const sidebarBorder = 'rgba(255,255,255,0.07)';
@@ -24463,30 +24453,6 @@ function SettingsPage({ operator, operators, cargosConfig, admin, backendStatus,
               <div className="mono mt-1" style={{ color: 'var(--muted)' }}>chiavi: edo:v1:operators, edo:v1:cargos</div>
             </div>
           </div>
-        </section>
-      )}
-
-      {/* ── 🫀 Nuovo cuore (anteprima) ────────────────────────────── */}
-      {admin && (
-        <section className="card-paper p-6">
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-3">
-              <Sparkles className="w-5 h-5" style={{ color: cuoreNuovo ? 'var(--sea)' : 'var(--muted)' }} aria-hidden="true" />
-              <div>
-                <h3 className="serif text-lg font-medium">Nuovo cuore (anteprima)</h3>
-                <div className="text-xs" style={{ color: 'var(--muted)' }}>Motore unificato mezzi · disponibilità. Solo anteprima: non cambia nulla.</div>
-              </div>
-            </div>
-            <button type="button" role="switch" aria-checked={cuoreNuovo}
-              onClick={() => setCuoreNuovo(v => !v)}
-              style={{ position: 'relative', width: 46, height: 26, borderRadius: 13, border: 'none', cursor: 'pointer', background: cuoreNuovo ? 'var(--sea)' : '#aaa' }}>
-              <span style={{ position: 'absolute', top: 3, left: cuoreNuovo ? 23 : 3, width: 20, height: 20, borderRadius: '50%', background: '#fff', transition: 'left .15s' }} />
-            </button>
-          </div>
-          <p className="text-xs" style={{ color: 'var(--ink-2)' }}>
-            Acceso → compare la voce <strong>“Cuore (anteprima)”</strong> nel menu: mostra il Parco Mezzi e la
-            disponibilità calcolati dal motore nuovo sui tuoi dati reali. Per-dispositivo, default spento.
-          </p>
         </section>
       )}
 
