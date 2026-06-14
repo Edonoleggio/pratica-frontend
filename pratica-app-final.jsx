@@ -18835,6 +18835,33 @@ function fromDatetimeLocal(dtLocal) {
   return `${dd}/${mm}/${yyyy} ${timePart}`;
 }
 
+// Data + ORA col nostro calendario grande (niente più mini-calendario nativo del wizard).
+// value/onChange/min in formato italiano "GG/MM/AAAA HH:mm" (come data.ritiroData/consegnaData).
+function DateTimeField({ value, onChange, min, id, required }) {
+  const dl = toDatetimeLocal(value);            // "YYYY-MM-DDTHH:mm" o ''
+  const isoDate = dl ? dl.slice(0, 10) : '';    // YYYY-MM-DD
+  const time = dl ? dl.slice(11, 16) : '';      // HH:mm
+  const minDl = toDatetimeLocal(min);
+  const minDate = minDl ? minDl.slice(0, 10) : undefined;
+  const setDate = (newIsoDate) => {
+    if (!newIsoDate) { onChange(''); return; }
+    onChange(fromDatetimeLocal(`${newIsoDate}T${time || '12:00'}`));
+  };
+  const setTime = (newTime) => {
+    const d = isoDate || minDate || todayISO();
+    onChange(fromDatetimeLocal(`${d}T${newTime || '00:00'}`));
+  };
+  return (
+    <div style={{ display: 'flex', gap: 8, alignItems: 'stretch' }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <DateField id={id} value={isoDate} min={minDate} required={required} onChange={e => setDate(e.target.value)} />
+      </div>
+      <input type="time" className="input mono" style={{ width: 104, flexShrink: 0 }} value={time}
+        onChange={e => setTime(e.target.value)} required={required} aria-label="Ora" />
+    </div>
+  );
+}
+
 function Step4Period({ data, update, partners }) {
   return (
     <div className="max-w-4xl mx-auto">
@@ -18845,13 +18872,11 @@ function Step4Period({ data, update, partners }) {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label htmlFor="p4-ritiroData" className="label">Data e ora ritiro <span aria-hidden="true" style={{ color: 'var(--accent)' }}>*</span></label>
-              <input
+              <DateTimeField
                 id="p4-ritiroData"
-                type="datetime-local"
                 required
-                className="input mono"
-                value={toDatetimeLocal(data.ritiroData)}
-                onChange={e => { update('ritiroData', fromDatetimeLocal(e.target.value)); update('veicolo', null); }}
+                value={data.ritiroData}
+                onChange={v => { update('ritiroData', v); update('veicolo', null); }}
               />
             </div>
             <StructureSelect label="Luogo di ritiro" req partners={partners} structureId={data.ritiroStruttura} onStructureChange={v => update('ritiroStruttura', v)} freeText={data.ritiroIndirizzo} onFreeTextChange={v => update('ritiroIndirizzo', v)} />
@@ -18862,14 +18887,12 @@ function Step4Period({ data, update, partners }) {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label htmlFor="p4-consegnaData" className="label">Data e ora consegna <span aria-hidden="true" style={{ color: 'var(--accent)' }}>*</span></label>
-              <input
+              <DateTimeField
                 id="p4-consegnaData"
-                type="datetime-local"
                 required
-                className="input mono"
-                min={toDatetimeLocal(data.ritiroData)}
-                value={toDatetimeLocal(data.consegnaData)}
-                onChange={e => { update('consegnaData', fromDatetimeLocal(e.target.value)); update('veicolo', null); }}
+                min={data.ritiroData}
+                value={data.consegnaData}
+                onChange={v => { update('consegnaData', v); update('veicolo', null); }}
               />
             </div>
             <StructureSelect label="Luogo di consegna" req partners={partners} structureId={data.consegnaStruttura} onStructureChange={v => update('consegnaStruttura', v)} freeText={data.consegnaIndirizzo} onFreeTextChange={v => update('consegnaIndirizzo', v)} />
