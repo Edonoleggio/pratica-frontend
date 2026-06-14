@@ -2399,9 +2399,6 @@ const fonteLabel = f => {
   return PRENO_FONTI[k] || (k ? k.charAt(0).toUpperCase() + k.slice(1).replace(/_/g, ' ') : '—');
 };
 
-function prenoId() {
-  return 'pr' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-}
 
 // ── Stato pagamento prenotazione ─────────────────────────────────────
 // Restituisce { pagato, residuo, completato, colore }
@@ -2435,12 +2432,6 @@ const CLIENTE_PALETTE = [
   '#e91e63','#ff5722','#6d4c41','#00897b','#1565c0',
   '#4caf50','#f57c00','#7b1fa2','#283593','#c62828',
 ];
-function clienteColorHash(key) {
-  if (!key) return CLIENTE_PALETTE[0];
-  let h = 0;
-  for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) & 0x7fffffff;
-  return CLIENTE_PALETTE[h % CLIENTE_PALETTE.length];
-}
 
 function formatDate(d) {
   if (!d || typeof d !== 'string') return '—';
@@ -2457,11 +2448,6 @@ function daysDiff(dal, al) {
 }
 
 // Formatta un numero come importo euro — restituisce '—' se il valore è NaN/null/undefined
-function fmtEuro(n) {
-  const num = typeof n === 'string' ? parseFloat(n) : n;
-  if (num == null || isNaN(num)) return '—';
-  return num % 1 === 0 ? String(num) : num.toFixed(2);
-}
 
 // Restituisce la data locale di oggi come YYYY-MM-DD.
 // ⚠️  new Date().toISOString() usa UTC: tra mezzanotte e le 2 AM in Italia
@@ -2839,104 +2825,6 @@ function PrenoCard({ p, onEdit, onConvert, onDelete, onFoto, onContratto, onFirm
 // Ritorna: null se un singolo mezzo copre tutto il periodo,
 //          array di segmenti [{vehicleId, dal, al, vehicle}] altrimenti.
 // ═══════════════════════════════════════════════════════════════════
-function findBestVehicleCombination(tipo, dal, al, vehicles, prenotazioni, excludeBookingId = null, resolve = null) {
-  if (!dal || !al || !tipo) return null;
-
-  // Pool: mezzi del tipo richiesto — confronto su canonicalTipo (moto≡scooter,
-  // bicicletta→ebike/bici) così una prenotazione "moto" trova i veicoli "scooter".
-  const tipoCanon = canonicalTipo({ tipo });
-  const pool = (vehicles || []).filter(v => (!tipoCanon || canonicalTipo(v) === tipoCanon) && v.id);
-
-  // Prenotazioni attive (escluso quella in modifica)
-  const activePreno = (prenotazioni || []).filter(p =>
-    p.stato !== 'annullata' && p.stato !== 'cancellata' && p.stato !== 'completata' && p.id !== excludeBookingId
-  );
-
-  // Per ogni mezzo, calcola i giorni liberi (retrocompatibile: p.vehicleId può essere targa o fleet.id).
-  // `resolve` (opzionale) traduce vehicleId storici → codice RentMe: così l'aggancio prenotazioni
-  // concorda con calcAvailability (niente più "Impossibile coprire" mentre i liberi dicono il contrario).
-  const vCodeOf = (id) => (resolve ? (resolve(id) || null) : null);
-  const matchV = (bookingVid, vehicleId, vehicleTarga) => {
-    if (matchVehicle(bookingVid, vehicleId, vehicleTarga)) return true;
-    const vc = vCodeOf(vehicleId);
-    return !!(vc && bookingVid && resolve(bookingVid) === vc);
-  };
-  function freeSegments(vehicleId, vehicleTarga) {
-    const busy = activePreno
-      .filter(p =>
-        matchV(p.vehicleId, vehicleId, vehicleTarga) ||
-        (p.vehicleSchedule || []).some(s => matchV(s.vehicleId, vehicleId, vehicleTarga))
-      )
-      .flatMap(p => {
-        if (p.vehicleSchedule) {
-          const segs = p.vehicleSchedule.filter(s => matchV(s.vehicleId, vehicleId, vehicleTarga));
-          return segs.length ? segs.map(s => ({ dal: s.dal, al: s.al })) : [{ dal: p.dal, al: p.al }];
-        }
-        return [{ dal: p.dal, al: p.al }];
-      });
-    return { vehicleId, isFreeOn: (d) => !busy.some(b => b.dal <= d && b.al >= d) };
-  }
-
-  // Controlla se un mezzo è libero per TUTTO il periodo
-  const fullyCovering = pool.find(v => {
-    const seg = freeSegments(v.id, v.targa);
-    let d = new Date(dal + 'T12:00:00');
-    const end = new Date(al + 'T12:00:00');
-    while (d <= end) {
-      if (!seg.isFreeOn(d.toISOString().slice(0, 10))) return false;
-      d.setDate(d.getDate() + 1);
-    }
-    return true;
-  });
-  if (fullyCovering) return null; // nessuna combinazione necessaria
-
-  // Greedy: costruisce segmenti
-  const segments = [];
-  let cursor = new Date(dal + 'T12:00:00');
-  const endDate = new Date(al + 'T12:00:00');
-  const usedVehicles = new Set();
-
-  while (cursor <= endDate) {
-    const cursorISO = cursor.toISOString().slice(0, 10);
-    // Trova il mezzo libero da cursor che copre più giorni consecutivi
-    let best = null;
-    let bestDays = 0;
-    for (const v of pool) {
-      if (usedVehicles.has(v.id)) continue; // ogni mezzo usato una volta sola nel trip
-      const seg = freeSegments(v.id, v.targa);
-      if (!seg.isFreeOn(cursorISO)) continue;
-      // Conta giorni consecutivi liberi a partire da cursor
-      let count = 0;
-      let probe = new Date(cursor);
-      while (probe <= endDate && seg.isFreeOn(probe.toISOString().slice(0, 10))) {
-        count++;
-        probe.setDate(probe.getDate() + 1);
-      }
-      if (count > bestDays) { bestDays = count; best = v; }
-    }
-    if (!best || bestDays === 0) {
-      // Nessun mezzo trovato per questo giorno — impossibile coprire
-      return { impossible: true, segments, stuckAt: cursorISO };
-    }
-    // Fine segmento: fino a quando il mezzo è libero (o fine periodo)
-    const segStart = cursorISO;
-    let segEnd = cursor;
-    const seg = freeSegments(best.id, best.targa);
-    let probe = new Date(cursor);
-    while (probe <= endDate && seg.isFreeOn(probe.toISOString().slice(0, 10))) {
-      segEnd = new Date(probe);
-      probe.setDate(probe.getDate() + 1);
-    }
-    const segEndISO = segEnd.toISOString().slice(0, 10);
-    segments.push({ vehicleId: best.id, dal: segStart, al: segEndISO, vehicle: best });
-    usedVehicles.add(best.id);
-    // Avanza cursore al giorno dopo la fine del segmento
-    cursor = new Date(segEnd);
-    cursor.setDate(cursor.getDate() + 1);
-  }
-
-  return segments.length > 0 ? segments : null;
-}
 
 // ── PrenoForm — add/edit ─────────────────────────────────────────────
 // prefillValues: valori pre-compilati dal BancoRapido / walk-in / calendario
@@ -5708,81 +5596,6 @@ function cuoreMigraPreno(p, parco) {
 // la Mossa 2. L'insieme "occupati" è risolto al codice RentMe con lo stesso traduttore
 // di calcAvailability (buildVehicleKeyResolver) → il picker e il conteggio per categoria
 // concordano sempre (niente mezzo "libero" nel picker ma "occupato" nel conteggio).
-function buildCatPickerVehicles(cat, { rentmeVehicles, fleet, targhe, prenotazioni, fermiFlotta, dal, al }) {
-  const ctCanon = canonicalTipo({ tipo: cat?.tipo || '' });
-  const tipoMatch = v => { const tc = canonicalTipo(v); return !ctCanon || tc === ctCanon; };
-  const catMatch = v => {
-    if (!cat?.categoria) return true;
-    const isAuto = canonicalTipo(v) === 'auto';
-    let vcat = getVehicleCategoria(v) || '';
-    if (isAuto) vcat = normalizeAutoCategoria(vcat);
-    const target = isAuto ? normalizeAutoCategoria(cat.categoria) : cat.categoria;
-    return vcat === target;
-  };
-
-  // Mappa codice RentMe → fleet.id (via idRentme, robusta al drift delle targhe) per
-  // ricostruire l'id "legacy" compatibile col vehicleId salvato sulle prenotazioni.
-  const fleetIdByCode = {};
-  (fleet || []).forEach(fv => {
-    const code = codeFromRentme(fv.idRentme || fv.rentmeId);
-    if (code && fv.id) fleetIdByCode[code] = fv.id;
-  });
-
-  const useUnified = rentmeVehicles && rentmeVehicles.length > 0;
-  const source = useUnified ? buildUnifiedFleet(rentmeVehicles, targhe) : (fleet || []);
-
-  const pool = source
-    .filter(v => v.stato !== 'venduto' && v.stato !== 'fuori_uso' && tipoMatch(v) && catMatch(v))
-    .map(v => {
-      // Targa: dalla tabella targhe (fonte di verità, come FleetPage) quando unificato;
-      // solo nel fallback fleet locale usa resolveVehicleDisplay.
-      const targa = (useUnified ? (v.targa || '') : (resolveVehicleDisplay(v).targa || v.targa || '')).toUpperCase().trim();
-      // id legacy: fleet.id se il mezzo è in flotta locale, altrimenti targa, altrimenti id unificato (codice)
-      const code = String(v.rentmeCode || v.id || '');
-      const id = useUnified ? (fleetIdByCode[code] || targa || v.id) : v.id;
-      return {
-        ...v,
-        id,
-        targa,
-        label: (v.marca && v.modello) ? `${v.marca} ${v.modello}` : (v.modello || v.nome || v.targa || v.id),
-      };
-    });
-
-  // Dedup per id (fleet/rentme già unificati → l'id legacy distingue i mezzi)
-  const seen = new Set();
-  const merged = [];
-  for (const v of pool) {
-    const key = v.id || v.targa;
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
-    merged.push(v);
-  }
-
-  // Occupati nel periodo, risolti al CODICE RentMe (coerente con calcAvailability)
-  const resolve = buildVehicleKeyResolver(fleet, targhe);
-  const occ = new Set();
-  const addOcc = vid => {
-    if (!vid) return;
-    occ.add(String(vid).toUpperCase());
-    const c = resolve(vid);
-    if (c) occ.add(String(c).toUpperCase());
-  };
-  if (dal && al) {
-    (prenotazioni || [])
-      .filter(p => p.dal <= al && p.al >= dal && p.stato !== 'annullata' && p.stato !== 'cancellata' && p.stato !== 'completata')
-      .forEach(p => {
-        if (p.vehicleId) addOcc(p.vehicleId);
-        (p.vehicleSchedule || []).forEach(s => { if (s.vehicleId && s.dal <= al && s.al >= dal) addOcc(s.vehicleId); });
-      });
-    (fermiFlotta || []).forEach(f => { if (f.vehicleId && f.dal <= al && f.al >= dal) addOcc(f.vehicleId); });
-  }
-  const isFree = v => {
-    const cand = [v.id, v.targa, resolve(v.id), resolve(v.targa)]
-      .filter(Boolean).map(x => String(x).toUpperCase());
-    return !cand.some(c => occ.has(c));
-  };
-  return merged.map(v => ({ ...v, libero: isFree(v) }));
-}
 
 // ── Pool mezzi disponibili — FONTE UNICA (PrenoForm, Consegna, Sostituzione) ──
 // Lista piatta dei mezzi (senza filtro categoria, senza occupazione) costruita dalla
@@ -5791,21 +5604,6 @@ function buildCatPickerVehicles(cat, { rentmeVehicles, fleet, targhe, prenotazio
 // targa/codice) per non cambiare il vehicleId salvato. Solo mezzi CON targa (parità con la
 // lista storica: un mezzo senza targa — es. panda 350 nuovo — resta prenotabile per categoria
 // via calcAvailability, ma non compare nel picker del mezzo specifico, come oggi).
-function buildUnifiedAvailableVehicles(rentmeVehicles, fleet, targhe) {
-  const useUnified = rentmeVehicles && rentmeVehicles.length > 0;
-  if (!useUnified) return (fleet || []).filter(v => v.stato === 'available');
-  const fleetIdByCode = {};
-  (fleet || []).forEach(fv => {
-    const code = codeFromRentme(fv.idRentme || fv.rentmeId);
-    if (code && fv.id) fleetIdByCode[code] = fv.id;
-  });
-  return buildUnifiedFleet(rentmeVehicles, targhe)
-    .filter(v => v.targa && v.stato !== 'venduto' && v.stato !== 'fuori_uso')
-    .map(v => {
-      const code = String(v.rentmeCode || v.id || '');
-      return { ...v, id: fleetIdByCode[code] || v.targa || v.id };
-    });
-}
 
 // matchVehicleUnified: come matchVehicle (confronto su fleet.id + targa) ma in più
 // confronta passando dal CODICE RentMe (resolve) → riconosce una prenotazione qualunque
@@ -8785,197 +8583,6 @@ const CONTRATTO_I18N = {
   },
 };
 
-function ContrattoModal({ preno, fleet, onClose }) {
-  const [lang, setLang] = useState('it');
-  const t = CONTRATTO_I18N[lang];
-  const f = t.fields;
-  const s = t.sections;
-
-  // Risolve la targa con la stessa logica usata da makeVehicleLabel / booking card:
-  // 1. vehicleTarga già presente sul booking (booking nuovi)
-  // 2. resolveVehicleDisplay con vehicleId (lookup RENTME_TARGA_MAP — booking RentMe)
-  // 3. fleet lookup per vehicleId
-  // 4. split vehicleLabel ' · ' come ultimo fallback
-  const enrichedPreno = React.useMemo(() => {
-    if (preno.vehicleTarga) return preno;
-    const resolved = resolveVehicleDisplay({ id: preno.vehicleId, idRentme: preno.vehicleId });
-    const targa = resolved?.targa
-      || (fleet || []).find(x => x.id === preno.vehicleId)?.targa
-      || preno.vehicleLabel?.split(' · ')[1]?.trim()
-      || '';
-    return { ...preno, vehicleTarga: targa };
-  }, [preno, fleet]);
-
-  const cliente = [enrichedPreno.clienteCognome, enrichedPreno.clienteNome].filter(Boolean).join(' ') || '—';
-  const giorni = daysDiff(enrichedPreno.dal, enrichedPreno.al);
-  const saldo = (enrichedPreno.prezzo || 0) - (enrichedPreno.acconto || 0);
-  const typeLabel = { auto: 'Autovettura / Car / Coche', scooter: 'Scooter', quad: 'Quad / ATV', ebike: 'E-Bike' };
-
-  function printContratto() {
-    const preno = enrichedPreno; // usa versione arricchita (vehicleTarga garantita)
-    const w = window.open('', '_blank', 'width=820,height=960');
-    if (!w) { alert('Abilita i popup per stampare'); return; }
-    w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8">
-<title>${t.title}</title>
-<style>
-  *{box-sizing:border-box}
-  body{font-family:Georgia,serif;max-width:760px;margin:0 auto;padding:32px 44px;color:#1a1a1a;font-size:13px;line-height:1.5}
-  h1{font-size:21px;text-align:center;letter-spacing:3px;margin:0 0 4px;font-weight:700}
-  .sub{text-align:center;font-size:12px;color:#666;margin-bottom:28px;letter-spacing:1px}
-  .sec{font-size:10px;font-weight:700;letter-spacing:2.5px;text-transform:uppercase;border-bottom:1.5px solid #333;padding-bottom:5px;margin:22px 0 12px;color:#333}
-  .g2{display:grid;grid-template-columns:1fr 1fr;gap:6px 28px}
-  .g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px 20px}
-  .fld{margin-bottom:6px}
-  .lbl{font-size:10px;color:#888;text-transform:uppercase;letter-spacing:1px;margin-bottom:2px}
-  .val{font-size:13px;border-bottom:1px solid #ccc;padding-bottom:3px;min-height:19px;font-weight:600;color:#1a1a1a}
-  .box{background:#f7f6f2;border:1px solid #ddd;border-radius:4px;padding:12px 16px;margin:0}
-  .cond{font-size:11.5px;line-height:1.75;padding-left:0}
-  .cond li{margin-bottom:5px;list-style:none;padding-left:16px;position:relative}
-  .cond li::before{content:"→";position:absolute;left:0;color:#888}
-  .cond-num{font-size:11px;line-height:1.7;padding-left:18px;margin:6px 0 10px 0}
-  .cond-num li{margin-bottom:6px}
-  .check-row{display:flex;gap:24px;margin:4px 0}
-  .check-item{font-size:11px;font-weight:600}
-  .cond-place{font-size:11px;margin-top:10px;border-bottom:1px solid #aaa;padding-bottom:4px;color:#222}
-  .cond-approval{font-size:10.5px;margin:8px 0 4px 0;font-style:italic;color:#333}
-  .srow{display:grid;grid-template-columns:1fr 1fr;gap:48px;margin-top:44px}
-  .sbox{border-top:2px solid #1a1a1a;padding-top:10px}
-  .slbl{font-size:10px;color:#666;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px}
-  .sspace{height:72px}
-  .fimg{max-width:200px;height:72px;object-fit:contain}
-  .footer{font-size:10px;color:#bbb;margin-top:36px;text-align:center;border-top:1px solid #eee;padding-top:12px}
-  @page{size:A4;margin:1.5cm}
-  @media print{body{padding:0 12px}}
-</style></head><body>
-<h1>${t.title}</h1>
-<div class="sub">${t.subtitle}</div>
-${preno.codice ? `<div style="text-align:center;margin:-16px 0 20px;"><span style="font-family:monospace;font-size:13px;font-weight:700;letter-spacing:2px;padding:3px 14px;border:1.5px solid #999;border-radius:4px;color:#333;">${preno.codice}</span></div>` : ''}
-
-<div class="sec">${s.renter}</div>
-<div class="g2">
-  <div class="fld"><div class="lbl">${f.name}</div><div class="val">${cliente}</div></div>
-  <div class="fld"><div class="lbl">${f.doc}</div><div class="val">${preno.clienteDoc || '&nbsp;'}</div></div>
-  <div class="fld"><div class="lbl">${f.dob}</div><div class="val">${preno.clienteDdn ? formatDate(preno.clienteDdn) : '&nbsp;'}</div></div>
-  <div class="fld"><div class="lbl">Tel</div><div class="val">${preno.clienteTel || '&nbsp;'}</div></div>
-</div>
-
-<div class="sec">${s.vehicle}</div>
-<div class="g3">
-  <div class="fld"><div class="lbl">${f.plate}</div><div class="val">${preno.vehicleTarga || (preno.vehicleLabel?.split(' · ')[1]?.trim()) || '&nbsp;'}</div></div>
-  <div class="fld"><div class="lbl">${f.model}</div><div class="val">${(preno.vehicleLabel?.split(' · ')[0]?.trim()) || preno.vehicleLabel || '&nbsp;'}</div></div>
-  <div class="fld"><div class="lbl">${f.type}</div><div class="val">${typeLabel[preno.tipo] || preno.tipo || '&nbsp;'}</div></div>
-</div>
-
-<div class="sec">${s.period}</div>
-<div class="g3">
-  <div class="fld"><div class="lbl">${f.from}</div><div class="val">${preno.dal ? formatDate(preno.dal) : '&nbsp;'}</div></div>
-  <div class="fld"><div class="lbl">${f.to}</div><div class="val">${preno.al ? formatDate(preno.al) : '&nbsp;'}</div></div>
-  <div class="fld"><div class="lbl">${f.days}</div><div class="val">${giorni}</div></div>
-</div>
-
-<div class="sec">${s.price}</div>
-<div class="box">
-<div class="g2">
-  <div class="fld"><div class="lbl">${f.total}</div><div class="val">€ ${preno.prezzo ?? '&nbsp;'}</div></div>
-  <div class="fld"><div class="lbl">${f.deposit}</div><div class="val">€ ${preno.deposito ?? '&nbsp;'}</div></div>
-  <div class="fld"><div class="lbl">${f.advance}</div><div class="val">€ ${preno.acconto ?? 0}</div></div>
-  <div class="fld"><div class="lbl">${f.balance}</div><div class="val">€ ${saldo >= 0 ? saldo : '&nbsp;'}</div></div>
-</div>
-</div>
-
-<div class="sec">${s.conditions}</div>
-<ol class="cond-num">
-  <li>Il conduttore si obbliga ai sensi dell'art. 1587 C.C. punto 1 ad osservare la diligenza del buon padre di famiglia nell'uso del veicolo locato, a non cedere la guida a terze persone non autorizzate e in caso contrario sarà tenuto al pagamento di un indennizzo giornaliero pari al prezzo della locazione convenuta per ogni giorno di ritardo nella riconsegna del veicolo.</li>
-  <li>
-    <div>Il sottoscritto dichiara di aver ricevuto in locazione il veicolo:</div>
-    <div class="check-row">
-      <span class="check-item">☐ AUTOVEICOLO</span>
-      <span class="check-item">☐ SCOOTER</span>
-    </div>
-    <div>in buone condizioni di pulizia e privo di danni visibili, salvo quelli eventualmente indicati sul presente contratto.</div>
-  </li>
-  <li>Il conduttore è tenuto al pagamento di tutte le contravvenzioni al codice della strada nonché al risarcimento dei danni eventualmente causati a terzi durante il periodo di locazione.</li>
-  <li>In caso di incidente stradale il conduttore è obbligato a presentare denuncia alle autorità competenti e a consegnare copia della stessa al locatore entro 24 ore dall'evento.</li>
-  <li>Il veicolo locato NON è coperto da polizza KASCO. Qualsiasi danno riportato dal veicolo durante il periodo di locazione sarà addebitato integralmente al conduttore.</li>
-  <li>Il carburante è a totale carico del sottoscritto. Il veicolo dovrà essere riconsegnato con lo stesso livello di carburante con cui è stato consegnato.</li>
-  <li>Ai sensi dell'art. 1588 C.C. il conduttore è responsabile della perdita e del deterioramento del veicolo avvenuti nel corso della locazione, anche se derivanti da incendio, qualora non provi che siano stati determinati da causa a lui non imputabile.</li>
-  <li>Il conduttore è obbligato al pagamento del prezzo pattuito per l'intera durata della locazione, anche in caso di mancato utilizzo del veicolo per cause a lui imputabili.</li>
-  <li>Per qualsiasi controversia derivante dal presente contratto è competente in via esclusiva il Foro di Agrigento.</li>
-</ol>
-<div class="cond-place">Lampedusa, li _____________ &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Firma ___________________________</div>
-<div class="cond-approval">Ai sensi e per gli effetti degli artt. 1341 e 1342 C.C. il conduttore dichiara di approvare specificamente le clausole di cui ai punti 1, 2, 3, 4, 5, 6, 7, 8, 9 del presente contratto.</div>
-<div class="cond-place">Lampedusa, li _____________ &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Firma ___________________________</div>
-
-<div class="sec">${s.signature}</div>
-<div class="srow">
-  <div class="sbox">
-    <div class="slbl">${f.clientSig}</div>
-    ${preno.firma ? `<img class="fimg" src="${preno.firma}" alt="firma" />` : '<div class="sspace"></div>'}
-  </div>
-  <div class="sbox">
-    <div class="slbl">${f.agencySig}</div>
-    <div class="sspace"></div>
-  </div>
-</div>
-<div class="footer">Edonoleggio · Lampedusa (AG) · Italy${preno.codice ? ` · <span style="font-family:monospace;font-weight:700;">${preno.codice}</span>` : ''}</div>
-</body></html>`);
-    w.document.close();
-    w.focus();
-    setTimeout(() => w.print(), 500);
-  }
-
-  return (
-    <div className="modal-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 900, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-      <div className="modal-box" style={{ background: 'var(--bg)', borderRadius: 10, padding: '24px 28px', width: 480, maxWidth: '100%', maxHeight: '90vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,.25)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
-          <div>
-            <h2 style={{ margin: 0, fontSize: 17, fontFamily: 'var(--font-serif)', fontWeight: 600 }}>Stampa contratto</h2>
-            <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 3 }}>
-              {cliente} · {preno.vehicleLabel || '—'} · {formatDate(preno.dal)} → {formatDate(preno.al)}
-            </div>
-          </div>
-          <button type="button" onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', fontSize: 22, lineHeight: 1 }}>×</button>
-        </div>
-
-        {/* Selettore lingua */}
-        <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
-          {[{id:'it',flag:'🇮🇹',label:'Italiano'},{id:'en',flag:'🇬🇧',label:'English'},{id:'es',flag:'🇪🇸',label:'Español'}].map(l => (
-            <button key={l.id} type="button" onClick={() => setLang(l.id)}
-              style={{ flex: 1, padding: '8px 6px', borderRadius: 6, border: lang === l.id ? '2px solid var(--ink)' : '1px solid var(--border)', background: lang === l.id ? 'var(--surface-2)' : 'transparent', cursor: 'pointer', fontSize: 13, fontWeight: lang === l.id ? 700 : 400 }}>
-              {l.flag} {l.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Anteprima riepilogo */}
-        <div style={{ background: 'var(--surface-2)', borderRadius: 8, padding: '14px 16px', marginBottom: 20, fontSize: 13 }}>
-          <div style={{ fontWeight: 700, marginBottom: 8, fontSize: 12, textTransform: 'uppercase', letterSpacing: '1px', color: 'var(--muted)' }}>{t.title}</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 16px', fontSize: 12 }}>
-            <div><span style={{ color: 'var(--muted)' }}>{f.name}: </span><strong>{cliente}</strong></div>
-            <div><span style={{ color: 'var(--muted)' }}>{f.plate}: </span><strong>{enrichedPreno.vehicleTarga || '—'}</strong></div>
-            <div><span style={{ color: 'var(--muted)' }}>{f.from}: </span><strong>{formatDate(enrichedPreno.dal)}</strong></div>
-            <div><span style={{ color: 'var(--muted)' }}>{f.to}: </span><strong>{formatDate(enrichedPreno.al)}</strong></div>
-            <div><span style={{ color: 'var(--muted)' }}>{f.total}: </span><strong>€{enrichedPreno.prezzo ?? '—'}</strong></div>
-            <div><span style={{ color: 'var(--muted)' }}>{f.balance}: </span><strong>€{saldo >= 0 ? saldo : '—'}</strong></div>
-          </div>
-          {enrichedPreno.firma && <div style={{ marginTop: 10, fontSize: 11, color: '#2e6e3e', fontWeight: 600 }}>✍️ Firma digitale presente nel contratto</div>}
-          {!enrichedPreno.firma && <div style={{ marginTop: 10, fontSize: 11, color: 'var(--muted)' }}>Nessuna firma — usa "Firma" per raccoglierla prima di stampare</div>}
-        </div>
-
-        <div style={{ display: 'flex', gap: 10 }}>
-          <button type="button" onClick={printContratto}
-            style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '10px', background: 'var(--ink)', color: 'var(--paper)', border: 'none', borderRadius: 5, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
-            🖨️ {t.print}
-          </button>
-          <button type="button" onClick={onClose}
-            style={{ padding: '10px 20px', background: 'var(--surface-2)', color: 'var(--ink)', border: '1px solid var(--border)', borderRadius: 5, fontSize: 14, cursor: 'pointer' }}>
-            Chiudi
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 // ═══════════════════════════════════════════════════════════════════
 // FIRMA DIGITALE — canvas touch / mouse
@@ -10055,295 +9662,16 @@ function GlobalSearchModal({ prenotazioni, customers, contracts, fleet, onClose,
 // ═══════════════════════════════════════════════════════════════════
 // PWA — inietta manifest + meta tags nel <head> per installazione
 // ═══════════════════════════════════════════════════════════════════
-function usePWA() {
-  useEffect(() => {
-    const manifest = {
-      name: 'Pratica · Edonoleggio',
-      short_name: 'Pratica',
-      description: 'Gestionale noleggio veicoli Lampedusa',
-      start_url: '/',
-      display: 'standalone',
-      background_color: '#f5f0e8',
-      theme_color: '#2e6e3e',
-      lang: 'it',
-      icons: [{
-        src: "data:image/svg+xml," + encodeURIComponent(
-          "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'>" +
-          "<rect width='512' height='512' rx='80' fill='%232e6e3e'/>" +
-          "<text x='256' y='358' text-anchor='middle' font-family='Georgia,serif' " +
-          "font-size='300' font-weight='bold' fill='white'>P</text></svg>"
-        ),
-        sizes: 'any', type: 'image/svg+xml', purpose: 'any maskable',
-      }],
-    };
-    const blob = new Blob([JSON.stringify(manifest)], { type: 'application/manifest+json' });
-    const url  = URL.createObjectURL(blob);
-    let link = document.querySelector('link[rel="manifest"]');
-    if (!link) { link = document.createElement('link'); link.rel = 'manifest'; document.head.appendChild(link); }
-    link.href = url;
-
-    const setMeta = (name, content) => {
-      let el = document.querySelector(`meta[name="${name}"]`);
-      if (!el) { el = document.createElement('meta'); el.name = name; document.head.appendChild(el); }
-      el.content = content;
-    };
-    setMeta('theme-color', '#2e6e3e');
-    setMeta('apple-mobile-web-app-capable', 'yes');
-    setMeta('apple-mobile-web-app-status-bar-style', 'black-translucent');
-    setMeta('apple-mobile-web-app-title', 'Pratica');
-    setMeta('mobile-web-app-capable', 'yes');
-
-    return () => URL.revokeObjectURL(url);
-  }, []);
-}
 
 // ═══════════════════════════════════════════════════════════════════
 // SALDO MODAL — registra pagamento saldo da prenotazione in_corso
 // ═══════════════════════════════════════════════════════════════════
-function SaldoModal({ preno, operator, onSave, onClose }) {
-  const saldoDovuto = (preno.prezzo != null && preno.prezzo > 0)
-    ? Math.max(0, preno.prezzo - (preno.acconto || 0))
-    : null;
-
-  const [importo, setImporto]               = useState(saldoDovuto != null ? String(saldoDovuto) : '');
-  const [metodo, setMetodo]                 = useState(preno.metodoPagamento || 'contanti');
-  const [segnaCompletata, setSegnaCompletata] = useState(true);
-  const [err, setErr]                       = useState('');
-
-  const inp = {
-    width: '100%', padding: '8px 10px', border: '1px solid var(--border)',
-    borderRadius: 5, fontSize: 14, background: 'var(--bg)', color: 'var(--ink)',
-    fontFamily: 'var(--font-sans)', boxSizing: 'border-box',
-  };
-  const lbl = {
-    display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase',
-    letterSpacing: '.05em', color: 'var(--ink-2)', marginBottom: 4,
-  };
-
-  function handleSave() {
-    const imp = parseFloat(importo);
-    if (!importo || isNaN(imp) || imp <= 0) {
-      setErr('Inserisci un importo valido'); return;
-    }
-    const record = {
-      id: 'cassa_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
-      createdAt: new Date().toISOString(),
-      data: todayISO(),
-      clienteNome: [preno.clienteCognome, preno.clienteNome].filter(Boolean).join(' ') || '',
-      prenotazioneId: preno.id,
-      vehicleLabel: preno.vehicleLabel || '',
-      importo: imp,
-      metodo,
-      tipo: 'saldo',
-      nota: `Saldo pren. ${formatDate(preno.dal)}→${formatDate(preno.al)}`,
-      operatorId: operator?.id || '',
-      operatorName: operator?.nome || '',
-    };
-    onSave({ record, completata: segnaCompletata });
-  }
-
-  return (
-    <div className="modal-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 9100,
-      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-      <div className="modal-box" style={{ background: 'var(--bg)', borderRadius: 10, width: '100%', maxWidth: 420,
-        boxShadow: '0 20px 60px rgba(0,0,0,.25)', padding: '28px 28px 24px' }}>
-
-        {/* Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
-          <h2 style={{ margin: 0, fontSize: 18, fontFamily: 'var(--font-serif)', fontWeight: 600 }}>
-            💰 Registra saldo
-          </h2>
-          <button type="button" onClick={onClose}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', fontSize: 20, padding: '0 4px' }}>✕</button>
-        </div>
-
-        {/* Riepilogo prenotazione */}
-        <div style={{ background: 'var(--surface-2)', borderRadius: 6, padding: '10px 12px', marginBottom: 20, fontSize: 12 }}>
-          <div style={{ fontWeight: 600, color: 'var(--ink)', marginBottom: 3 }}>
-            {[preno.clienteCognome, preno.clienteNome].filter(Boolean).join(' ') || 'Cliente'}
-            <span style={{ fontWeight: 400, color: 'var(--muted)', marginLeft: 8 }}>
-              {preno.vehicleLabel || '—'}
-            </span>
-          </div>
-          <div style={{ color: 'var(--muted)' }}>
-            {formatDate(preno.dal)} → {formatDate(preno.al)}
-          </div>
-          {preno.prezzo != null && (
-            <div style={{ marginTop: 5, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-              <span>Totale <strong style={{ color: 'var(--ink)' }}>€{preno.prezzo}</strong></span>
-              {preno.acconto > 0 && (
-                <>
-                  <span style={{ color: 'var(--muted)' }}>Acconto €{preno.acconto}</span>
-                  <span style={{ color: '#1f5d83', fontWeight: 600 }}>
-                    Saldo dovuto €{saldoDovuto}
-                  </span>
-                </>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Importo */}
-        <div style={{ marginBottom: 14 }}>
-          <label style={lbl}>Importo saldo *</label>
-          <input type="number" min="0" step="0.01" value={importo}
-            onChange={e => { setImporto(e.target.value); setErr(''); }}
-            style={{ ...inp, borderColor: err ? '#c0392b' : 'var(--border)', fontSize: 18, fontWeight: 600 }}
-            placeholder="0.00" autoFocus />
-          {err && <div style={{ color: '#c85050', fontSize: 11, marginTop: 4 }}>{err}</div>}
-        </div>
-
-        {/* Metodo */}
-        <div style={{ marginBottom: 18 }}>
-          <label style={lbl}>Metodo pagamento</label>
-          <select value={metodo} onChange={e => setMetodo(e.target.value)} style={inp}>
-            <option value="contanti">💵 Contanti</option>
-            <option value="carta">💳 Carta</option>
-            <option value="bonifico">🏦 Bonifico</option>
-            <option value="paypal">🅿 PayPal</option>
-            <option value="altro">• Altro</option>
-          </select>
-        </div>
-
-        {/* Checkbox completata */}
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13,
-          color: 'var(--ink-2)', marginBottom: 22, cursor: 'pointer' }}>
-          <input type="checkbox" checked={segnaCompletata}
-            onChange={e => setSegnaCompletata(e.target.checked)}
-            style={{ width: 16, height: 16, accentColor: 'var(--accent)', cursor: 'pointer' }} />
-          Segna prenotazione come <strong style={{ color: 'var(--ink)' }}>completata</strong>
-        </label>
-
-        {/* Azioni */}
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-          <button type="button" onClick={onClose}
-            style={{ padding: '9px 18px', borderRadius: 5, border: '1px solid var(--border)',
-              background: 'transparent', cursor: 'pointer', fontSize: 13, color: 'var(--ink-2)' }}>
-            Annulla
-          </button>
-          <button type="button" onClick={handleSave}
-            style={{ padding: '9px 20px', borderRadius: 5, border: 'none',
-              background: '#1f5d83', color: 'white', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
-            Registra saldo
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 
 
 // ═══════════════════════════════════════════════════════════════════
 // DEPOSITO MODAL — raccolta e rimborso cauzione
 // ═══════════════════════════════════════════════════════════════════
-function DepositoModal({ preno, operator, mode, onSave, onClose }) {
-  // mode: 'prendi' | 'rimborsa'
-  const isRimborso = mode === 'rimborsa';
-  const [importo, setImporto] = useState(
-    isRimborso && preno.depositoImporto ? String(preno.depositoImporto) : ''
-  );
-  const [metodo, setMetodo]   = useState(preno.metodoPagamento || 'contanti');
-  const [err, setErr]         = useState('');
-
-  const inp = {
-    width: '100%', padding: '8px 10px', border: '1px solid var(--border)',
-    borderRadius: 5, fontSize: 14, background: 'var(--bg)', color: 'var(--ink)',
-    fontFamily: 'var(--font-sans)', boxSizing: 'border-box',
-  };
-  const lbl = {
-    display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase',
-    letterSpacing: '.05em', color: 'var(--ink-2)', marginBottom: 4,
-  };
-
-  function handleSave() {
-    const imp = parseFloat(importo);
-    if (!importo || isNaN(imp) || imp <= 0) { setErr('Inserisci un importo valido'); return; }
-    const record = {
-      id: 'cassa_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
-      createdAt: new Date().toISOString(),
-      data: todayISO(),
-      clienteNome: [preno.clienteCognome, preno.clienteNome].filter(Boolean).join(' ') || '',
-      prenotazioneId: preno.id,
-      vehicleLabel: preno.vehicleLabel || '',
-      importo: imp,
-      metodo,
-      tipo: isRimborso ? 'rimborso' : 'deposito',
-      nota: isRimborso
-        ? `Rimborso caparra pren. ${formatDate(preno.dal)}→${formatDate(preno.al)}`
-        : `Caparra pren. ${formatDate(preno.dal)}→${formatDate(preno.al)}`,
-      operatorId: operator?.id || '',
-      operatorName: operator?.nome || '',
-    };
-    onSave({ record, importo: imp });
-  }
-
-  const accentColor = isRimborso ? '#7d3c98' : '#b87333';
-
-  return (
-    <div className="modal-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 9100,
-      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-      <div className="modal-box" style={{ background: 'var(--bg)', borderRadius: 10, width: '100%', maxWidth: 400,
-        boxShadow: '0 20px 60px rgba(0,0,0,.25)', padding: '28px 28px 24px' }}>
-
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
-          <h2 style={{ margin: 0, fontSize: 18, fontFamily: 'var(--font-serif)', fontWeight: 600, color: accentColor }}>
-            {isRimborso ? '↩ Rimborsa caparra' : '📦 Caparra'}
-          </h2>
-          <button type="button" onClick={onClose}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', fontSize: 20, padding: '0 4px' }}>✕</button>
-        </div>
-
-        {/* Riepilogo */}
-        <div style={{ background: 'var(--surface-2)', borderRadius: 6, padding: '10px 12px', marginBottom: 20, fontSize: 12 }}>
-          <div style={{ fontWeight: 600, marginBottom: 2 }}>
-            {[preno.clienteCognome, preno.clienteNome].filter(Boolean).join(' ') || 'Cliente'}
-            <span style={{ fontWeight: 400, color: 'var(--muted)', marginLeft: 8 }}>{preno.vehicleLabel || '—'}</span>
-          </div>
-          <div style={{ color: 'var(--muted)' }}>{formatDate(preno.dal)} → {formatDate(preno.al)}</div>
-          {isRimborso && preno.depositoImporto && (
-            <div style={{ marginTop: 4, color: accentColor, fontWeight: 600 }}>
-              Caparra versata: €{preno.depositoImporto}
-            </div>
-          )}
-        </div>
-
-        <div style={{ marginBottom: 14 }}>
-          <label style={lbl}>{isRimborso ? 'Importo da rimborsare' : 'Importo caparra'} *</label>
-          <input type="number" min="0" step="0.01" value={importo}
-            onChange={e => { setImporto(e.target.value); setErr(''); }}
-            style={{ ...inp, fontSize: 18, fontWeight: 600, borderColor: err ? '#c0392b' : 'var(--border)' }}
-            placeholder="0.00" autoFocus />
-          {err && <div style={{ color: '#c85050', fontSize: 11, marginTop: 4 }}>{err}</div>}
-        </div>
-
-        <div style={{ marginBottom: 22 }}>
-          <label style={lbl}>Metodo pagamento</label>
-          <select value={metodo} onChange={e => setMetodo(e.target.value)} style={inp}>
-            <option value="contanti">💵 Contanti</option>
-            <option value="carta">💳 Carta</option>
-            <option value="bonifico">🏦 Bonifico</option>
-            <option value="paypal">🅿 PayPal</option>
-            <option value="altro">• Altro</option>
-          </select>
-        </div>
-
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-          <button type="button" onClick={onClose}
-            style={{ padding: '9px 18px', borderRadius: 5, border: '1px solid var(--border)',
-              background: 'transparent', cursor: 'pointer', fontSize: 13, color: 'var(--ink-2)' }}>
-            Annulla
-          </button>
-          <button type="button" onClick={handleSave}
-            style={{ padding: '9px 20px', borderRadius: 5, border: 'none',
-              background: accentColor, color: 'white', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
-            {isRimborso ? 'Rimborsa' : 'Registra caparra'}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 
 
@@ -10520,7 +9848,6 @@ export default function App() {
   const [rentmeConfig, setRentmeConfig] = usePersistentState('edo:v1:rentme_config', { enabled: true, autoIntervalMins: 5 }, { skipRemote: true });
   // 🫀 Interruttore "nuovo cuore" (Fase 4): per-dispositivo (skipRemote), default SPENTO.
   // Acceso → compare la voce "Cuore (anteprima)". Non cambia NIENTE altro finché spento.
-  const [cuoreNuovo, setCuoreNuovo] = usePersistentState('edo:v1:cuore_nuovo', false, { skipRemote: true });
   // Ponte Preventivo(cuore) → Prenota(cuore): categoria+date precompilate.
   const [cuorePrefill, setCuorePrefill] = useState(null);
   // Registro cassa: tutti i movimenti economici dell'agenzia.
@@ -11544,7 +10871,7 @@ export default function App() {
     <>
       <Styles />
       <div className={`pratica-app flex${darkMode ? ' dark-mode' : ''}`}>
-        {!kioskMode && <Sidebar page={page} setPage={setPage} onNew={() => openWizard()} online={online && cargosConfig.enabled} agency={agency} rentmeSyncStatus={rentmeSync.status} rentmeAlertCount={rentmeSync.status === 'ok' ? cuoreAlertCount : 0} rentmeRetryCount={(() => { try { return JSON.parse(localStorage.getItem('rentme_pending_queue') || '[]').length; } catch { return 0; } })()} offlineSyncCount={Object.values(allSyncStatus).filter(s => s?.remoteStatus === 'offline' || s?.remoteStatus === 'error').length} cuoreNuovo={cuoreNuovo} />}
+        {!kioskMode && <Sidebar page={page} setPage={setPage} onNew={() => openWizard()} online={online && cargosConfig.enabled} agency={agency} rentmeSyncStatus={rentmeSync.status} rentmeAlertCount={rentmeSync.status === 'ok' ? cuoreAlertCount : 0} rentmeRetryCount={(() => { try { return JSON.parse(localStorage.getItem('rentme_pending_queue') || '[]').length; } catch { return 0; } })()} offlineSyncCount={Object.values(allSyncStatus).filter(s => s?.remoteStatus === 'offline' || s?.remoteStatus === 'error').length} />}
         <main className="flex-1 min-h-screen" id="main-content">
           <Topbar
             page={page}
@@ -11578,14 +10905,9 @@ export default function App() {
               {page === 'preventivi' && <CuorePreventiviPage listino={listino} fleet={fleet} rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} targhe={targhe} scadenze={scadenze} setPage={setPage} setCuorePrefill={setCuorePrefill} pushToast={pushToast} fermiFlotta={fermiFlotta} />}
               {page === 'prenotazioni' && <CuorePrenotazioniPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} setCassa={setCassa} pushToast={pushToast} operator={operator} setPage={setPage} setCuorePrefill={setCuorePrefill} fermiFlotta={fermiFlotta} customers={customers} partners={partners} agency={agency} cuorePrefill={cuorePrefill} clearCuorePrefill={() => setCuorePrefill(null)} contracts={localContracts} onApriContratto={openWizardForBooking} />}
               {page === 'contracts'  && <ContractsList contracts={localContracts} operators={operators} onRetry={retryContract} onMarkReturned={markContractReturned} onSendPec={sendContractPec} pecStatus={pecStatus} online={online} />}
-              {page === 'cuore_oggi' && <CuoreOggiPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} listino={listino} pushToast={pushToast} operator={operator} setPage={setPage} fermiFlotta={fermiFlotta} customers={customers} manutenzioni={manutenzioni} />}
-              {page === 'cuore_prenotazioni' && <CuorePrenotazioniPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} setCassa={setCassa} pushToast={pushToast} operator={operator} setPage={setPage} setCuorePrefill={setCuorePrefill} fermiFlotta={fermiFlotta} customers={customers} partners={partners} agency={agency} cuorePrefill={cuorePrefill} clearCuorePrefill={() => setCuorePrefill(null)} contracts={localContracts} onApriContratto={openWizardForBooking} />}
-              {page === 'cuore_cal' && <CuoreCalendarioPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} prenotazioni={prenotazioni} scadenze={scadenze} setPrenotazioni={setPrenotazioni} pushToast={pushToast} fermiFlotta={fermiFlotta} setPage={setPage} setCuorePrefill={setCuorePrefill} />}
               {page === 'cuore_preno' && <CuorePrenotaPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} pushToast={pushToast} prefill={cuorePrefill} fermiFlotta={fermiFlotta} listino={listino} setCassa={setCassa} operator={operator} partners={partners} rentmePush={rentmeSync.pushBooking} rentmeConnected={rentmeSync.status === 'ok'} />}
-              {page === 'cuore_banco' && <CuoreBancoPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} listino={listino} pushToast={pushToast} operator={operator} fermiFlotta={fermiFlotta} rentmeSyncStatus={rentmeSync.status} onRentmeSync={rentmeSync.sync} rentmeLastSync={rentmeSync.lastSync} />}
               {page === 'cuore_consegna' && <CuoreConsegnaPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} pushToast={pushToast} operator={operator} fermiFlotta={fermiFlotta} partners={partners} contracts={localContracts} onApriContratto={openWizardForBooking} />}
               {page === 'cuore_rientro' && <CuoreRientroPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} pushToast={pushToast} setCassa={setCassa} operator={operator} />}
-              {page === 'cuore_prev' && <CuorePreventiviPage listino={listino} fleet={fleet} rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} targhe={targhe} scadenze={scadenze} setPage={setPage} setCuorePrefill={setCuorePrefill} pushToast={pushToast} fermiFlotta={fermiFlotta} />}
               {page === 'cuore_flotta' && <CuoreFlottaPage rentmeVehicles={rentmeVehicles} targhe={targhe} setTarghe={setTarghe} fleet={fleet} scadenze={scadenze} admin={admin} />}
               {page === 'fleet'      && <FleetPage fleet={unifiedFleet} prenotazioni={prenotazioni} admin={admin} onAddVehicle={() => setModal('newVehicle')} onEditVehicle={(v) => setModal({ type: 'editVehicle', vehicle: v })} onDeleteVehicle={requestDeleteVehicle} onImportCSV={() => setShowCsvImport(true)} onResetFleet={() => setModal({ type: 'confirm', title: 'Azzera flotta?', message: <><strong>Tutti i {fleet.length} veicoli</strong> verranno eliminati dalla flotta. Le prenotazioni esistenti restano invariate. Dopo puoi reimportare con un CSV aggiornato. <strong>Azione irreversibile.</strong></>, confirmLabel: 'Azzera flotta', variant: 'danger', onConfirm: () => { setFleet([]); pushToast({ tone: 'info', title: 'Flotta azzerata', message: 'Tutti i veicoli rimossi. Importa un nuovo CSV per ricaricare.' }); } })} onSetFleet={setFleet} scadenze={scadenze} setScadenze={setScadenze} fermiFlotta={fermiFlotta} setFermiFlotta={setFermiFlotta} rentmeVehicles={rentmeVehicles} manutenzioni={manutenzioni} setManutenzioni={setManutenzioni} partners={partners} targhe={targhe} setTarghe={setTarghe} contracts={localContracts} />}
               {page === 'customers'  && <CustomersPage customers={customers} setCustomers={setCustomers} prenotazioni={prenotazioni} admin={admin} onShowQR={(c) => setModal({ type: 'qr', customer: c })} onNewWithCustomer={openWizard} onAddCustomer={() => setModal('newCustomer')} onEditCustomer={(c) => setModal({ type: 'editCustomer', customer: c })} onDeleteCustomer={deleteCustomer} onShowStorico={(c) => setStorioClienteId(c.id)} />}
@@ -11599,7 +10921,7 @@ export default function App() {
                   <StagioniEditor stagioni={stagioni} onSave={(s)=>{setStagioni(s); pushToast && pushToast({tone:'success',title:'Stagioni aggiornate',message:'Configurazione stagionale salvata'});}} />
                 </div>
               </div>}
-              {page === 'settings'   && <SettingsPage operator={operator} operators={operators} admin={admin} cargosConfig={cargosConfig} backendStatus={backendStatus} lastCheck={lastCheck} apiBaseUrl={apiBaseUrl} syncStatus={allSyncStatus} agency={agency} customers={customers} contracts={localContracts} onSyncAll={syncAll} onExportBackup={exportBackup} onImportBackup={importBackup} pushToast={pushToast} onAddOperator={() => setModal('newOperator')} onEditOperator={(o) => setModal({ type: 'editOperator', operator: o })} onDeleteOperator={requestDeleteOperator} onEditCargos={() => setModal('cargosConfig')} onEditApiBase={() => setModal('apiBase')} onEditAgency={() => setModal('agency')} onResetCustomers={requestResetCustomers} onResetContracts={requestResetContracts} onResetEverything={requestResetEverything} onImportFleetFromRentMe={requestImportFleetFromRentMe} rentmeConfig={rentmeConfig} setRentmeConfig={setRentmeConfig} rentmeSync={rentmeSync} rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} appUsers={appUsers} setAppUsers={setAppUsers} onLogout={handleLogout} driveClientId={driveClientId} setDriveClientId={setDriveClientId} driveLastBackup={driveLastBackup} onDriveBackup={driveBackup} driveAutoEnabled={driveAutoEnabled} setDriveAutoEnabled={setDriveAutoEnabled} renderLastBackup={renderLastBackup} onRenderBackup={backupToRender} backupToken={backupToken} setBackupToken={setBackupToken} pecStatus={pecStatus} onPecVerify={verifyPecConnection} cuoreNuovo={cuoreNuovo} setCuoreNuovo={setCuoreNuovo} partners={partners} setPartners={setPartners} onImportStorico={({ prenotazioni: newP, clienti: newC }) => {
+              {page === 'settings'   && <SettingsPage operator={operator} operators={operators} admin={admin} cargosConfig={cargosConfig} backendStatus={backendStatus} lastCheck={lastCheck} apiBaseUrl={apiBaseUrl} syncStatus={allSyncStatus} agency={agency} customers={customers} contracts={localContracts} onSyncAll={syncAll} onExportBackup={exportBackup} onImportBackup={importBackup} pushToast={pushToast} onAddOperator={() => setModal('newOperator')} onEditOperator={(o) => setModal({ type: 'editOperator', operator: o })} onDeleteOperator={requestDeleteOperator} onEditCargos={() => setModal('cargosConfig')} onEditApiBase={() => setModal('apiBase')} onEditAgency={() => setModal('agency')} onResetCustomers={requestResetCustomers} onResetContracts={requestResetContracts} onResetEverything={requestResetEverything} onImportFleetFromRentMe={requestImportFleetFromRentMe} rentmeConfig={rentmeConfig} setRentmeConfig={setRentmeConfig} rentmeSync={rentmeSync} rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} appUsers={appUsers} setAppUsers={setAppUsers} onLogout={handleLogout} driveClientId={driveClientId} setDriveClientId={setDriveClientId} driveLastBackup={driveLastBackup} onDriveBackup={driveBackup} driveAutoEnabled={driveAutoEnabled} setDriveAutoEnabled={setDriveAutoEnabled} renderLastBackup={renderLastBackup} onRenderBackup={backupToRender} backupToken={backupToken} setBackupToken={setBackupToken} pecStatus={pecStatus} onPecVerify={verifyPecConnection} partners={partners} setPartners={setPartners} onImportStorico={({ prenotazioni: newP, clienti: newC }) => {
                 setPrenotazioni(prev => {
                   const existKeys = new Set(prev.map(p => p.id));
                   return [...prev, ...newP.filter(p => !existKeys.has(p.id))];
@@ -12360,7 +11682,7 @@ function CuoreOggiPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazioni, 
       <CruscottoLiveOggi voliFeed={voliFeed} naviFeed={naviFeed} meteoFeed={meteoFeed}
         liveView={liveView} setLiveView={setLiveView}
         actions={<>
-          <button type="button" onClick={() => setPage && setPage('cuore_banco')}
+          <button type="button" onClick={() => setPage && setPage('banco')}
             style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, height: 38, padding: '0 16px', borderRadius: 8,
               border: 'none', background: 'var(--edo-sun)', color: 'var(--ink)', fontWeight: 700, fontSize: 13, cursor: 'pointer',
               boxShadow: 'var(--shadow-inset)', whiteSpace: 'nowrap' }}>
@@ -13336,7 +12658,7 @@ function CuoreCalendarioPage({ rentmeVehicles, targhe, fleet, prenotazioni, scad
               <div style={{ display: 'flex', gap: 8, marginTop: String(p.stato) === 'attesa' ? 8 : 14 }}>
                 {setPage && setCuorePrefill && (
                   <button type="button"
-                    onClick={() => { setCuorePrefill({ focusId: p.id }); setDettaglio(null); setPage('cuore_prenotazioni'); }}
+                    onClick={() => { setCuorePrefill({ focusId: p.id }); setDettaglio(null); setPage('prenotazioni'); }}
                     style={{ flex: 1, padding: '8px 14px', border: 'none', borderRadius: 6, background: 'var(--sea)', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: 13 }}>
                     ✏️ Modifica prenotazione
                   </button>
@@ -15188,7 +14510,7 @@ function CuorePreventiviPage({ listino, fleet, rentmeVehicles, prenotazioni, tar
 // ═══════════════════════════════════════════════════════════════════
 // SIDEBAR
 // ═══════════════════════════════════════════════════════════════════
-function Sidebar({ page, setPage, onNew, online, agency, rentmeSyncStatus, rentmeAlertCount, rentmeRetryCount, offlineSyncCount, cuoreNuovo }) {
+function Sidebar({ page, setPage, onNew, online, agency, rentmeSyncStatus, rentmeAlertCount, rentmeRetryCount, offlineSyncCount }) {
   const items = [
     { id: 'dashboard',    label: 'Dashboard',    icon: LayoutDashboard },
     { id: 'oggi',         label: 'Oggi',         icon: Compass },
@@ -17935,7 +17257,7 @@ async function fetchMyMapsPlaces() {
   return (data.places || []).map(pl => ({ nome: pl.nome, tipo: '', indirizzo: '', descrizione: pl.descrizione || '', lat: pl.lat, lng: pl.lng }));
 }
 
-function SettingsPage({ operator, operators, cargosConfig, admin, backendStatus, lastCheck, apiBaseUrl, syncStatus, agency, onSyncAll, onExportBackup, onImportBackup, pushToast, onAddOperator, onEditOperator, onDeleteOperator, onEditCargos, onEditApiBase, onEditAgency, onResetCustomers, onResetContracts, onResetEverything, onImportFleetFromRentMe, customers, contracts, rentmeConfig, setRentmeConfig, rentmeSync, rentmeVehicles, prenotazioni, onImportStorico, appUsers, setAppUsers, onLogout, driveClientId, setDriveClientId, driveLastBackup, onDriveBackup, driveAutoEnabled, setDriveAutoEnabled, renderLastBackup, onRenderBackup, backupToken, setBackupToken, pecStatus, onPecVerify, cuoreNuovo, setCuoreNuovo, partners, setPartners }) {
+function SettingsPage({ operator, operators, cargosConfig, admin, backendStatus, lastCheck, apiBaseUrl, syncStatus, agency, onSyncAll, onExportBackup, onImportBackup, pushToast, onAddOperator, onEditOperator, onDeleteOperator, onEditCargos, onEditApiBase, onEditAgency, onResetCustomers, onResetContracts, onResetEverything, onImportFleetFromRentMe, customers, contracts, rentmeConfig, setRentmeConfig, rentmeSync, rentmeVehicles, prenotazioni, onImportStorico, appUsers, setAppUsers, onLogout, driveClientId, setDriveClientId, driveLastBackup, onDriveBackup, driveAutoEnabled, setDriveAutoEnabled, renderLastBackup, onRenderBackup, backupToken, setBackupToken, pecStatus, onPecVerify, partners, setPartners }) {
   const importInputRef = useRef();
   const [showCargosSecrets, setShowCargosSecrets] = useState(false);
   const [syncing, setSyncing] = useState(false);
