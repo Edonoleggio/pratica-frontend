@@ -4135,7 +4135,7 @@ function PrenoForm({ initial, fleet, rentmeVehicles, prenotazioni, customers, on
 }
 
 // ── PrenotazioniPage ─────────────────────────────────────────────────
-function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rentmeVehicles, customers, partners, operator, onOpenWizard, pushToast, prefill, onClearPrefill, fermiFlotta, rentmePush, rentmeConnected, agency, targhe }) {
+function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rentmeVehicles, customers, partners, operator, onOpenWizard, pushToast, prefill, onClearPrefill, fermiFlotta, rentmePush, rentmeConnected, agency, targhe, contracts }) {
   const [form, setForm] = useState(null); // null | 'new' | {record}
   const [showDisp, setShowDisp] = useState(false);
 
@@ -4346,6 +4346,16 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rent
       title: '🚗 Consegna confermata',
       message: `${vehicleLabel || vehicleId || 'mezzo'} → ${[p.clienteCognome, p.clienteNome].filter(Boolean).join(' ')}`,
     });
+    // C1-bis (anche nel flusso vecchio): se manca la pratica, ricordala. "Genera pratica"
+    // resta visibile sulla card. Coerente col cuore; questo ramo legacy muore con la Fase 6b.
+    if (!bookingHasContract(p, contracts)) {
+      pushToast && pushToast({
+        tone: 'warning',
+        title: '📄 Contratto da completare',
+        message: `${[p.clienteCognome, p.clienteNome].filter(Boolean).join(' ')}: usa "Genera pratica" sulla prenotazione.`,
+        duration: 6000,
+      });
+    }
   }
 
   function handleRiconsegna({ kmRientro, carburanteRientro, danniRiscontrati, noteDanni, noteRientro }) {
@@ -17328,7 +17338,7 @@ export default function App() {
               {page === 'preventivi' && cuoreNuovo && <CuorePreventiviPage listino={listino} fleet={fleet} rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} targhe={targhe} scadenze={scadenze} setPage={setPage} setCuorePrefill={setCuorePrefill} pushToast={pushToast} fermiFlotta={fermiFlotta} />}
               {page === 'preventivi'    && !cuoreNuovo && <PreventiviPage setPage={setPage} setPrenotazioniPrefill={setPrenotazioniPrefill} listino={listino} fleet={fleet} rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} pushToast={pushToast} fermiFlotta={fermiFlotta} targhe={targhe} />}
               {page === 'prenotazioni' && cuoreNuovo && <CuorePrenotazioniPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} setCassa={setCassa} pushToast={pushToast} operator={operator} setPage={setPage} setCuorePrefill={setCuorePrefill} fermiFlotta={fermiFlotta} customers={customers} partners={partners} agency={agency} cuorePrefill={cuorePrefill} clearCuorePrefill={() => setCuorePrefill(null)} contracts={localContracts} onApriContratto={openWizardForBooking} />}
-              {page === 'prenotazioni' && !cuoreNuovo && <PrenotazioniPage prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} setCassa={setCassa} fleet={fleet} rentmeVehicles={rentmeVehicles} customers={customers} partners={partners} operator={operator} onOpenWizard={openWizard} pushToast={pushToast} prefill={prenotazioniPrefill} onClearPrefill={() => setPrenotazioniPrefill(null)} fermiFlotta={fermiFlotta} rentmePush={rentmeSync.pushBooking} rentmeConnected={rentmeSync.status === 'ok'} agency={agency} targhe={targhe} />}
+              {page === 'prenotazioni' && !cuoreNuovo && <PrenotazioniPage prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} setCassa={setCassa} fleet={fleet} rentmeVehicles={rentmeVehicles} customers={customers} partners={partners} operator={operator} onOpenWizard={openWizard} pushToast={pushToast} prefill={prenotazioniPrefill} onClearPrefill={() => setPrenotazioniPrefill(null)} fermiFlotta={fermiFlotta} rentmePush={rentmeSync.pushBooking} rentmeConnected={rentmeSync.status === 'ok'} agency={agency} targhe={targhe} contracts={localContracts} />}
               {page === 'contracts'  && <ContractsList contracts={localContracts} operators={operators} onRetry={retryContract} onMarkReturned={markContractReturned} onSendPec={sendContractPec} pecStatus={pecStatus} online={online} />}
               {page === 'cuore' && cuoreNuovo && <CuoreAnteprimaPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} prenotazioni={prenotazioni} scadenze={scadenze} fermiFlotta={fermiFlotta} />}
               {page === 'cuore_oggi' && cuoreNuovo && <CuoreOggiPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} listino={listino} pushToast={pushToast} operator={operator} setPage={setPage} fermiFlotta={fermiFlotta} customers={customers} manutenzioni={manutenzioni} />}
