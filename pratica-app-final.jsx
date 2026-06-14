@@ -1097,6 +1097,25 @@ function generateContractId(agenziaId) {
   return `${agenziaId || 'EDO'}-${ymd}-${rand}`;
 }
 
+// ── C1-bis: collegamento PRENOTAZIONE ↔ CONTRATTO registrato (fonte unica) ──
+// Una prenotazione "ha il contratto" se nei contratti registrati (localContracts)
+// esiste un'entry con questo id deterministico: EDO-{anno del ritiro}-{codice}.
+// È la STESSA convenzione già usata per stampare il PDF (ContractPdfModal, righe
+// ~4960/20718) → niente secondo campo duplicato sul booking, una sola verità.
+function bookingContractId(p) {
+  if (!p) return null;
+  const code = p.codice || p.id;
+  if (!code) return null;
+  const y = new Date(((p.dal || todayISO()) + 'T12:00:00')).getFullYear() || new Date().getFullYear();
+  return `EDO-${y}-${code}`;
+}
+// true se esiste una pratica registrata (CARGOS o interna) per questa prenotazione.
+function bookingHasContract(p, contracts) {
+  const id = bookingContractId(p);
+  if (!id) return false;
+  return (contracts || []).some(c => c && c.contractId === id);
+}
+
 // Mappa il wizard data → record CARGOS tracciato.
 // Riferimento: D.M. 29/10/2021, Allegato A (45 campi).
 // I codici tabellati (luoghi ISTAT, cittadinanza) usano valori provvisori
@@ -4443,6 +4462,10 @@ function PrenotazioniPage({ prenotazioni, setPrenotazioni, setCassa, fleet, rent
       tel: p.clienteTel || '',
       vehicleId: p.vehicleId || null,
       dal: p.dal, al: p.al,
+      // C1-bis: lega la pratica alla prenotazione (id contratto = EDO-anno-codice)
+      // e parte dal tipo mezzo giusto (scooter/quad non sono "auto" di default).
+      contractId: bookingContractId(p),
+      tipoVeicolo: canonicalTipo({ tipo: p.vehicleType }) || undefined,
     };
     // Segna la prenotazione come "in_corso"
     setPrenotazioni(ps => ps.map(x => x.id === p.id ? { ...x, stato: 'in_corso', updatedAt: new Date().toISOString() } : x));
@@ -16718,6 +16741,23 @@ export default function App() {
     setWizardOpen(true);
   }, []);
 
+  // C1-bis: apre il wizard pratica GIÀ legato a una prenotazione (stesso id contratto
+  // EDO-anno-codice). Completare la pratica spegne l'avviso "contratto da completare".
+  // Vale per tutti i tipi: auto → CARGOS, scooter/quad/ebike → contratto interno con
+  // firma e termini completi (lo decide il wizard in base al tipo veicolo).
+  const openWizardForBooking = useCallback((p) => {
+    if (!p) return;
+    openWizard({
+      cognome: p.clienteCognome || '',
+      nome: p.clienteNome || '',
+      tel: p.clienteTel || '',
+      vehicleId: p.vehicleId || null,
+      dal: p.dal, al: p.al,
+      contractId: bookingContractId(p),
+      tipoVeicolo: canonicalTipo({ tipo: p.vehicleType }) || undefined,
+    });
+  }, [openWizard]);
+
   const closeModal = useCallback(() => setModal(null), []);
 
   const handoverShift = useCallback((newIdx) => {
@@ -17287,20 +17327,20 @@ export default function App() {
                 : <FinanceGate />)}
               {page === 'preventivi' && cuoreNuovo && <CuorePreventiviPage listino={listino} fleet={fleet} rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} targhe={targhe} scadenze={scadenze} setPage={setPage} setCuorePrefill={setCuorePrefill} pushToast={pushToast} fermiFlotta={fermiFlotta} />}
               {page === 'preventivi'    && !cuoreNuovo && <PreventiviPage setPage={setPage} setPrenotazioniPrefill={setPrenotazioniPrefill} listino={listino} fleet={fleet} rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} pushToast={pushToast} fermiFlotta={fermiFlotta} targhe={targhe} />}
-              {page === 'prenotazioni' && cuoreNuovo && <CuorePrenotazioniPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} setCassa={setCassa} pushToast={pushToast} operator={operator} setPage={setPage} setCuorePrefill={setCuorePrefill} fermiFlotta={fermiFlotta} customers={customers} partners={partners} agency={agency} cuorePrefill={cuorePrefill} clearCuorePrefill={() => setCuorePrefill(null)} />}
+              {page === 'prenotazioni' && cuoreNuovo && <CuorePrenotazioniPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} setCassa={setCassa} pushToast={pushToast} operator={operator} setPage={setPage} setCuorePrefill={setCuorePrefill} fermiFlotta={fermiFlotta} customers={customers} partners={partners} agency={agency} cuorePrefill={cuorePrefill} clearCuorePrefill={() => setCuorePrefill(null)} contracts={localContracts} onApriContratto={openWizardForBooking} />}
               {page === 'prenotazioni' && !cuoreNuovo && <PrenotazioniPage prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} setCassa={setCassa} fleet={fleet} rentmeVehicles={rentmeVehicles} customers={customers} partners={partners} operator={operator} onOpenWizard={openWizard} pushToast={pushToast} prefill={prenotazioniPrefill} onClearPrefill={() => setPrenotazioniPrefill(null)} fermiFlotta={fermiFlotta} rentmePush={rentmeSync.pushBooking} rentmeConnected={rentmeSync.status === 'ok'} agency={agency} targhe={targhe} />}
               {page === 'contracts'  && <ContractsList contracts={localContracts} operators={operators} onRetry={retryContract} onMarkReturned={markContractReturned} onSendPec={sendContractPec} pecStatus={pecStatus} online={online} />}
               {page === 'cuore' && cuoreNuovo && <CuoreAnteprimaPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} prenotazioni={prenotazioni} scadenze={scadenze} fermiFlotta={fermiFlotta} />}
               {page === 'cuore_oggi' && cuoreNuovo && <CuoreOggiPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} listino={listino} pushToast={pushToast} operator={operator} setPage={setPage} fermiFlotta={fermiFlotta} customers={customers} manutenzioni={manutenzioni} />}
-              {page === 'cuore_prenotazioni' && cuoreNuovo && <CuorePrenotazioniPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} setCassa={setCassa} pushToast={pushToast} operator={operator} setPage={setPage} setCuorePrefill={setCuorePrefill} fermiFlotta={fermiFlotta} customers={customers} partners={partners} agency={agency} cuorePrefill={cuorePrefill} clearCuorePrefill={() => setCuorePrefill(null)} />}
+              {page === 'cuore_prenotazioni' && cuoreNuovo && <CuorePrenotazioniPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} setCassa={setCassa} pushToast={pushToast} operator={operator} setPage={setPage} setCuorePrefill={setCuorePrefill} fermiFlotta={fermiFlotta} customers={customers} partners={partners} agency={agency} cuorePrefill={cuorePrefill} clearCuorePrefill={() => setCuorePrefill(null)} contracts={localContracts} onApriContratto={openWizardForBooking} />}
               {page === 'cuore_cal' && cuoreNuovo && <CuoreCalendarioPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} prenotazioni={prenotazioni} scadenze={scadenze} setPrenotazioni={setPrenotazioni} pushToast={pushToast} fermiFlotta={fermiFlotta} setPage={setPage} setCuorePrefill={setCuorePrefill} />}
               {page === 'cuore_preno' && cuoreNuovo && <CuorePrenotaPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} pushToast={pushToast} prefill={cuorePrefill} fermiFlotta={fermiFlotta} listino={listino} setCassa={setCassa} operator={operator} partners={partners} rentmePush={rentmeSync.pushBooking} rentmeConnected={rentmeSync.status === 'ok'} />}
               {page === 'cuore_banco' && cuoreNuovo && <CuoreBancoPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} listino={listino} pushToast={pushToast} operator={operator} fermiFlotta={fermiFlotta} rentmeSyncStatus={rentmeSync.status} onRentmeSync={rentmeSync.sync} rentmeLastSync={rentmeSync.lastSync} />}
-              {page === 'cuore_consegna' && cuoreNuovo && <CuoreConsegnaPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} pushToast={pushToast} operator={operator} fermiFlotta={fermiFlotta} partners={partners} />}
+              {page === 'cuore_consegna' && cuoreNuovo && <CuoreConsegnaPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} pushToast={pushToast} operator={operator} fermiFlotta={fermiFlotta} partners={partners} contracts={localContracts} onApriContratto={openWizardForBooking} />}
               {page === 'cuore_rientro' && cuoreNuovo && <CuoreRientroPage rentmeVehicles={rentmeVehicles} targhe={targhe} fleet={fleet} scadenze={scadenze} prenotazioni={prenotazioni} setPrenotazioni={setPrenotazioni} pushToast={pushToast} setCassa={setCassa} operator={operator} />}
               {page === 'cuore_prev' && cuoreNuovo && <CuorePreventiviPage listino={listino} fleet={fleet} rentmeVehicles={rentmeVehicles} prenotazioni={prenotazioni} targhe={targhe} scadenze={scadenze} setPage={setPage} setCuorePrefill={setCuorePrefill} pushToast={pushToast} fermiFlotta={fermiFlotta} />}
               {page === 'cuore_flotta' && cuoreNuovo && <CuoreFlottaPage rentmeVehicles={rentmeVehicles} targhe={targhe} setTarghe={setTarghe} fleet={fleet} scadenze={scadenze} admin={admin} />}
-              {page === 'fleet'      && <FleetPage fleet={unifiedFleet} prenotazioni={prenotazioni} admin={admin} onAddVehicle={() => setModal('newVehicle')} onEditVehicle={(v) => setModal({ type: 'editVehicle', vehicle: v })} onDeleteVehicle={requestDeleteVehicle} onImportCSV={() => setShowCsvImport(true)} onResetFleet={() => setModal({ type: 'confirm', title: 'Azzera flotta?', message: <><strong>Tutti i {fleet.length} veicoli</strong> verranno eliminati dalla flotta. Le prenotazioni esistenti restano invariate. Dopo puoi reimportare con un CSV aggiornato. <strong>Azione irreversibile.</strong></>, confirmLabel: 'Azzera flotta', variant: 'danger', onConfirm: () => { setFleet([]); pushToast({ tone: 'info', title: 'Flotta azzerata', message: 'Tutti i veicoli rimossi. Importa un nuovo CSV per ricaricare.' }); } })} onSetFleet={setFleet} scadenze={scadenze} setScadenze={setScadenze} fermiFlotta={fermiFlotta} setFermiFlotta={setFermiFlotta} rentmeVehicles={rentmeVehicles} manutenzioni={manutenzioni} setManutenzioni={setManutenzioni} partners={partners} targhe={targhe} setTarghe={setTarghe} />}
+              {page === 'fleet'      && <FleetPage fleet={unifiedFleet} prenotazioni={prenotazioni} admin={admin} onAddVehicle={() => setModal('newVehicle')} onEditVehicle={(v) => setModal({ type: 'editVehicle', vehicle: v })} onDeleteVehicle={requestDeleteVehicle} onImportCSV={() => setShowCsvImport(true)} onResetFleet={() => setModal({ type: 'confirm', title: 'Azzera flotta?', message: <><strong>Tutti i {fleet.length} veicoli</strong> verranno eliminati dalla flotta. Le prenotazioni esistenti restano invariate. Dopo puoi reimportare con un CSV aggiornato. <strong>Azione irreversibile.</strong></>, confirmLabel: 'Azzera flotta', variant: 'danger', onConfirm: () => { setFleet([]); pushToast({ tone: 'info', title: 'Flotta azzerata', message: 'Tutti i veicoli rimossi. Importa un nuovo CSV per ricaricare.' }); } })} onSetFleet={setFleet} scadenze={scadenze} setScadenze={setScadenze} fermiFlotta={fermiFlotta} setFermiFlotta={setFermiFlotta} rentmeVehicles={rentmeVehicles} manutenzioni={manutenzioni} setManutenzioni={setManutenzioni} partners={partners} targhe={targhe} setTarghe={setTarghe} contracts={localContracts} />}
               {page === 'customers'  && <CustomersPage customers={customers} setCustomers={setCustomers} prenotazioni={prenotazioni} admin={admin} onShowQR={(c) => setModal({ type: 'qr', customer: c })} onNewWithCustomer={openWizard} onAddCustomer={() => setModal('newCustomer')} onEditCustomer={(c) => setModal({ type: 'editCustomer', customer: c })} onDeleteCustomer={deleteCustomer} onShowStorico={(c) => setStorioClienteId(c.id)} />}
               {page === 'partners'   && <PartnersPage partners={partners} admin={admin} onAddPartner={() => setModal('newPartner')} onEditPartner={(p) => setModal({ type: 'editPartner', partner: p })} onDeletePartner={requestDeletePartner} />}
               {page === 'listino'    && <div style={{padding:'28px 32px',maxWidth:900,margin:'0 auto'}}>
@@ -19687,7 +19727,7 @@ function CuoreConsegnaDialog({ preno, parco, prenoNuove, partners, onConfirm, on
   );
 }
 
-function CuoreConsegnaPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazioni, setPrenotazioni, pushToast, operator, fermiFlotta, partners }) {
+function CuoreConsegnaPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazioni, setPrenotazioni, pushToast, operator, fermiFlotta, partners, contracts, onApriContratto }) {
   const parco = useMemo(() => cuoreBuildParco(rentmeVehicles, { targhe, fleet, scadenze }), [rentmeVehicles, targhe, fleet, scadenze]);
   const prenoNuove = useMemo(() => (prenotazioni || []).map(p => cuoreMigraPreno(p, parco)), [prenotazioni, parco]);
   const prenoConFermi = useMemo(() => [...prenoNuove, ...cuoreFermiToPreno(fermiFlotta, parco)], [prenoNuove, fermiFlotta, parco]);
@@ -19741,6 +19781,16 @@ function CuoreConsegnaPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazio
       updatedAt: new Date().toISOString(),
     } : x));
     pushToast && pushToast({ tone: 'success', title: '🚗 Consegna confermata', message: `${cliente(preno)} → ${mezzo.modello || ''} ${mezzo.targa || ('n.' + mezzo.numero)}${(combo && combo.length > 1) ? ` +combo (${combo.length} mezzi)` : ''}` });
+    // C1-bis — "chi esce HA il contratto": se la pratica non è ancora registrata,
+    // ricorda di completarla (auto → CARGOS, altri → contratto interno con firma).
+    if (!bookingHasContract(preno, contracts)) {
+      pushToast && pushToast({
+        tone: 'warning',
+        title: '📄 Contratto da completare',
+        message: `${cliente(preno)}: apri "Completa contratto" nella scheda della prenotazione.`,
+        duration: 6000,
+      });
+    }
     setTarget(null);
   }
 
@@ -19916,6 +19966,15 @@ function CuoreWalkIn({ rentmeVehicles, targhe, fleet, scadenze, prenotazioni, se
     setPrenotazioni(prev => [...(prev || []), nuova]);
     pushToast && pushToast({ tone: 'success', title: consegnaSubito ? '🚶 Walk-in consegnato' : '🚶 Walk-in prenotato',
       message: `${cognome} · ${mezzo ? (mezzo.targa || 'n.' + mezzo.numero) : sel.tipo + ' ' + (sel.categoria || '')} · ${dal === al ? formatDate(dal) : formatDate(dal) + ' → ' + formatDate(al)}` });
+    // C1-bis: walk-in consegnato subito = mezzo fuori senza pratica → ricordala.
+    if (consegnaSubito) {
+      pushToast && pushToast({
+        tone: 'warning',
+        title: '📄 Contratto da completare',
+        message: `${cognome.trim()}: apri "Completa contratto" nella scheda della prenotazione.`,
+        duration: 6000,
+      });
+    }
     setSel(null);
   }
 
@@ -20385,7 +20444,7 @@ function TargaScanModal({ parco, liberi, onFound, onClose }) {
 // cassa (formato handleSaldoRapido) · duplica → Prenota prefill · WhatsApp ·
 // contratto (STESSO ContractPdfModal del vecchio) · annulla/elimina.
 // ═══════════════════════════════════════════════════════════════════
-function CuorePrenotazioniPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazioni, setPrenotazioni, setCassa, pushToast, operator, setPage, setCuorePrefill, fermiFlotta, customers, partners, agency, cuorePrefill, clearCuorePrefill }) {
+function CuorePrenotazioniPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazioni, setPrenotazioni, setCassa, pushToast, operator, setPage, setCuorePrefill, fermiFlotta, customers, partners, agency, cuorePrefill, clearCuorePrefill, contracts, onApriContratto }) {
   const parco = useMemo(() => cuoreBuildParco(rentmeVehicles, { targhe, fleet, scadenze }), [rentmeVehicles, targhe, fleet, scadenze]);
   const parcoByNum = useMemo(() => new Map(parco.map(m => [String(m.numero), m])), [parco]);
   const prenoTutte = useMemo(() => (prenotazioni || []).map(p => cuoreMigraPreno(p, parco)).filter(Boolean), [prenotazioni, parco]);
@@ -20596,7 +20655,13 @@ function CuorePrenotazioniPage({ rentmeVehicles, targhe, fleet, scadenze, prenot
                 {attiva && <button type="button" style={btnSec} onClick={() => setAzione(azione === 'mezzo' ? null : 'mezzo')}>{m ? 'Cambia mezzo' : 'Assegna mezzo'}</button>}
                 {st === 'in_corso' && m && <button type="button" style={btnSec} onClick={() => setAzione(azione === 'sostituzione' ? null : 'sostituzione')}>Sostituzione guasto</button>}
                 {attiva && !p.saldoRegistrato && (Number(p.prezzo) || 0) > 0 && <button type="button" style={btnSec} onClick={() => setAzione(azione === 'saldo' ? null : 'saldo')}>Saldo in cassa</button>}
-                <button type="button" style={btnSec} onClick={() => setContratto(p)}>Contratto</button>
+                {/* C1-bis: se la pratica è già registrata → stampa il PDF; altrimenti
+                    "Completa contratto" apre il wizard legato (auto→CARGOS, altri→interno). */}
+                {bookingHasContract(p, contracts)
+                  ? <button type="button" style={btnSec} onClick={() => setContratto(p)}>Stampa contratto</button>
+                  : <button type="button" style={{ ...btnSec, background: 'var(--accent, #c0392b)', color: '#fff', border: 'none', fontWeight: 700 }}
+                      title="Pratica non ancora registrata — completala (auto → CARGOS, scooter/quad/e-bike → contratto interno con firma)"
+                      onClick={() => onApriContratto ? onApriContratto(p) : setContratto(p)}>⚠ Completa contratto</button>}
                 <button type="button" style={btnSec} onClick={() => { setCuorePrefill && setCuorePrefill({ tipo: canonicalTipo({ tipo: p.tipo || p.vehicleType }), categoria: p.categoria || '', dal: p.dal, al: p.al, cognome: p.clienteCognome || '', nome: p.clienteNome || '' }); setSel(null); setPage && setPage('cuore_preno'); }}>Duplica</button>
                 <button type="button" style={btnSec} onClick={() => setFoto((prenotazioni || []).find(x => x.id === p.id) || p)}>Foto</button>
                 {tel && <a href={`https://wa.me/${tel}`} target="_blank" rel="noreferrer" style={{ ...btnSec, textDecoration: 'none', background: 'rgba(37,211,102,0.13)', color: '#25d366', border: 'none', fontWeight: 700, display: 'inline-flex', alignItems: 'center' }}>WA</a>}
@@ -22314,7 +22379,7 @@ function ManutenzioniModal({ vehicle, manutenzioni, setManutenzioni, onClose }) 
 // ═══════════════════════════════════════════════════════════════════
 // FLEET
 // ═══════════════════════════════════════════════════════════════════
-function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, onDeleteVehicle, onImportCSV, onResetFleet, onSetFleet, scadenze, setScadenze, fermiFlotta, setFermiFlotta, rentmeVehicles, manutenzioni, setManutenzioni, partners, targhe, setTarghe }) {
+function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, onDeleteVehicle, onImportCSV, onResetFleet, onSetFleet, scadenze, setScadenze, fermiFlotta, setFermiFlotta, rentmeVehicles, manutenzioni, setManutenzioni, partners, targhe, setTarghe, contracts }) {
   const [targaEdit, setTargaEdit] = useState(null); // {code,val} — modifica targa inline (Flotta unificata)
   const saveTarga = (code, val) => { if (setTarghe) setTarghe({ ...(targhe || {}), [code]: (val || '').toUpperCase().replace(/\s+/g, '') }); setTargaEdit(null); };
   const [typeFilter, setTypeFilter] = useState('all');
@@ -22636,13 +22701,15 @@ function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, on
               cliente: `${p.clienteCognome || ''} ${p.clienteNome || ''}`.trim() || 'Cliente',
               luogo,
               al: p.al,
-              contractId: p.contractId || null,
+              // C1-bis: collegamento VERO via contratto registrato (EDO-anno-codice),
+              // non il campo p.contractId (che non veniva mai riempito → falso "tutti senza").
+              hasContract: bookingHasContract(p, contracts),
             };
           });
         if (out.length === 0) return null;
-        // C1 — principio "mezzo fuori => contratto": evidenzia i consegnati SENZA contratto collegato
-        // (di norma raro: chi esce ha un contratto). Solo informativo.
-        const senzaContratto = out.filter(o => !o.contractId).length;
+        // C1 — principio "mezzo fuori ⇒ contratto": evidenzia i consegnati SENZA pratica
+        // registrata (CARGOS per le auto, contratto interno per gli altri). Ora veritiero.
+        const senzaContratto = out.filter(o => !o.hasContract).length;
         const groups = {};
         out.forEach(o => { (groups[o.tipo] ||= []).push(o); });
         const tipi = Object.keys(groups).sort();
@@ -22659,8 +22726,8 @@ function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, on
               <span style={{ fontFamily: 'var(--font-serif)', fontWeight: 600, fontSize: 15, color: 'var(--ink)' }}>Mezzi fuori ora</span>
               <span className="label" style={{ color: 'var(--edo-sea)' }}>{out.length} consegnati</span>
               {senzaContratto > 0 && (
-                <span className="label" title="Consegnati senza contratto collegato — di norma chi esce ha un contratto"
-                  style={{ color: 'var(--accent, #c0392b)' }}>⚠ {senzaContratto} senza contratto</span>
+                <span className="label" title="Mezzi fuori per cui manca ancora la pratica registrata (auto → CARGOS, altri → contratto interno). Aprila dalla scheda della prenotazione."
+                  style={{ color: 'var(--accent, #c0392b)' }}>⚠ {senzaContratto} contratto da completare</span>
               )}
               <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--muted)' }}>{outOpen ? '▾' : '▸'}</span>
             </button>
@@ -22684,6 +22751,9 @@ function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, on
                                 {o.modello}{o.luogo ? ` · 📍 ${o.luogo}` : ''}
                               </span>
                               <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)', marginLeft: 'auto', whiteSpace: 'nowrap' }}>{o.cliente}</span>
+                              {!o.hasContract && (
+                                <span title="Pratica non ancora registrata per questo mezzo" style={{ fontSize: 10, fontWeight: 700, color: 'var(--accent, #c0392b)', whiteSpace: 'nowrap', flexShrink: 0 }}>⚠ no contratto</span>
+                              )}
                               <span style={{ fontSize: 11, fontWeight: 600, color: r.color, minWidth: 92, textAlign: 'right' }}>{r.txt}</span>
                             </div>
                           );
@@ -24804,7 +24874,7 @@ const Field = memo(function Field({ label, value, mono, wide }) {
 function Wizard({ onClose, prefillCustomer, operator, fleet, customers, partners, prenotazioni, onSubmit, agency }) {
   const [step, setStep] = useState(prefillCustomer ? 3 : 1);
   const [data, setData] = useState({
-    tipoVeicolo: prefillCustomer ? 'auto' : null,
+    tipoVeicolo: prefillCustomer ? (prefillCustomer.tipoVeicolo || 'auto') : null,
     // Se prefillCustomer è un oggetto raw dal DB customers, costruiamo subito .full
     // così Step5Confirm e ContractPdfModal trovano dati cliente corretti senza passare per Step2.
     cliente: prefillCustomer ? { ...prefillCustomer, full: prefillCustomer } : null,
@@ -24830,7 +24900,10 @@ function Wizard({ onClose, prefillCustomer, operator, fleet, customers, partners
   const [submitResult, setSubmitResult] = useState(null);
   // Codice pratica univoco — corrisponde a p.codice della prenotazione generata
   const [bookingCode] = useState(() => generateBookingCode());
-  const contractId = `EDO-${new Date().getFullYear()}-${bookingCode}`;
+  // Se il wizard è stato aperto DA una prenotazione (convertToPratica / cuore),
+  // riusa il SUO id contratto (EDO-anno-codice) → la pratica completata risulta
+  // collegata a quella prenotazione (l'avviso "senza contratto" si spegne). C1-bis.
+  const contractId = prefillCustomer?.contractId || `EDO-${new Date().getFullYear()}-${bookingCode}`;
   const contractDate = new Date().toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric' }) + ' · ore ' + new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
 
   const update = useCallback((k, v) => setData(d => ({ ...d, [k]: v })), []);
