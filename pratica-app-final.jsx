@@ -25,7 +25,10 @@ import Tesseract from 'tesseract.js';
 const APP_VERSION = {
   number: '0.45.7',
   codename: 'migrateListino rimuove voci obsolete (mehari→auto_aperta) + prezzi reali da backend',
-  date: '2026-05-29',
+  // ⚠️ NON scrivere data/commit a mano: vengono iniettati da Vite al build
+  // (vedi vite.config.js → define). Il fallback 'dev' vale solo in locale.
+  date: typeof __APP_BUILD_DATE__ !== 'undefined' ? __APP_BUILD_DATE__ : 'dev',
+  commit: typeof __APP_COMMIT__ !== 'undefined' ? __APP_COMMIT__ : 'dev',
   changelog: [
     // v0.45.4 — 2026-05-29
     'Fix Report revenue gonfiata (€17 miliardi): aggiunta funzione safePrezzo() che filtra valori > €9.999 — un singolo noleggio non può costare più di €9.999; valori superiori indicano un timestamp, un ID o una data finiti nel campo prezzo durante il sync RentMe (es. YYYYMMDD = 20260501 = €20M). Revenue, ticket medio e top veicoli ora usano safePrezzo() invece di Number(p.prezzo)||0. Tutti i prezzi reali (compresi quelli inseriti manualmente nelle prenotazioni RentMe) vengono conteggiati correttamente.',
@@ -18309,6 +18312,9 @@ function SettingsPage({ operator, operators, cargosConfig, admin, backendStatus,
             </div>
             <div className="mt-0.5" style={{ color: 'var(--muted)' }}>
               Edonoleggio Lampedusa · build del <span className="mono">{APP_VERSION.date}</span>
+              {APP_VERSION.commit && APP_VERSION.commit !== 'dev' && (
+                <> · <span className="mono">{APP_VERSION.commit}</span></>
+              )}
             </div>
           </div>
         </div>
