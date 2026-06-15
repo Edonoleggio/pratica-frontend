@@ -18477,9 +18477,10 @@ function Step1Type({ data, update }) {
       <p className="text-sm mb-6" style={{ color: 'var(--muted)' }}>
         La scelta determina i campi richiesti, l'eventuale invio a CARGOS e il tipo di patente necessaria.
       </p>
-      <div className="grid grid-cols-4 gap-3" role="radiogroup" aria-label="Tipo veicolo">
-        {/* dedup per etichetta: gli alias interni (moto≡scooter, bicicletta≡ebike) non
-            devono comparire come card doppie. Tengo la prima occorrenza di ogni etichetta. */}
+      {/* Layout a LISTA (scelta utente "Proposta B"): una riga per tipo, icona grande,
+          molto leggibile. Dedup per etichetta: gli alias interni (moto≡scooter,
+          bicicletta≡ebike) non compaiono doppi. */}
+      <div className="flex flex-col gap-2" role="radiogroup" aria-label="Tipo veicolo">
         {Object.entries(VEHICLE_TYPES).filter(([, t], i, arr) => arr.findIndex(([, t2]) => t2.label === t.label) === i).map(([key, t]) => {
           const selected = data.tipoVeicolo === key;
           return (
@@ -18489,12 +18490,17 @@ function Step1Type({ data, update }) {
               role="radio"
               aria-checked={selected}
               onClick={() => { update('tipoVeicolo', key); update('veicolo', null); }}
-              className={`vehicle-card card-paper p-5 text-left ${selected ? 'selected' : ''}`}
+              className="text-left"
+              style={{ display: 'flex', alignItems: 'center', gap: 14, width: '100%', padding: '12px 14px', borderRadius: 12, background: 'var(--paper)', border: selected ? '1.5px solid var(--sea)' : '0.5px solid var(--border)', cursor: 'pointer', transition: 'border-color .12s' }}
             >
-              <VehicleIcon type={key} className="w-8 h-8 mb-3" />
-              <div className="serif text-xl font-medium mb-1">{t.label}</div>
-              <p className="text-[11px] leading-relaxed mb-3" style={{ color: 'var(--ink-2)' }}>{t.description}</p>
-              <div className="flex flex-wrap gap-1">
+              <div style={{ width: 46, height: 46, borderRadius: 11, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: selected ? 'rgba(45,108,139,0.10)' : 'var(--surface-2)', color: selected ? 'var(--sea)' : 'var(--ink-2)' }}>
+                <VehicleIcon type={key} className="w-7 h-7" />
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div className="serif" style={{ fontSize: 16, fontWeight: 500, color: 'var(--ink)' }}>{t.label}</div>
+                <div style={{ fontSize: 12, color: 'var(--muted)' }}>{t.description}</div>
+              </div>
+              <div style={{ display: 'flex', gap: 6, flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end', maxWidth: 190 }}>
                 {t.cargosRequired
                   ? <span className="pill pill-err"><Send className="w-3 h-3" aria-hidden="true" /> CARGOS</span>
                   : <span className="pill pill-sea"><X className="w-3 h-3" aria-hidden="true" /> no CARGOS</span>
