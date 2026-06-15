@@ -14570,32 +14570,46 @@ function CuorePreventiviPage({ listino, fleet, rentmeVehicles, prenotazioni, tar
 // SIDEBAR
 // ═══════════════════════════════════════════════════════════════════
 function Sidebar({ page, setPage, onNew, online, agency, rentmeSyncStatus, rentmeAlertCount, rentmeRetryCount, offlineSyncCount }) {
-  const items = [
-    { id: 'dashboard',    label: 'Dashboard',    icon: LayoutDashboard },
-    { id: 'oggi',         label: 'Oggi',         icon: Compass },
-    { id: 'calendario',   label: 'Calendario',   icon: CalendarDays },
-    { id: 'banco',        label: 'Banco rapido', icon: Zap, badge: rentmeAlertCount > 0 ? rentmeAlertCount : null },
-    { id: 'cassa',        label: 'Cassa',        icon: Wallet },
-    { id: 'preventivi',   label: 'Preventivi',   icon: Receipt },
-    { id: 'report',       label: 'Report',       icon: BarChart2 },
-    { id: 'finance',      label: 'Finance',      icon: Lock },
-    { id: 'contracts',    label: 'Pratiche',     icon: FileText },
-    { id: 'prenotazioni', label: 'Prenotazioni', icon: CalendarDays },
-    { id: 'fleet',        label: 'Flotta',       icon: Car },
-    { id: 'customers',    label: 'Clienti',      icon: Users },
-    { id: 'partners',     label: 'Strutture',    icon: Hotel },
-    { id: 'listino',      label: 'Prezzi',       icon: Pencil },
-    // Badge: arancione per retry RentMe, rosso per dati non sincronizzati
-    { id: 'settings', label: 'Impostazioni', icon: Settings,
-      badge: rentmeRetryCount > 0 ? rentmeRetryCount : (offlineSyncCount > 0 ? '!' : null),
-      badgeColor: rentmeRetryCount > 0 ? '#e67e22' : '#c0392b' },
+  // Voci raggruppate per area (scelta utente: base "Proposta C", Prezzi spostato in Soldi).
+  // Dashboard/Oggi in alto senza gruppo; Impostazioni in fondo staccata.
+  const groups = [
+    { header: null, items: [
+      { id: 'dashboard',    label: 'Dashboard',    icon: LayoutDashboard },
+      { id: 'oggi',         label: 'Oggi',         icon: Compass },
+    ]},
+    { header: 'Prenotazioni', items: [
+      { id: 'calendario',   label: 'Calendario',   icon: CalendarDays },
+      { id: 'prenotazioni', label: 'Prenotazioni', icon: CalendarDays },
+      { id: 'preventivi',   label: 'Preventivi',   icon: Receipt },
+    ]},
+    { header: 'Al banco', items: [
+      { id: 'cuore_preno',    label: 'Prenota',     icon: Sparkles },
+      { id: 'cuore_consegna', label: 'Consegna',    icon: Sparkles },
+      { id: 'cuore_rientro',  label: 'Rientro',     icon: Sparkles },
+      { id: 'banco',          label: 'Banco rapido',icon: Zap, badge: rentmeAlertCount > 0 ? rentmeAlertCount : null },
+    ]},
+    { header: 'Mezzi', items: [
+      { id: 'fleet',        label: 'Flotta',        icon: Car },
+      { id: 'cuore_flotta', label: 'Targhe mezzi',  icon: Sparkles },
+    ]},
+    { header: 'Clienti e doc', items: [
+      { id: 'customers',    label: 'Clienti',       icon: Users },
+      { id: 'contracts',    label: 'Pratiche',      icon: FileText },
+      { id: 'partners',     label: 'Strutture',     icon: Hotel },
+    ]},
+    { header: 'Soldi', items: [
+      { id: 'cassa',        label: 'Cassa',         icon: Wallet },
+      { id: 'listino',      label: 'Prezzi',        icon: Pencil },
+      { id: 'report',       label: 'Report',        icon: BarChart2 },
+      { id: 'finance',      label: 'Finance',       icon: Lock },
+    ]},
+    { header: null, sep: true, items: [
+      // Badge: arancione per retry RentMe, rosso per dati non sincronizzati
+      { id: 'settings', label: 'Impostazioni', icon: Settings,
+        badge: rentmeRetryCount > 0 ? rentmeRetryCount : (offlineSyncCount > 0 ? '!' : null),
+        badgeColor: rentmeRetryCount > 0 ? '#e67e22' : '#c0392b' },
+    ]},
   ];
-  // Le voci classiche (Oggi, Calendario, Banco, Prenotazioni, Preventivi) rendono le pagine
-  // CUORE — è l'unico motore (Fase 6b). Più i flussi senza gemello classico + l'editor targhe.
-  items.push({ id: 'cuore_preno', label: 'Prenota', icon: Sparkles });
-  items.push({ id: 'cuore_consegna', label: 'Consegna', icon: Sparkles });
-  items.push({ id: 'cuore_rientro', label: 'Rientro', icon: Sparkles });
-  items.push({ id: 'cuore_flotta', label: 'Targhe mezzi', icon: Sparkles });
 
   const sidebarDark = '#16181d';
   const sidebarBorder = 'rgba(255,255,255,0.07)';
@@ -14626,28 +14640,38 @@ function Sidebar({ page, setPage, onNew, online, agency, rentmeSyncStatus, rentm
         <Plus className="w-4 h-4" aria-hidden="true" /> Nuova pratica
       </button>
 
-      <nav className="px-3 flex-1 py-1" aria-label="Sezioni app">
-        {items.map(it => {
-          const Icon = it.icon;
-          const active = page === it.id;
-          return (
-            <button
-              key={it.id}
-              type="button"
-              onClick={() => setPage(it.id)}
-              className={`nav-item w-full flex items-center gap-3 px-3 py-2 rounded text-sm border border-transparent mb-0.5 ${active ? 'active' : ''}`}
-              aria-current={active ? 'page' : undefined}
-            >
-              <Icon className="w-4 h-4" aria-hidden="true" />
-              <span className="flex-1 text-left">{it.label}</span>
-              {it.badge ? (
-                <span style={{ background: it.badgeColor || '#c0392b', color: '#fff', fontSize: 9, fontWeight: 700, borderRadius: 10, padding: '1px 5px', minWidth: 16, textAlign: 'center' }}>{it.badge}</span>
-              ) : (
-                <span className="dot" aria-hidden="true" />
-              )}
-            </button>
-          );
-        })}
+      <nav className="px-3 flex-1 py-1 overflow-y-auto" aria-label="Sezioni app">
+        {groups.map((g, gi) => (
+          <div key={gi} style={{
+            ...(gi > 0 ? { marginTop: 12 } : {}),
+            ...(g.sep ? { paddingTop: 8, borderTop: `1px solid ${sidebarBorder}` } : {}),
+          }}>
+            {g.header && (
+              <div className="px-3 pb-1" style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.30)' }}>{g.header}</div>
+            )}
+            {g.items.map(it => {
+              const Icon = it.icon;
+              const active = page === it.id;
+              return (
+                <button
+                  key={it.id}
+                  type="button"
+                  onClick={() => setPage(it.id)}
+                  className={`nav-item w-full flex items-center gap-3 px-3 py-2 rounded text-sm border border-transparent mb-0.5 ${active ? 'active' : ''}`}
+                  aria-current={active ? 'page' : undefined}
+                >
+                  <Icon className="w-4 h-4" aria-hidden="true" />
+                  <span className="flex-1 text-left">{it.label}</span>
+                  {it.badge ? (
+                    <span style={{ background: it.badgeColor || '#c0392b', color: '#fff', fontSize: 9, fontWeight: 700, borderRadius: 10, padding: '1px 5px', minWidth: 16, textAlign: 'center' }}>{it.badge}</span>
+                  ) : (
+                    <span className="dot" aria-hidden="true" />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        ))}
       </nav>
 
       <div className="p-4" style={{ borderTop: `1px solid ${sidebarBorder}` }}>
