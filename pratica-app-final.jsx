@@ -3010,9 +3010,12 @@ function migrateListino(ls) {
   const idMap = Object.fromEntries(ls.map(e => [e.id, e]));
   let changed = false;
 
-  // 1. Rimuovi voci non più nel master (es. vecchio 'mehari' → ora 'auto_aperta')
+  // 1. Rimuovi SOLO le voci esplicitamente obsolete (es. vecchio 'mehari' → ora 'auto_aperta').
+  // ⚠️ NON rimuovere le voci non-master: le categorie AGGIUNTE DALL'UTENTE (id 'cust_…', prezzi
+  // self-service) hanno id fuori dal master e vanno PRESERVATE, altrimenti sparirebbero al refresh.
+  const OBSOLETE_LISTINO_IDS = new Set(['mehari']);
   const senzaObsoleti = ls.filter(e => {
-    if (!masterIds.has(e.id)) { changed = true; return false; } // rimuovi
+    if (OBSOLETE_LISTINO_IDS.has(e.id)) { changed = true; return false; } // rimuovi solo gli obsoleti noti
     return true;
   });
 
@@ -5290,12 +5293,33 @@ function ReportPage({ prenotazioni, contracts, cassa, customers, fleet, operator
 function ListinoEditor({ listino, onSave }) {
   const [draft, setDraft] = useState(() => JSON.parse(JSON.stringify(listino)));
   const [dirty, setDirty] = useState(false);
+  // Self-service: aggiungere/togliere categorie di prezzo (oltre a modificare le tariffe).
+  const [nuovoNome, setNuovoNome] = useState('');
+  const [nuovoTipo, setNuovoTipo] = useState('auto');
+  // tipi disponibili per la tendina (dedup per etichetta: niente alias doppi)
+  const tipiSelezionabili = Object.entries(VEHICLE_TYPES).filter(([, t], i, arr) => arr.findIndex(([, t2]) => t2.label === t.label) === i);
 
   function setPrice(catId, season, type, val) {
     setDraft(d => d.map(c => c.id === catId
       ? { ...c, [season]: { ...c[season], [type]: parseFloat(val) || 0 } }
       : c
     ));
+    setDirty(true);
+  }
+
+  function aggiungiCategoria() {
+    const nome = nuovoNome.trim();
+    if (!nome) return;
+    const id = 'cust_' + Date.now().toString(36);
+    setDraft(d => [...d, {
+      id, nome, tipo: nuovoTipo, categoria: '',
+      bassa: { daily: 0, weekly: 0 }, media: { daily: 0, weekly: 0 }, alta: { daily: 0, weekly: 0 },
+    }]);
+    setNuovoNome('');
+    setDirty(true);
+  }
+  function rimuoviCategoria(id) {
+    setDraft(d => d.filter(c => c.id !== id));
     setDirty(true);
   }
 
@@ -5342,7 +5366,13 @@ function ListinoEditor({ listino, onSave }) {
           <tbody>
             {draft.map(c => (
               <tr key={c.id}>
-                <td style={{ ...tdS, fontWeight: 600, fontFamily: 'var(--font-serif)' }}>{c.nome}</td>
+                <td style={{ ...tdS, fontWeight: 600, fontFamily: 'var(--font-serif)' }}>
+                  {c.nome}
+                  {String(c.id).startsWith('cust_') && (
+                    <button type="button" onClick={() => rimuoviCategoria(c.id)} title="Rimuovi questa categoria"
+                      style={{ marginLeft: 8, border: 'none', background: 'transparent', color: 'var(--accent)', cursor: 'pointer', fontSize: 14, fontWeight: 700, verticalAlign: 'middle' }} aria-label={`Rimuovi ${c.nome}`}>×</button>
+                  )}
+                </td>
                 {['bassa','media','alta'].map(s => (
                   <Fragment key={s}>
                     <td style={{ ...tdS, textAlign: 'center' }}>
@@ -5360,6 +5390,23 @@ function ListinoEditor({ listino, onSave }) {
           </tbody>
         </table>
       </div>
+
+      {/* Self-service: aggiungi una categoria di prezzo (es. un mezzo/tipo nuovo). */}
+      <div style={{ marginTop: 14, padding: '12px 14px', border: '1px dashed var(--border)', borderRadius: 8, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', background: 'var(--surface-2)' }}>
+        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink-2)' }}>+ Aggiungi categoria</span>
+        <input value={nuovoNome} onChange={e => setNuovoNome(e.target.value)} placeholder="Nome (es. Minibus 9 posti)"
+          style={{ padding: '6px 9px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 13, background: 'var(--bg)', color: 'var(--ink)', minWidth: 200 }} />
+        <select value={nuovoTipo} onChange={e => setNuovoTipo(e.target.value)}
+          style={{ padding: '6px 9px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 13, background: 'var(--bg)', color: 'var(--ink)' }}>
+          {tipiSelezionabili.map(([key, t]) => <option key={key} value={key}>{t.label}</option>)}
+        </select>
+        <button type="button" onClick={aggiungiCategoria} disabled={!nuovoNome.trim()}
+          style={{ padding: '6px 14px', borderRadius: 6, border: 'none', background: nuovoNome.trim() ? 'var(--sea)' : 'var(--border)', color: '#fff', fontWeight: 600, fontSize: 12, cursor: nuovoNome.trim() ? 'pointer' : 'default' }}>
+          Aggiungi
+        </button>
+        <span style={{ fontSize: 11, color: 'var(--muted)', flexBasis: '100%' }}>La nuova riga parte a 0 € — imposta le tariffe e premi "Salva modifiche". Le categorie aggiunte si possono togliere con la ×.</span>
+      </div>
+
       <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 8 }}>
         Le modifiche si sincronizzano automaticamente con il backend e aggiornano i preventivi in tempo reale.
       </div>
