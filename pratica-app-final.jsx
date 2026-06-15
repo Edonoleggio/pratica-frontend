@@ -514,6 +514,7 @@ const INITIAL_CARGOS_CONFIG = {
 // ═══════════════════════════════════════════════════════════════════
 const VEHICLE_TYPES = {
   auto:        { label: 'Auto',    short: 'Auto',    cargosCode: 'A',  cargosRequired: true,  hasPlate: true,  needsLicense: 'B',    description: 'Autoveicolo ≥ 4 ruote · CARGOS obbligatorio' },
+  pulmino:     { label: 'Pulmino', short: 'Pulmino', cargosCode: 'A',  cargosRequired: true,  hasPlate: true,  needsLicense: 'B',    description: 'Furgone/9 posti ≥ 4 ruote · CARGOS obbligatorio' },
   scooter:     { label: 'Scooter', short: 'Scooter', cargosCode: 'M',  cargosRequired: false, hasPlate: true,  needsLicense: 'AM/A', description: 'Motoveicolo 2 ruote · escluso da CARGOS' },
   moto:        { label: 'Scooter', short: 'Scooter', cargosCode: 'M',  cargosRequired: false, hasPlate: true,  needsLicense: 'AM/A', description: 'Motoveicolo 2 ruote · escluso da CARGOS' },
   quad:        { label: 'Quad',    short: 'Quad',    cargosCode: 'M',  cargosRequired: false, hasPlate: true,  needsLicense: 'B1/B', description: 'Quadriciclo L7e · equiparato a motoveicolo' },
@@ -592,6 +593,8 @@ const CATEGORIA_KEYWORDS = {
 };
 function getVehicleCategoria(v) {
   const tipo = (v.tipo || '').toLowerCase();
+  // Pulmino/furgone: categoria unica (un solo prezzo a listino, come e-bike/bici).
+  if (tipo === 'pulmino') return '';
   // Fast path: campo già salvato durante l'import.
   // ECCEZIONE: per i quad saltiamo il fast path perché le flotte importate
   // prima di v0.39.8 hanno categoria='QUAD50' per TUTTI i quad (50/150/300cc
@@ -743,7 +746,7 @@ function makeId(prefix) {
 // VEHICLE ICONS — memoized
 // ═══════════════════════════════════════════════════════════════════
 const VehicleIcon = memo(function VehicleIcon({ type, className = 'w-5 h-5' }) {
-  if (type === 'auto') return <Car className={className} />;
+  if (type === 'auto' || type === 'pulmino') return <Car className={className} />;
   if (type === 'scooter' || type === 'moto') return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
       <circle cx="6" cy="17" r="3" /><circle cx="18" cy="17" r="3" />
@@ -2978,6 +2981,9 @@ const LISTINO = [
     bassa:{daily:40,weekly:200}, media:{daily:40,weekly:210}, alta:{daily:45,weekly:280} },
   { id: 'quad_300',        nome: 'Quad 300 cc',            tipo: 'quad',    categoria: 'QUAD300',
     bassa:{daily:50,weekly:250}, media:{daily:50,weekly:250}, alta:{daily:70,weekly:350} },
+  // ── Pulmino / furgone ────────────────────────────────────────────────────
+  { id: 'pulmino',         nome: 'Pulmino 9 posti',        tipo: 'pulmino',
+    bassa:{daily:80,weekly:500}, media:{daily:90,weekly:560}, alta:{daily:120,weekly:720} },
   // ── E-bike e Bici ────────────────────────────────────────────────────────
   { id: 'ebike',           nome: 'E-bike',                 tipo: 'ebike',
     bassa:{daily:12,weekly:85},  media:{daily:12,weekly:85},  alta:{daily:15,weekly:105} },
@@ -5326,10 +5332,10 @@ function ListinoEditor({ listino, onSave }) {
             <tr style={{ background: 'var(--surface-2)' }}>
               <th style={{ ...tdS, fontWeight: 600, fontSize: 10, color: 'var(--muted)' }}></th>
               {['bassa','media','alta'].map(s => (
-                <>
-                  <th key={s+'d'} style={{ ...tdS, textAlign: 'center', fontSize: 9, color: 'var(--muted)', fontWeight: 600 }}>Giorno</th>
-                  <th key={s+'w'} style={{ ...tdS, textAlign: 'center', fontSize: 9, color: 'var(--muted)', fontWeight: 600 }}>Settimana</th>
-                </>
+                <Fragment key={s}>
+                  <th style={{ ...tdS, textAlign: 'center', fontSize: 9, color: 'var(--muted)', fontWeight: 600 }}>Giorno</th>
+                  <th style={{ ...tdS, textAlign: 'center', fontSize: 9, color: 'var(--muted)', fontWeight: 600 }}>Settimana</th>
+                </Fragment>
               ))}
             </tr>
           </thead>
@@ -5338,16 +5344,16 @@ function ListinoEditor({ listino, onSave }) {
               <tr key={c.id}>
                 <td style={{ ...tdS, fontWeight: 600, fontFamily: 'var(--font-serif)' }}>{c.nome}</td>
                 {['bassa','media','alta'].map(s => (
-                  <>
-                    <td key={s+'d'} style={{ ...tdS, textAlign: 'center' }}>
+                  <Fragment key={s}>
+                    <td style={{ ...tdS, textAlign: 'center' }}>
                       <input style={inp} type="number" min="0" value={c[s].daily}
                         onChange={e => setPrice(c.id, s, 'daily', e.target.value)} />
                     </td>
-                    <td key={s+'w'} style={{ ...tdS, textAlign: 'center' }}>
+                    <td style={{ ...tdS, textAlign: 'center' }}>
                       <input style={inp} type="number" min="0" value={c[s].weekly}
                         onChange={e => setPrice(c.id, s, 'weekly', e.target.value)} />
                     </td>
-                  </>
+                  </Fragment>
                 ))}
               </tr>
             ))}
@@ -18472,7 +18478,9 @@ function Step1Type({ data, update }) {
         La scelta determina i campi richiesti, l'eventuale invio a CARGOS e il tipo di patente necessaria.
       </p>
       <div className="grid grid-cols-4 gap-3" role="radiogroup" aria-label="Tipo veicolo">
-        {Object.entries(VEHICLE_TYPES).map(([key, t]) => {
+        {/* dedup per etichetta: gli alias interni (moto≡scooter, bicicletta≡ebike) non
+            devono comparire come card doppie. Tengo la prima occorrenza di ogni etichetta. */}
+        {Object.entries(VEHICLE_TYPES).filter(([, t], i, arr) => arr.findIndex(([, t2]) => t2.label === t.label) === i).map(([key, t]) => {
           const selected = data.tipoVeicolo === key;
           return (
             <button
