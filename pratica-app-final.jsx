@@ -14576,6 +14576,7 @@ function Sidebar({ page, setPage, onNew, online, agency, rentmeSyncStatus, rentm
     { header: null, items: [
       { id: 'dashboard',    label: 'Dashboard',    icon: LayoutDashboard },
       { id: 'oggi',         label: 'Oggi',         icon: Compass },
+      { id: 'contracts',    label: 'Pratiche',     icon: FileText },
     ]},
     { header: 'Prenotazioni', items: [
       { id: 'calendario',   label: 'Calendario',   icon: CalendarDays },
@@ -14592,12 +14593,11 @@ function Sidebar({ page, setPage, onNew, online, agency, rentmeSyncStatus, rentm
       { id: 'fleet',        label: 'Flotta',        icon: Car },
       { id: 'cuore_flotta', label: 'Targhe mezzi',  icon: Sparkles },
     ]},
-    { header: 'Clienti e doc', items: [
+    { header: 'Strutture & Clienti', items: [
       { id: 'customers',    label: 'Clienti',       icon: Users },
-      { id: 'contracts',    label: 'Pratiche',      icon: FileText },
       { id: 'partners',     label: 'Strutture',     icon: Hotel },
     ]},
-    { header: 'Soldi', items: [
+    { header: 'Finance', items: [
       { id: 'cassa',        label: 'Cassa',         icon: Wallet },
       { id: 'listino',      label: 'Prezzi',        icon: Pencil },
       { id: 'report',       label: 'Report',        icon: BarChart2 },
@@ -14616,7 +14616,7 @@ function Sidebar({ page, setPage, onNew, online, agency, rentmeSyncStatus, rentm
 
   return (
     <aside
-      className="w-60 flex-shrink-0 flex flex-col"
+      className="w-52 flex-shrink-0 flex flex-col"
       style={{ background: sidebarDark, borderRight: `1px solid ${sidebarBorder}` }}
       aria-label="Navigazione principale"
     >
@@ -14634,10 +14634,10 @@ function Sidebar({ page, setPage, onNew, online, agency, rentmeSyncStatus, rentm
       <button
         type="button"
         onClick={onNew}
-        className="btn-brand mx-4 mt-4 mb-3 px-4 py-2.5 rounded text-sm font-semibold flex items-center justify-center gap-2"
+        className="btn-brand mx-3 mt-3 mb-2 px-3 py-1.5 rounded text-xs font-semibold flex items-center justify-center gap-1.5"
         aria-label="Crea nuova pratica di noleggio"
       >
-        <Plus className="w-4 h-4" aria-hidden="true" /> Nuova pratica
+        <Plus className="w-3.5 h-3.5" aria-hidden="true" /> Nuova pratica
       </button>
 
       <nav className="px-3 flex-1 py-1 overflow-y-auto" aria-label="Sezioni app">
