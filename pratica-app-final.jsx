@@ -3781,7 +3781,10 @@ function ReportOperativoPage({ prenotazioni, contracts, customers, fleet, operat
       return { label, ms, count: pm.length, occ };
     });
     const maxCount = Math.max(1, ...mesi.map(m => m.count));
-    const occMedia = Math.round(mesi.reduce((s, m) => s + m.occ, 0) / 12);
+    // Regola STAGIONE: media occupazione contando solo MAGGIO→OTTOBRE (mesi 5–10), non 12.
+    // L'attività è stagionale: dividere per 12 diluiva la % coi mesi morti invernali.
+    const mesiStag = mesi.filter(m => { const mm = +m.ms.slice(5, 7); return mm >= 5 && mm <= 10; });
+    const occMedia = mesiStag.length ? Math.round(mesiStag.reduce((s, m) => s + m.occ, 0) / mesiStag.length) : 0;
 
     // Categorie più richieste (per numero)
     const catMap = {};
@@ -5161,7 +5164,7 @@ function ReportPage({ prenotazioni, contracts, cassa, customers, fleet, operator
                   <td style={{ padding:'10px 14px' }}>{datiMensili.reduce((s,m)=>s+m.prenotazioni,0)}</td>
                   <td style={{ padding:'10px 14px', color:'#2e6e3e' }}>€{datiMensili.reduce((s,m)=>s+m.revenue,0).toLocaleString('it-IT')}</td>
                   <td style={{ padding:'10px 14px' }}>€{datiMensili.reduce((s,m)=>s+m.cassa,0).toLocaleString('it-IT')}</td>
-                  <td style={{ padding:'10px 14px' }}>{Math.round(datiMensili.reduce((s,m)=>s+m.occupazione,0)/12)}% media</td>
+                  <td style={{ padding:'10px 14px' }}>{(() => { const st = datiMensili.filter(m => { const mm = +(m.mese||'').slice(5,7); return mm >= 5 && mm <= 10; }); return st.length ? Math.round(st.reduce((s,m)=>s+m.occupazione,0)/st.length) : 0; })()}% media (mag–ott)</td>
                 </tr>
               </tbody>
             </table>
@@ -13435,6 +13438,12 @@ function CuoreWalkIn({ rentmeVehicles, targhe, fleet, scadenze, prenotazioni, se
         <label style={{ fontSize: 12, color: 'var(--ink-2)' }}>Dal<br /><DateField value={dal} onChange={e => { setDal(e.target.value); if (e.target.value > al) setAl(e.target.value); }} style={{ padding: 6, border: '1px solid var(--border)', borderRadius: 6 }} /></label>
         <label style={{ fontSize: 12, color: 'var(--ink-2)' }}>Al<br /><DateField value={al} min={dal} onChange={e => setAl(e.target.value)} style={{ padding: 6, border: '1px solid var(--border)', borderRadius: 6 }} /></label>
         <button type="button" onClick={() => { setDal(oggi); setAl(oggi); }} style={{ padding: '7px 12px', fontSize: 12, border: '1px solid var(--border)', borderRadius: 6, background: 'transparent', cursor: 'pointer', color: 'var(--ink-2)' }}>Oggi</button>
+        {/* Tasti rapidi durata: Al = dal + (N-1) giorni (N giorni inclusivi). */}
+        {[2,3,4,5,6].map(n => (
+          <button key={n} type="button" title={`${n} giorni dal ${dal ? formatDate(dal) : 'oggi'}`}
+            onClick={() => { const base = dal || oggi; const d = new Date(base + 'T12:00:00'); d.setDate(d.getDate() + (n - 1)); const iso = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; setDal(base); setAl(iso); }}
+            style={{ padding: '7px 10px', fontSize: 12, border: '1px solid var(--border)', borderRadius: 6, background: 'transparent', cursor: 'pointer', color: 'var(--ink-2)' }}>{n}g</button>
+        ))}
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 12 }}>
@@ -14474,17 +14483,24 @@ function CuorePreventiviPage({ listino, fleet, rentmeVehicles, prenotazioni, tar
   // ── PDF preventivo: STESSO generatore del vecchio, con dati CLIENTE facoltativi ──
   const [pdfTarget, setPdfTarget] = useState(null); // riga per cui generare il PDF
   const [pdfCliente, setPdfCliente] = useState({ nome: '', tel: '', email: '' });
-  const pdfDi = (r, cliente) => {
+  const [pdfImporto, setPdfImporto] = useState(''); // importo modificabile prima del PDF
+  const pdfDi = (r, cliente, importoOverride) => {
     const q = calcPreventivo(r.cat, dal, al);
     if (!q) return;
     const c = cliente && (cliente.nome || cliente.tel || cliente.email) ? cliente : null;
+    // Importo modificabile: se l'operatore ha messo un valore diverso, vince quello.
+    const over = (importoOverride !== '' && importoOverride != null && !isNaN(Number(importoOverride))) ? Number(importoOverride) : null;
+    const total = over != null ? over : q.totale;
+    const breakdown = over != null
+      ? [{ label: `${r.cat.nome} · ${q.giorni} ${q.giorni === 1 ? 'giorno' : 'giorni'} (prezzo concordato)`, gg: 0, price: 0, subtotal: over }]
+      : (q.righe || []).map(rr => ({ label: rr.desc || '', gg: 0, price: 0, subtotal: rr.sub || 0 }));
     exportPreventivoPDF({
       catName: r.cat.nome, dal, al,
       stagione: q.season, isWeekly: false,
-      total: q.totale, totalDays: q.giorni,
+      total, totalDays: q.giorni,
       codice: (typeof generateBookingCode === 'function' ? generateBookingCode() : ''),
       cliente: c,
-      breakdown: (q.righe || []).map(rr => ({ label: rr.desc || '', gg: 0, price: 0, subtotal: rr.sub || 0 })),
+      breakdown,
     }, null, 'it');
     setPdfTarget(null);
   };
@@ -14502,6 +14518,12 @@ function CuorePreventiviPage({ listino, fleet, rentmeVehicles, prenotazioni, tar
       <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', marginBottom: 16, flexWrap: 'wrap' }}>
         <label style={{ fontSize: 12, color: 'var(--ink-2)' }}>Dal<br /><DateField value={dal} onChange={e => setDal(e.target.value)} style={{ padding: 6, border: '1px solid var(--border)', borderRadius: 6 }} /></label>
         <label style={{ fontSize: 12, color: 'var(--ink-2)' }}>Al<br /><DateField value={al} onChange={e => setAl(e.target.value)} style={{ padding: 6, border: '1px solid var(--border)', borderRadius: 6 }} /></label>
+        {/* Tasti rapidi durata: Al = dal + (N-1) giorni. */}
+        {[2,3,4,5,6].map(n => (
+          <button key={n} type="button" title={`${n} giorni dal ${dal ? formatDate(dal) : 'oggi'}`}
+            onClick={() => { const base = dal || todayISO(); const d = new Date(base + 'T12:00:00'); d.setDate(d.getDate() + (n - 1)); const iso = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; setDal(base); setAl(iso); }}
+            style={{ padding: '6px 10px', fontSize: 12, border: '1px solid var(--border)', borderRadius: 6, background: 'transparent', cursor: 'pointer', color: 'var(--ink-2)' }}>{n}g</button>
+        ))}
         {righe[0] && righe[0].giorni > 0 && <span style={{ fontSize: 12, color: 'var(--ink-2)' }}>{righe[0].giorni} giorni</span>}
         {dal && al && (
           <button type="button" onClick={copiaLink} title="Copia link condivisibile con queste date"
@@ -14530,7 +14552,7 @@ function CuorePreventiviPage({ listino, fleet, rentmeVehicles, prenotazioni, tar
                   style={{ flex: 1, padding: '8px 12px', borderRadius: 6, border: 'none', fontWeight: 700, fontSize: 13, cursor: pieno ? 'not-allowed' : 'pointer', background: pieno ? 'var(--surface-2)' : 'var(--sea)', color: pieno ? 'var(--ink-2)' : '#fff' }}>
                   {pieno ? 'Nessun mezzo libero' : 'Prenota →'}
                 </button>
-                <button type="button" onClick={() => { setPdfCliente({ nome: '', tel: '', email: '' }); setPdfTarget(r); }} disabled={!(r.giorni > 0)} title="Genera PDF del preventivo (anche se pieno: vale per altre date)"
+                <button type="button" onClick={() => { setPdfCliente({ nome: '', tel: '', email: '' }); setPdfImporto(String(r.prezzo ?? '')); setPdfTarget(r); }} disabled={!(r.giorni > 0)} title="Genera PDF del preventivo (anche se pieno: vale per altre date)"
                   style={{ padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', cursor: r.giorni > 0 ? 'pointer' : 'not-allowed', color: 'var(--ink-2)', display: 'inline-flex', alignItems: 'center' }}>
                   <Printer style={{ width: 14, height: 14 }} />
                 </button>
@@ -14546,14 +14568,17 @@ function CuorePreventiviPage({ listino, fleet, rentmeVehicles, prenotazioni, tar
         <div onClick={() => setPdfTarget(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
           <div onClick={e => e.stopPropagation()} className="card-paper" style={{ padding: 18, width: 380, maxWidth: '92vw' }}>
             <h3 style={{ fontFamily: 'var(--font-serif)', fontSize: 16, marginBottom: 2 }}>PDF preventivo · {pdfTarget.cat.nome}</h3>
-            <p style={{ fontSize: 12, color: 'var(--ink-2)', marginBottom: 10 }}>Dati cliente facoltativi (compaiono sul documento).</p>
+            <p style={{ fontSize: 12, color: 'var(--ink-2)', marginBottom: 10 }}>Importo modificabile · dati cliente facoltativi (compaiono sul documento).</p>
             <div style={{ display: 'grid', gap: 8 }}>
+              <label style={{ fontSize: 11, color: 'var(--ink-2)', fontWeight: 600 }}>Importo (€)
+                <input type="number" min="0" style={{ width: '100%', padding: '7px 9px', border: '1px solid var(--sea)', borderRadius: 6, fontSize: 14, fontWeight: 700, marginTop: 3, fontFamily: 'var(--font-mono, monospace)' }} value={pdfImporto} onChange={e => setPdfImporto(e.target.value)} placeholder="prezzo del periodo" />
+              </label>
               <input style={{ padding: '7px 9px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 13 }} placeholder="Nome e cognome" value={pdfCliente.nome} onChange={e => setPdfCliente(c => ({ ...c, nome: e.target.value }))} />
               <input style={{ padding: '7px 9px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 13 }} placeholder="Telefono" value={pdfCliente.tel} onChange={e => setPdfCliente(c => ({ ...c, tel: e.target.value }))} />
               <input style={{ padding: '7px 9px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 13 }} placeholder="Email" value={pdfCliente.email} onChange={e => setPdfCliente(c => ({ ...c, email: e.target.value }))} />
             </div>
             <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-              <button type="button" onClick={() => pdfDi(pdfTarget, pdfCliente)}
+              <button type="button" onClick={() => pdfDi(pdfTarget, pdfCliente, pdfImporto)}
                 style={{ flex: 1, padding: '9px 14px', borderRadius: 7, border: 'none', background: 'var(--sea)', color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
                 Genera PDF
               </button>
@@ -15591,7 +15616,9 @@ function VeicoloStatsModal({ vehicle, prenotazioni, onClose, resolve }) {
     });
     const giorni = inAnno.reduce((s, p) => s + Math.max(0, daysDiff(p.dal, p.al)), 0);
     const revenue = inAnno.reduce((s, p) => s + safePrezzo(p), 0);
-    const occupazione = Math.min(100, Math.round(giorni / 365 * 100));
+    // Regola STAGIONE: occupazione su MAGGIO→OTTOBRE (184 giorni), non sull'anno intero.
+    // L'attività è stagionale → /365 diluiva coi mesi morti. (184 = 1 mag–31 ott)
+    const occupazione = Math.min(100, Math.round(giorni / 184 * 100));
     return { n: inAnno.length, giorni, revenue, occupazione };
   }, [prenotazioni, vehicle, resolve]);
 
@@ -15632,7 +15659,7 @@ function VeicoloStatsModal({ vehicle, prenotazioni, onClose, resolve }) {
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
             {card('Prenotazioni', curr.n)}
             {card('Giorni noleggiati', curr.giorni, `su 365 disponibili`)}
-            {card('Occupazione', `${curr.occupazione}%`, curr.giorni > 0 ? `${curr.giorni}g / 365g` : 'nessun dato',
+            {card('Occupazione', `${curr.occupazione}%`, curr.giorni > 0 ? `${curr.giorni}g / 184g (mag–ott)` : 'nessun dato',
               curr.occupazione >= 70 ? '#2e6e3e' : curr.occupazione >= 40 ? '#b87333' : 'var(--ink)')}
             {card('Revenue', `€${curr.revenue.toLocaleString('it-IT')}`, curr.n > 0 ? `€${Math.round(curr.revenue / Math.max(1, curr.n))}/pren.` : '')}
           </div>
@@ -15645,7 +15672,7 @@ function VeicoloStatsModal({ vehicle, prenotazioni, onClose, resolve }) {
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
             {card('Prenotazioni', prev.n)}
             {card('Giorni noleggiati', prev.giorni)}
-            {card('Occupazione', `${prev.occupazione}%`, `${prev.giorni}g / 365g`)}
+            {card('Occupazione', `${prev.occupazione}%`, `${prev.giorni}g / 184g (mag–ott)`)}
             {card('Revenue', `€${prev.revenue.toLocaleString('it-IT')}`)}
           </div>
         </div>
