@@ -14613,6 +14613,7 @@ function Sidebar({ page, setPage, onNew, online, agency, rentmeSyncStatus, rentm
       { id: 'cuore_consegna', label: 'Consegna',    icon: Sparkles },
       { id: 'cuore_rientro',  label: 'Rientro',     icon: Sparkles },
       { id: 'banco',          label: 'Banco rapido',icon: Zap, badge: rentmeAlertCount > 0 ? rentmeAlertCount : null },
+      { id: 'report',         label: 'Report',      icon: BarChart2 },
     ]},
     { header: 'Mezzi', items: [
       { id: 'fleet',        label: 'Flotta',        icon: Car },
@@ -14625,7 +14626,6 @@ function Sidebar({ page, setPage, onNew, online, agency, rentmeSyncStatus, rentm
     { header: 'Finance', items: [
       { id: 'cassa',        label: 'Cassa',         icon: Wallet },
       { id: 'listino',      label: 'Prezzi',        icon: Pencil },
-      { id: 'report',       label: 'Report',        icon: BarChart2 },
       { id: 'finance',      label: 'Finance',       icon: Lock },
     ]},
     { header: null, sep: true, items: [
