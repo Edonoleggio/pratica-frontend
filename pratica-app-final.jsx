@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef, useCallback, memo, Component, Fragment } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback, memo, Component, Fragment, createContext, useContext } from 'react';
 import { createPortal } from 'react-dom';
 import { CalendarDays, Receipt, BarChart2,
   LayoutDashboard, FileText, Car, Users, Settings, Plus, Search,
@@ -515,7 +515,7 @@ const INITIAL_CARGOS_CONFIG = {
 // ═══════════════════════════════════════════════════════════════════
 // VEHICLE TYPES
 // ═══════════════════════════════════════════════════════════════════
-const VEHICLE_TYPES = {
+const VEHICLE_TYPES_BASE = {
   auto:        { label: 'Auto',    short: 'Auto',    cargosCode: 'A',  cargosRequired: true,  hasPlate: true,  needsLicense: 'B',    description: 'Autoveicolo ≥ 4 ruote · CARGOS obbligatorio' },
   pulmino:     { label: 'Pulmino', short: 'Pulmino', cargosCode: 'A',  cargosRequired: true,  hasPlate: true,  needsLicense: 'B',    description: 'Furgone/9 posti ≥ 4 ruote · CARGOS obbligatorio' },
   scooter:     { label: 'Scooter', short: 'Scooter', cargosCode: 'M',  cargosRequired: false, hasPlate: true,  needsLicense: 'AM/A', description: 'Motoveicolo 2 ruote · escluso da CARGOS' },
@@ -525,6 +525,36 @@ const VEHICLE_TYPES = {
   bicicletta:  { label: 'E-bike',  short: 'E-bike',  cargosCode: null, cargosRequired: false, hasPlate: false, needsLicense: null,   description: 'Bicicletta a pedalata assistita' },
   bici:        { label: 'Bici',    short: 'Bici',    cargosCode: null, cargosRequired: false, hasPlate: false, needsLicense: null,   description: 'Bicicletta muscolare · nessun motore' },
 };
+
+// ── TIPI VEICOLO PERSONALIZZATI (self-service, eredità famiglia) ──────
+// I tipi custom NON definiscono attributi legali a mano: scelgono una
+// "famiglia" tra quelle base e ne EREDITANO cargosCode/cargosRequired/
+// hasPlate/needsLicense — impossibile sbagliare la comunicazione Questura.
+// Famiglie offerte = tipi base "canonici" (no alias moto/bicicletta).
+const VEHICLE_FAMILIES = ['auto', 'scooter', 'quad', 'ebike', 'bici'];
+function mergeVehicleTypes(base, custom) {
+  const out = { ...base };
+  for (const ct of (custom || [])) {
+    if (!ct || !ct.key) continue;
+    const fam = base[ct.family] || base.auto;
+    out[ct.key] = {
+      label:          ct.label || ct.key,
+      short:          ct.short || ct.label || ct.key,
+      cargosCode:     fam.cargosCode,
+      cargosRequired: fam.cargosRequired,
+      hasPlate:       fam.hasPlate,
+      needsLicense:   fam.needsLicense,
+      description:    `${ct.label || ct.key} · come ${fam.label} (${fam.description})`,
+      custom:         true,
+      family:         ct.family,
+    };
+  }
+  return out;
+}
+// Context: il valore di default è la mappa base, così i componenti renderizzati
+// fuori dal Provider (es. modalità banco) funzionano comunque con i tipi base.
+const VehicleTypesCtx = createContext(VEHICLE_TYPES_BASE);
+const useVehicleTypes = () => useContext(VehicleTypesCtx);
 
 // ── canonicalTipo(v) ─────────────────────────────────────────────────
 // Funzione centralizzata che normalizza il tipo di un veicolo per UI,
@@ -748,7 +778,10 @@ function makeId(prefix) {
 // ═══════════════════════════════════════════════════════════════════
 // VEHICLE ICONS — memoized
 // ═══════════════════════════════════════════════════════════════════
-const VehicleIcon = memo(function VehicleIcon({ type, className = 'w-5 h-5' }) {
+const VehicleIcon = memo(function VehicleIcon({ type: rawType, className = 'w-5 h-5' }) {
+  // I tipi custom ereditano l'icona dalla loro famiglia (vt[rawType].family).
+  const vt = useVehicleTypes();
+  const type = vt[rawType]?.family || rawType;
   if (type === 'auto' || type === 'pulmino') return <Car className={className} />;
   if (type === 'scooter' || type === 'moto') return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
@@ -5297,6 +5330,7 @@ function ReportPage({ prenotazioni, contracts, cassa, customers, fleet, operator
 // ═══════════════════════════════════════════════════════════════════
 
 function ListinoEditor({ listino, onSave }) {
+  const VEHICLE_TYPES = useVehicleTypes();
   const [draft, setDraft] = useState(() => JSON.parse(JSON.stringify(listino)));
   const [dirty, setDirty] = useState(false);
   // Self-service: aggiungere/togliere categorie di prezzo (oltre a modificare le tariffe).
@@ -5415,6 +5449,90 @@ function ListinoEditor({ listino, onSave }) {
 
       <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 8 }}>
         Le modifiche si sincronizzano automaticamente con il backend e aggiornano i preventivi in tempo reale.
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// TIPI VEICOLO EDITOR — self-service con eredità famiglia (v0.46)
+// Crea tipi di veicolo nuovi SENZA toccare gli attributi legali a mano:
+// si sceglie una "famiglia" (Auto/Scooter/Quad/E-bike/Bici) e il tipo
+// eredita CARGOS, patente e targa corretti. Niente errori Questura.
+// ═══════════════════════════════════════════════════════════════════
+function slugifyTipo(label, taken) {
+  let base = String(label || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '');
+  if (!base) base = 'tipo';
+  let key = base, i = 2;
+  while (taken.has(key)) { key = base + i; i++; }
+  return key;
+}
+function VehicleTypesEditor({ customTypes, onSave, pushToast }) {
+  const list = customTypes || [];
+  const [label, setLabel] = useState('');
+  const [family, setFamily] = useState('auto');
+
+  const famInfo = (fam) => {
+    const f = VEHICLE_TYPES_BASE[fam] || VEHICLE_TYPES_BASE.auto;
+    return `${f.cargosRequired ? 'CARGOS Questura' : 'no CARGOS'} · patente ${f.needsLicense || '—'} · ${f.hasPlate ? 'con targa' : 'senza targa'}`;
+  };
+
+  function aggiungi() {
+    const nome = label.trim();
+    if (!nome) return;
+    const taken = new Set([...Object.keys(VEHICLE_TYPES_BASE), ...list.map(c => c.key)]);
+    const key = slugifyTipo(nome, taken);
+    onSave([...list, { key, label: nome, family }]);
+    setLabel('');
+    pushToast?.({ tone: 'success', title: 'Tipo aggiunto', message: `${nome} (come ${VEHICLE_TYPES_BASE[family].label})` });
+  }
+  function rimuovi(key) {
+    onSave(list.filter(c => c.key !== key));
+    pushToast?.({ tone: 'warning', title: 'Tipo rimosso' });
+  }
+
+  const sel = { padding: '6px 9px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 13, background: 'var(--bg)', color: 'var(--ink)' };
+
+  return (
+    <div>
+      <p style={{ margin: '0 0 12px', fontSize: 12, color: 'var(--muted)' }}>
+        Aggiungi un tipo di veicolo nuovo. Scegli la <strong>famiglia</strong>: il tipo eredita automaticamente
+        CARGOS, patente e targa corretti — così la comunicazione alla Questura resta giusta.
+      </p>
+
+      {list.length > 0 && (
+        <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', marginBottom: 14 }}>
+          {list.map(c => (
+            <div key={c.key} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderBottom: '1px solid var(--border)', background: 'var(--surface-2)' }}>
+              <span style={{ fontFamily: 'var(--font-serif)', fontWeight: 600, fontSize: 14 }}>{c.label}</span>
+              <span className="label" style={{ color: 'var(--sea)' }}>come {VEHICLE_TYPES_BASE[c.family]?.label || c.family}</span>
+              <span style={{ fontSize: 11, color: 'var(--muted)', marginLeft: 'auto' }}>{famInfo(c.family)}</span>
+              <button type="button" onClick={() => rimuovi(c.key)} title="Rimuovi questo tipo" aria-label={`Rimuovi ${c.label}`}
+                style={{ border: 'none', background: 'transparent', color: 'var(--accent)', cursor: 'pointer', fontSize: 16, fontWeight: 700 }}>×</button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+        <div>
+          <label style={{ display: 'block', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--ink-2)', marginBottom: 4 }}>Nome tipo</label>
+          <input value={label} onChange={e => setLabel(e.target.value)} placeholder="es. Microcar"
+            style={{ padding: '6px 9px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 13, background: 'var(--bg)', color: 'var(--ink)', width: 180 }} />
+        </div>
+        <div>
+          <label style={{ display: 'block', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--ink-2)', marginBottom: 4 }}>Famiglia legale</label>
+          <select value={family} onChange={e => setFamily(e.target.value)} style={sel}>
+            {VEHICLE_FAMILIES.map(f => <option key={f} value={f}>{VEHICLE_TYPES_BASE[f].label}</option>)}
+          </select>
+        </div>
+        <button type="button" onClick={aggiungi} disabled={!label.trim()}
+          style={{ padding: '6px 14px', borderRadius: 6, border: 'none', background: label.trim() ? 'var(--sea)' : 'var(--border)', color: '#fff', fontWeight: 600, fontSize: 12, cursor: label.trim() ? 'pointer' : 'default' }}>
+          Aggiungi tipo
+        </button>
+        <span style={{ fontSize: 11, color: 'var(--muted)', flexBasis: '100%' }}>
+          Erediterà: <strong>{famInfo(family)}</strong>. Dopo, in "Prezzi" puoi aggiungere le sue tariffe scegliendolo dalla tendina.
+        </span>
       </div>
     </div>
   );
@@ -9805,6 +9923,10 @@ export default function App() {
   // Le chiavi 'edo:v1:' devono combaciare con quelle che usa il backend (path /api/store/edo:v1:fleet).
   // Sync flow: load da backend in background → save debounced 1.5s → fallback localStorage se offline.
   const sharedOpts = { baseUrl: apiBaseUrl };
+  // Tipi di veicolo personalizzati (self-service): sincronizzati come il listino,
+  // così valgono su tutti i tablet. Fusi con i tipi base in `vehicleTypes`.
+  const [customVehicleTypes, setCustomVehicleTypes, customVehicleTypesSync] = usePersistentState('edo:v1:customVehicleTypes', [], sharedOpts);
+  const vehicleTypes = useMemo(() => mergeVehicleTypes(VEHICLE_TYPES_BASE, customVehicleTypes), [customVehicleTypes]);
   const [listino, setListino, listinoSync] = usePersistentState('edo:v1:listino', LISTINO,            { ...sharedOpts, migrate: migrateListino });
   const [fleet,        setFleet,        fleetSync]     = usePersistentState('edo:v1:fleet',     [],                      { ...sharedOpts, migrate: migrateFleet });
   const [customers,    setCustomers,    customersSync] = usePersistentState('edo:v1:customers', INITIAL_CUSTOMERS,       sharedOpts);
@@ -10915,6 +11037,7 @@ export default function App() {
   }
 
   if (kioskMode) return (
+    <VehicleTypesCtx.Provider value={vehicleTypes}>
     <div className={`pratica-app${darkMode ? ' dark-mode' : ''}`}>
       <Styles />
       <KioskView
@@ -10929,10 +11052,11 @@ export default function App() {
         onExit={() => setKioskMode(false)}
       />
     </div>
+    </VehicleTypesCtx.Provider>
   );
 
   return (
-    <>
+    <VehicleTypesCtx.Provider value={vehicleTypes}>
       <Styles />
       <div className={`pratica-app flex${darkMode ? ' dark-mode' : ''}`}>
         {!kioskMode && <Sidebar page={page} setPage={setPage} onNew={() => openWizard()} online={online && cargosConfig.enabled} agency={agency} rentmeSyncStatus={rentmeSync.status} rentmeAlertCount={rentmeSync.status === 'ok' ? cuoreAlertCount : 0} rentmeRetryCount={(() => { try { return JSON.parse(localStorage.getItem('rentme_pending_queue') || '[]').length; } catch { return 0; } })()} offlineSyncCount={Object.values(allSyncStatus).filter(s => s?.remoteStatus === 'offline' || s?.remoteStatus === 'error').length} />}
@@ -10979,6 +11103,10 @@ export default function App() {
               {page === 'listino'    && <div style={{padding:'28px 32px',maxWidth:900,margin:'0 auto'}}>
                 <h1 style={{margin:'0 0 6px',fontSize:22,fontFamily:'var(--font-serif)',fontWeight:600}}>Gestione prezzi</h1>
                 <p style={{margin:'0 0 20px',fontSize:13,color:'var(--muted)'}}>Modifica le tariffe del listino per stagione. Le modifiche si riflettono subito nei preventivi.</p>
+                <div style={{marginBottom:32}}>
+                  <h2 style={{margin:'0 0 12px',fontSize:16,fontFamily:'var(--font-serif)',fontWeight:600}}>Tipi di veicolo</h2>
+                  <VehicleTypesEditor customTypes={customVehicleTypes} onSave={setCustomVehicleTypes} pushToast={pushToast} />
+                </div>
                 <ListinoEditor listino={listino} onSave={(l)=>{setListino(l); pushToast && pushToast({tone:'success',title:'Listino aggiornato',message:'Tariffe salvate e sincronizzate'});}} />
                 <div style={{marginTop:32}}>
                   <h2 style={{margin:'0 0 12px',fontSize:16,fontFamily:'var(--font-serif)',fontWeight:600}}>Stagioni</h2>
@@ -11074,7 +11202,7 @@ export default function App() {
           onClose={() => setShowGlobalSearch(false)}
         />
       )}
-    </>
+    </VehicleTypesCtx.Provider>
   );
 }
 
@@ -15880,6 +16008,7 @@ function ManutenzioniModal({ vehicle, manutenzioni, setManutenzioni, onClose }) 
 // FLEET
 // ═══════════════════════════════════════════════════════════════════
 function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, onDeleteVehicle, onImportCSV, onResetFleet, onSetFleet, scadenze, setScadenze, fermiFlotta, setFermiFlotta, rentmeVehicles, manutenzioni, setManutenzioni, partners, targhe, setTarghe, contracts, onApriContratto }) {
+  const VEHICLE_TYPES = useVehicleTypes();
   const [targaEdit, setTargaEdit] = useState(null); // {code,val} — modifica targa inline (Flotta unificata)
   const saveTarga = (code, val) => { if (setTarghe) setTarghe({ ...(targhe || {}), [code]: (val || '').toUpperCase().replace(/\s+/g, '') }); setTargaEdit(null); };
   const [typeFilter, setTypeFilter] = useState('all');
@@ -18380,6 +18509,7 @@ const Field = memo(function Field({ label, value, mono, wide }) {
 // WIZARD
 // ═══════════════════════════════════════════════════════════════════
 function Wizard({ onClose, prefillCustomer, operator, fleet, customers, partners, prenotazioni, onSubmit, agency }) {
+  const VEHICLE_TYPES = useVehicleTypes();
   const [step, setStep] = useState(prefillCustomer ? 3 : 1);
   const [data, setData] = useState({
     tipoVeicolo: prefillCustomer ? (prefillCustomer.tipoVeicolo || 'auto') : null,
@@ -18604,6 +18734,7 @@ function Wizard({ onClose, prefillCustomer, operator, fleet, customers, partners
 
 // ─── Step 1 — Tipo veicolo ────────────────────────────────────────
 function Step1Type({ data, update }) {
+  const VEHICLE_TYPES = useVehicleTypes();
   return (
     <div className="max-w-4xl mx-auto">
       <h3 className="serif text-2xl font-medium mb-2">Che tipo di veicolo si noleggia?</h3>
@@ -18862,6 +18993,7 @@ function Step2Customer({ data, update, customers }) {
 
 // ─── Step 3 — Veicolo ─────────────────────────────────────────────
 function Step3Vehicle({ data, update, fleet, prenotazioni }) {
+  const VEHICLE_TYPES = useVehicleTypes();
   const [query, setQuery] = useState('');
   // Nel wizard mostriamo solo i veicoli noleggiabili (disponibili).
   // Quelli fermi, incidentati o venduti sono visibili solo nella pagina Flotta.
@@ -19182,6 +19314,7 @@ function StructureSelect({ label, req, partners, structureId, onStructureChange,
 
 // ─── Step 5 — Conferma ────────────────────────────────────────────
 function Step5Confirm({ data, operator, partners, onShowPdf, onShowFirma, update, agency, contractId, contractDate }) {
+  const VEHICLE_TYPES = useVehicleTypes();
   const t = VEHICLE_TYPES[data.tipoVeicolo] || VEHICLE_TYPES.auto;
   // Disponibilità CARGOS: lo permette la normativa per questo tipo veicolo?
   const cargosAllowed = t.cargosRequired;
@@ -19374,6 +19507,7 @@ const SummaryRow = memo(function SummaryRow({ icon: Icon, label, value, sub }) {
 
 // ─── Result screen ────────────────────────────────────────────────
 function ResultScreen({ data, onClose, operator, submitResult, onShowPdf, contractId: contractIdProp }) {
+  const VEHICLE_TYPES = useVehicleTypes();
   const t = VEHICLE_TYPES[data.tipoVeicolo] || VEHICLE_TYPES.auto;
   const isCargosBound = t.cargosRequired;
 
@@ -19521,6 +19655,7 @@ function prenoToContractData(preno, fleet, customers, targhe, rentmeVehicles) {
 // CONTRACT PDF MODAL
 // ═══════════════════════════════════════════════════════════════════
 function ContractPdfModal({ data, operator, partners, onClose, agency, contractId: contractIdProp, contractDate: contractDateProp }) {
+  const VEHICLE_TYPES = useVehicleTypes();
   const printRef = useRef(null);
   const t = VEHICLE_TYPES[data.tipoVeicolo] || VEHICLE_TYPES.auto;
   const c = data.cliente?.full || {};
@@ -19792,6 +19927,7 @@ const cellMono  = { padding: '3px 0', fontSize: 10, fontFamily: "'JetBrains Mono
 // ═══════════════════════════════════════════════════════════════════
 
 function NewVehicleModal({ vehicle, onClose, onSave }) {
+  const VEHICLE_TYPES = useVehicleTypes();
   const editing = !!vehicle;
   const [form, setForm] = useState(vehicle || {
     tipo: 'auto', marca: '', modello: '', targa: '', colore: '',
@@ -20539,6 +20675,7 @@ function NewCustomerModal({ customer, onClose, onSave }) {
 // MODAL: PLATE SCANNER
 // ═══════════════════════════════════════════════════════════════════
 function PlateScanModal({ fleet, onClose }) {
+  const VEHICLE_TYPES = useVehicleTypes();
   const [stage, setStage] = useState('camera'); // 'camera' | 'review' | 'manual' | 'found' | 'notfound'
   const [snapshot, setSnapshot] = useState(null);   // dataURL della foto
   const [plateInput, setPlateInput] = useState(''); // targa estratta/inserita
