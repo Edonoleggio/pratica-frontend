@@ -2278,10 +2278,15 @@ function ConfirmModal({ title, message, confirmLabel = 'Conferma', cancelLabel =
 // Toast — feedback non-bloccante per azioni completate.
 // Si auto-chiude dopo 3 secondi. Click sul toast per chiuderlo subito.
 function Toast({ toast, onDismiss }) {
+  // onDismiss è ricreato inline a ogni render del container: usiamo un ref per
+  // non azzerare il timer ogni volta che lo stack toast cambia. Deps = solo
+  // l'identità del toast → il timer parte UNA volta e dura davvero 3s.
+  const onDismissRef = useRef(onDismiss);
+  onDismissRef.current = onDismiss;
   useEffect(() => {
-    const t = setTimeout(onDismiss, toast.duration || 3000);
+    const t = setTimeout(() => onDismissRef.current(), toast.duration || 3000);
     return () => clearTimeout(t);
-  }, [toast, onDismiss]);
+  }, [toast.id, toast.duration]);
 
   const tones = {
     success: { bg: '#e8f0db', border: 'var(--success)', icon: CheckCircle2 },
@@ -6886,13 +6891,17 @@ function FleetCSVImport({ fleet, onImport, onClose }) {
     // ── Modalità "Aggiorna + aggiungi" ──────────────────────────────────
     // Aggiorna i campi tecnici (tipo, modello, colore, cc, idRentme) dei mezzi
     // già in flotta abbinando per targa — NON tocca stato, scadenze, note.
-    const previewMap = new Map(preview.map(r => [(r.targa || '').toUpperCase(), r]));
+    // Chiave di abbinamento: targa se presente, altrimenti id/idRentme. I mezzi
+    // SENZA targa (bici/ebike) condividerebbero tutti la chiave '' → si perdevano
+    // o si sovrascrivevano a vicenda. Con la chiave per id ognuno è distinto.
+    const keyOf = (x) => (x.targa || '').toUpperCase() || ('ID:' + String(x.idRentme || x.id || '').toUpperCase());
+    const previewMap = new Map(preview.map(r => [keyOf(r), r]));
     let nUpdated = 0;
     const updatedFleet = (fleet || []).map(v => {
-      const t = (v.targa || '').toUpperCase();
-      if (!previewMap.has(t)) return v;
+      const k = keyOf(v);
+      if (k === 'ID:' || !previewMap.has(k)) return v;
       nUpdated++;
-      const fresh = previewMap.get(t);
+      const fresh = previewMap.get(k);
       return {
         ...v,
         tipo:     fresh.tipo     || v.tipo,
@@ -6902,8 +6911,8 @@ function FleetCSVImport({ fleet, onImport, onClose }) {
         cc:       fresh.cc       || v.cc,
       };
     });
-    const existingTargas = new Set((fleet || []).map(v => (v.targa || '').toUpperCase()));
-    const toAdd = preview.filter(r => !existingTargas.has((r.targa || '').toUpperCase()));
+    const existingKeys = new Set((fleet || []).map(keyOf));
+    const toAdd = preview.filter(r => !existingKeys.has(keyOf(r)));
     onImport([...updatedFleet, ...toAdd]);
     setAdded(toAdd.length);
     setUpdated(nUpdated);
@@ -7571,11 +7580,11 @@ function ClienteStoricoPanel({ cliente, prenotazioni, contracts, onClose }) {
       const nome = [p.clienteCognome, p.clienteNome].filter(Boolean).join(' ').toLowerCase();
       const cNome = [cliente.cognome, cliente.nome].filter(Boolean).join(' ').toLowerCase();
       return p.clienteId === cliente.id || nome === cNome;
-    }).sort((a,b) => b.dal.localeCompare(a.dal));
+    }).sort((a,b) => (b.dal||'').localeCompare(a.dal||''));
   }, [prenotazioni, cliente]);
 
   const contr = useMemo(() => {
-    return (contracts||[]).filter(c => c.record?.cognome?.toLowerCase() === (cliente.cognome||'').toLowerCase()).sort((a,b) => b.createdAt.localeCompare(a.createdAt));
+    return (contracts||[]).filter(c => c.record?.cognome?.toLowerCase() === (cliente.cognome||'').toLowerCase()).sort((a,b) => (b.createdAt||'').localeCompare(a.createdAt||''));
   }, [contracts, cliente]);
 
   const spesaTotale  = preno.reduce((s,p) => s + safePrezzo(p), 0);
@@ -7697,13 +7706,15 @@ const SCADENZE_TIPI = {
 };
 
 // Restituisce 'scaduto' | 'urgente' | 'ok' | null per una data ISO
-function scadenzaStatus(dataISO) {
+function scadenzaStatus(dataISO, tipo) {
   if (!dataISO) return null;
   const today  = new Date(); today.setHours(0,0,0,0);
   const target = new Date(dataISO + 'T00:00:00');
   const diffDays = Math.round((target - today) / 86400000);
   if (diffDays < 0)  return 'scaduto';
-  if (diffDays <= 30) return 'urgente';
+  // Soglia "urgente" per-tipo (tagliando=14, gli altri=30); 30 di default se tipo ignoto.
+  const urgency = (tipo && SCADENZE_TIPI[tipo]?.urgencyDays) || 30;
+  if (diffDays <= urgency) return 'urgente';
   return 'ok';
 }
 
@@ -7716,7 +7727,7 @@ const SCAD_COLOR = {
 // Calcola il peggiore stato scadenze per un veicolo
 function worstScadenza(vehScadenze) {
   if (!vehScadenze) return null;
-  const statuses = Object.values(vehScadenze).map(s => scadenzaStatus(s?.data)).filter(Boolean);
+  const statuses = Object.entries(vehScadenze).map(([tipo, s]) => scadenzaStatus(s?.data, tipo)).filter(Boolean);
   if (statuses.includes('scaduto')) return 'scaduto';
   if (statuses.includes('urgente')) return 'urgente';
   if (statuses.includes('ok'))      return 'ok';
@@ -7772,7 +7783,7 @@ function ScadenzeModal({ vehicle, scadenze, onSave, onClose }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           {Object.entries(SCADENZE_TIPI).map(([tipo, def]) => {
             const val  = draft[tipo];
-            const stato = scadenzaStatus(val.data);
+            const stato = scadenzaStatus(val.data, tipo);
             const c = stato ? SCAD_COLOR[stato] : null;
             const diffDays = val.data ? Math.round((new Date(val.data+'T00:00:00') - new Date(oggi+'T00:00:00')) / 86400000) : null;
             return (
@@ -7830,7 +7841,7 @@ function ScadenzeWidget({ fleet, scadenze, onGoFlotta }) {
       Object.entries(SCADENZE_TIPI).forEach(([tipo, def]) => {
         const data = vScad[tipo]?.data;
         if (!data) return;
-        const stato = scadenzaStatus(data);
+        const stato = scadenzaStatus(data, tipo);
         if (stato === 'ok') return;
         const diffDays = Math.round((new Date(data+'T00:00:00') - new Date(today+'T00:00:00')) / 86400000);
         result.push({ vehicle: v, tipo, def, data, stato, diffDays });
@@ -7903,9 +7914,20 @@ function buildWAReminder(preno, agency, tipo) {
     testo = `Ciao ${nome}! 👋\nTi ricordiamo che oggi *${preno.al}* è l'ultimo giorno del tuo noleggio.\nPuoi riconsegnare il mezzo presso ${agenzia} entro le ore 19:00.${tel}\n\nGrazie e arrivederci! 🌊`;
   }
 
-  const rawPhone = (preno.clienteTel || '').replace(/\D/g,'').replace(/^0+/,'');
-  const phone = rawPhone.startsWith('390') ? rawPhone.replace(/^390/,'39') : rawPhone;
-  const base  = phone ? `https://wa.me/${phone.startsWith('39') ? phone : '39'+phone}` : 'https://wa.me/';
+  // Normalizzazione robusta (clientela anche estera + fissi italiani):
+  //  - 00xx…  = prefisso internazionale → si toglie il 00 e si usa il country code
+  //  - 39…    = già italiano internazionale → invariato
+  //  - 3…/0…  = numero italiano locale (mobile 3xx o FISSO 0xx) → anteponi 39 SENZA
+  //             togliere lo 0 (i fissi italiani lo conservano: +39 0922 …)
+  //  - altro  = numero estero già con country code → invariato (niente 39 forzato)
+  const raw = (preno.clienteTel || '').replace(/\D/g, '');
+  let intl;
+  if (!raw) intl = '';
+  else if (raw.startsWith('00')) intl = raw.slice(2);
+  else if (raw.startsWith('39') && raw.length >= 11) intl = raw;
+  else if (raw.startsWith('3') || raw.startsWith('0')) intl = '39' + raw;
+  else intl = raw;
+  const base = intl ? `https://wa.me/${intl}` : 'https://wa.me/';
   return `${base}?text=${encodeURIComponent(testo)}`;
 }
 
@@ -8374,18 +8396,25 @@ function ImportStoricoModal({ existingPreno, existingCustomers, onImport, onClos
 // Comprime un'immagine a max maxW px di larghezza, qualità 0.75
 function compressImage(file, maxW = 800) {
   return new Promise((resolve) => {
+    // onerror su reader E img: un file corrotto/non-immagine NON deve lasciare
+    // la Promise appesa (bloccava il modale foto su "…"). In errore → resolve(null),
+    // il chiamante filtra i null.
     const reader = new FileReader();
+    reader.onerror = () => resolve(null);
     reader.onload = (e) => {
       const img = new Image();
+      img.onerror = () => resolve(null);
       img.onload = () => {
-        const scale = Math.min(1, maxW / img.width);
-        const w = Math.round(img.width * scale);
-        const h = Math.round(img.height * scale);
-        const canvas = document.createElement('canvas');
-        canvas.width  = w;
-        canvas.height = h;
-        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-        resolve(canvas.toDataURL('image/jpeg', 0.75));
+        try {
+          const scale = Math.min(1, maxW / img.width);
+          const w = Math.round(img.width * scale);
+          const h = Math.round(img.height * scale);
+          const canvas = document.createElement('canvas');
+          canvas.width  = w;
+          canvas.height = h;
+          canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+          resolve(canvas.toDataURL('image/jpeg', 0.75));
+        } catch { resolve(null); }
       };
       img.src = e.target.result;
     };
@@ -8419,7 +8448,7 @@ function FotoModal({ prenotazione, onSave, onClose }) {
   async function handleFiles(fase, files) {
     if (!files?.length) return;
     setLoading(true);
-    const compressed = await Promise.all([...files].slice(0, MAX_FOTO - foto[fase].length).map(f => compressImage(f)));
+    const compressed = (await Promise.all([...files].slice(0, MAX_FOTO - foto[fase].length).map(f => compressImage(f)))).filter(Boolean);
     setFoto(prev => ({ ...prev, [fase]: [...prev[fase], ...compressed].slice(0, MAX_FOTO) }));
     setLoading(false);
   }
@@ -16072,7 +16101,7 @@ function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, on
       const s = (v == null ? '' : String(v));
       return /[";\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
     };
-    const statoLabel = (d) => { const st = scadenzaStatus(d); return st === 'scaduto' ? 'SCADUTO' : st === 'urgente' ? 'in scadenza' : st === 'ok' ? 'ok' : ''; };
+    const statoLabel = (d, tipo) => { const st = scadenzaStatus(d, tipo); return st === 'scaduto' ? 'SCADUTO' : st === 'urgente' ? 'in scadenza' : st === 'ok' ? 'ok' : ''; };
     const headers = ['Targa', 'Tipo', 'Modello', 'Stato mezzo',
       'Revisione', 'Stato rev.', 'Assicurazione', 'Stato ass.', 'Tagliando', 'Stato tagl.', 'Bollo', 'Stato bollo',
       'Manutenzioni aperte', 'Prossima manutenzione', 'Fermo attivo'];
@@ -16083,10 +16112,10 @@ function FleetPage({ fleet, prenotazioni, admin, onAddVehicle, onEditVehicle, on
       const fermo = (fermiFlotta || []).find(f => f.vehicleId === v.id && f.dal <= today && f.al >= today);
       return [
         v.targa || '', canonicalTipo(v) || v.tipo || '', v.modello || v.label || '', v.stato || 'available',
-        sc.revisione || '', statoLabel(sc.revisione),
-        sc.assicurazione || '', statoLabel(sc.assicurazione),
-        sc.tagliando || '', statoLabel(sc.tagliando),
-        sc.bollo || '', statoLabel(sc.bollo),
+        sc.revisione || '', statoLabel(sc.revisione, 'revisione'),
+        sc.assicurazione || '', statoLabel(sc.assicurazione, 'assicurazione'),
+        sc.tagliando || '', statoLabel(sc.tagliando, 'tagliando'),
+        sc.bollo || '', statoLabel(sc.bollo, 'bollo'),
         manOpen.length || '',
         nextMan ? `${nextMan.dataScadenza} ${nextMan.tipo || nextMan.descrizione || ''}`.trim() : '',
         fermo ? `${fermo.dal}→${fermo.al} ${fermo.motivo || ''}`.trim() : '',
