@@ -10274,7 +10274,12 @@ export default function App() {
   }, [setPrenotazioni, setFleet, setCustomers, setCassa, setScadenze, setOperators, setPartners, setAgency, setListino, setStagioni, pushToast]);
 
   // Stato di sessione (non persistente — si resetta a ogni apertura)
-  const [admin, setAdmin]                 = useState(false);
+  // Un account con ruolo 'admin' entra con la Modalità Admin già attiva: la
+  // inizializziamo dalla sessione salvata così resta attiva anche dopo un refresh.
+  const [admin, setAdmin]                 = useState(() => {
+    try { const raw = sessionStorage.getItem(APP_SESSION_KEY); return raw ? JSON.parse(raw).role === 'admin' : false; }
+    catch { return false; }
+  });
   const [manualOffline, setManualOffline] = useState(false);  // toggle manuale per testing
   const [operatorIdx, setOperatorIdx]     = useState(0);
   // Persistenza operatore attivo (per ID): al refresh NON deve cambiare in
@@ -10876,7 +10881,7 @@ export default function App() {
         <Styles />
         <LoginPage
           appUsers={appUsers}
-          onLogin={(session) => setSessionUser(session)}
+          onLogin={(session) => { setSessionUser(session); setAdmin(session.role === 'admin'); }}
         />
       </>
     );
@@ -17111,20 +17116,20 @@ function PartnersPage({ partners, admin, onAddPartner, onEditPartner, onDeletePa
 function SecuritySection({ appUsers, setAppUsers, onLogout, pushToast }) {
   const users = (appUsers && appUsers.length > 0) ? appUsers : APP_DEFAULT_USERS;
   const [editing, setEditing] = useState(null); // userId in modifica
-  const [form, setForm] = useState({ username: '', password: '', password2: '' });
+  const [form, setForm] = useState({ username: '', password: '', password2: '', role: 'operator' });
   const [showPwd, setShowPwd] = useState(false);
   const [addMode, setAddMode] = useState(false);
 
   const openEdit = (u) => {
     setEditing(u.id);
     setAddMode(false);
-    setForm({ username: u.username, password: '', password2: '' });
+    setForm({ username: u.username, password: '', password2: '', role: u.role === 'admin' ? 'admin' : 'operator' });
     setShowPwd(false);
   };
   const openAdd = () => {
     setEditing(null);
     setAddMode(true);
-    setForm({ username: '', password: '', password2: '' });
+    setForm({ username: '', password: '', password2: '', role: 'operator' });
     setShowPwd(false);
   };
   const cancel = () => { setEditing(null); setAddMode(false); };
@@ -17136,6 +17141,7 @@ function SecuritySection({ appUsers, setAppUsers, onLogout, pushToast }) {
       u.id === editing ? {
         ...u,
         username: form.username.trim().toLowerCase(),
+        role: form.role === 'admin' ? 'admin' : 'operator',
         ...(form.password ? { password: form.password } : {}),
       } : u
     ));
@@ -17151,7 +17157,7 @@ function SecuritySection({ appUsers, setAppUsers, onLogout, pushToast }) {
     if (existing.find(u => u.username.toLowerCase() === form.username.trim().toLowerCase())) {
       return pushToast?.({ tone: 'error', title: 'Username già esistente' });
     }
-    const newUser = { id: `u-${Date.now()}`, username: form.username.trim().toLowerCase(), password: form.password, role: 'operator', nome: form.username.trim() };
+    const newUser = { id: `u-${Date.now()}`, username: form.username.trim().toLowerCase(), password: form.password, role: form.role === 'admin' ? 'admin' : 'operator', nome: form.username.trim() };
     setAppUsers([...existing, newUser]);
     pushToast?.({ tone: 'success', title: 'Utente aggiunto', message: newUser.username });
     cancel();
@@ -17230,6 +17236,29 @@ function SecuritySection({ appUsers, setAppUsers, onLogout, pushToast }) {
               <label className="block text-[11px] font-semibold mb-1" style={{ color: 'var(--ink-2)' }}>Conferma password</label>
               <input style={inputStyle} type={showPwd ? 'text' : 'password'} value={form.password2} onChange={e => setForm(f => ({ ...f, password2: e.target.value }))} placeholder="ripeti password" autoComplete="new-password" />
             </div>
+          </div>
+          {/* Ruolo: un account Amministratore entra con i poteri admin già attivi */}
+          <div className="mb-3">
+            <label className="block text-[11px] font-semibold mb-1" style={{ color: 'var(--ink-2)' }}>Ruolo</label>
+            <div className="grid grid-cols-2 gap-2">
+              <button type="button" onClick={() => setForm(f => ({ ...f, role: 'operator' }))}
+                className="p-2.5 rounded border text-left flex items-center gap-2 transition-all"
+                style={{ borderColor: form.role !== 'admin' ? 'var(--sea)' : 'var(--border)', background: form.role !== 'admin' ? 'var(--bg)' : 'transparent' }}>
+                <UserCheck className="w-4 h-4" style={{ color: form.role !== 'admin' ? 'var(--sea)' : 'var(--muted)' }} />
+                <span className="text-xs font-medium">Operatore</span>
+              </button>
+              <button type="button" onClick={() => setForm(f => ({ ...f, role: 'admin' }))}
+                className="p-2.5 rounded border text-left flex items-center gap-2 transition-all"
+                style={{ borderColor: form.role === 'admin' ? 'var(--accent)' : 'var(--border)', background: form.role === 'admin' ? 'var(--accent-soft)' : 'transparent' }}>
+                <Shield className="w-4 h-4" style={{ color: form.role === 'admin' ? 'var(--accent)' : 'var(--muted)' }} />
+                <span className="text-xs font-medium">Amministratore</span>
+              </button>
+            </div>
+            {form.role === 'admin' && (
+              <p className="text-[11px] mt-1.5" style={{ color: 'var(--muted)' }}>
+                Entrando con questo account la <strong>Modalità Admin è già attiva</strong> (incassi, modifica flotta…). Usalo solo su dispositivi fidati.
+              </p>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <button type="submit" className="btn-primary px-4 py-1.5 rounded text-xs font-semibold">Salva</button>
