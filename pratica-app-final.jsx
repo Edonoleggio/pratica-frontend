@@ -1159,10 +1159,16 @@ function bookingHasContract(p, contracts) {
 // Riferimento: D.M. 29/10/2021, Allegato A (45 campi).
 // I codici tabellati (luoghi ISTAT, cittadinanza) usano valori provvisori
 // che il backend rimpiazzerà se necessario — qui si fa best-effort.
-function mapWizardToCargosRecord(data, operator, agency, partners) {
+function mapWizardToCargosRecord(data, operator, agency, partners, cargosCode) {
   const c = data.cliente?.full || {};
   const v = data.veicolo || {};
-  const tipoCargos = VEICOLO_CARGOS_CODE[v.tipo] || 'A';
+  // Il codice CARGOS ('A' auto · 'M' moto/quad · null escluso) è risolto dal
+  // CHIAMANTE tramite la mappa tipi-veicolo fusa (base + custom con eredità
+  // famiglia) — vedi submitContract. Niente più mappa hardcoded parziale con
+  // fallback "|| 'A'" che inviava alla Questura come auto ogni tipo ignoto
+  // (custom non-auto, base 'bici', alias). Se non passato, ricade sulla mappa
+  // base solo per retro-compatibilità di eventuali chiamanti legacy.
+  const tipoCargos = (cargosCode !== undefined) ? cargosCode : (VEICOLO_CARGOS_CODE[v.tipo] ?? 'A');
 
   const ritiroPartner = partners.find(p => p.id === data.ritiroStruttura);
   const consegnaPartner = partners.find(p => p.id === data.consegnaStruttura);
@@ -10637,10 +10643,29 @@ export default function App() {
   }, [localContracts]);
 
   const submitContract = useCallback(async (wizardData) => {
-    // 1. Map wizard data → CARGOS record
-    const record = mapWizardToCargosRecord(wizardData, operator, agency, partners);
+    // 1. Risolvi il codice CARGOS dalla mappa tipi-veicolo FUSA (base + custom).
+    //    I tipi custom ereditano cargosCode dalla famiglia; canonicalTipo
+    //    normalizza alias (moto→scooter, bicicletta→ebike, quad150→quad).
+    //    Fonte autorevole = vehicleTypes, NON più la mappa hardcoded parziale.
+    const vKey = canonicalTipo({ tipo: wizardData.veicolo?.tipo, modello: wizardData.veicolo?.modello || wizardData.veicolo?.nome });
+    const vType = vehicleTypes[vKey];
+    let cargosCode;
+    if (vType) {
+      cargosCode = vType.cargosCode;            // 'A' | 'M' | null
+    } else if (wizardData.cargosManualChoice === 'auto') {
+      cargosCode = 'A';                          // scelta operatore: invia a CARGOS
+    } else if (wizardData.cargosManualChoice === 'excluded') {
+      cargosCode = null;                         // scelta operatore: escludi (come e-bike)
+    } else {
+      // Tipo del tutto sconosciuto e nessuna scelta: NON inviare a caso alla
+      // Questura. Lo Step di conferma chiede la scelta; questo è il guard finale.
+      pushToast({ tone: 'error', title: 'Tipo veicolo non riconosciuto', message: 'Scegli se inviare a CARGOS o escludere prima di confermare il contratto.' });
+      return { ok: false, status: 'blocked', reason: 'unknown-type' };
+    }
+    // 2. Map wizard data → CARGOS record (codice già risolto sopra)
+    const record = mapWizardToCargosRecord(wizardData, operator, agency, partners, cargosCode);
     const isMoto = record.VEICOLO_TIPO === 'M';
-    const isExcluded = record.VEICOLO_TIPO === null;  // e-bike
+    const isExcluded = record.VEICOLO_TIPO === null;  // e-bike / escluso
     // Override esplicito: l'operatore ha disattivato CARGOS per questo contratto
     // (regime transitorio, contratto pre-2018, test, ecc.). Significativo solo per i veicoli
     // che CARGOS richiederebbe — per scooter/quad/ebike è già spento per norma.
@@ -10656,6 +10681,7 @@ export default function App() {
       vehicleType: record.VEICOLO_TIPO,
       cargosRequired: willSendToCargos,
       cargosOverridden: overriddenOff,  // tracciatura per audit
+      cargosManualChoice: wizardData.cargosManualChoice || undefined,  // scelta operatore per tipo sconosciuto
       record,
       wizardSnapshot: wizardData,  // utile per ristampare il PDF, troubleshooting
     };
@@ -10727,7 +10753,7 @@ export default function App() {
       pushToast({ tone: 'error', title: 'Invio non completato', message: msg, duration: 6000 });
       return { ok: false, status: 'error', contractId: record.CONTRATTO_ID, error: err.message, errorKind: err.kind };
     }
-  }, [operator, partners, online, api, setLocalContracts, pushToast]);
+  }, [operator, partners, online, api, setLocalContracts, pushToast, vehicleTypes, agency]);
 
   // Retry manuale di un contratto in errore — utile dalla lista pratiche
   const retryContract = useCallback(async (contractId) => {
@@ -18549,6 +18575,11 @@ function Wizard({ onClose, prefillCustomer, operator, fleet, customers, partners
   // CARGOS effettivo = obbligatorio per legge sul tipo veicolo E non disattivato dall'operatore.
   // Se override = 'off', il contratto viene salvato come 'paper' anche per le auto.
   const isCargosBound = t?.cargosRequired === true && data.cargosOverride !== 'off';
+  // Tipo veicolo NON riconosciuto (es. tipo RentMe non configurato tra base/custom):
+  // l'operatore deve scegliere se inviarlo a CARGOS o escluderlo PRIMA di confermare
+  // (scelta utente) — niente invio a caso alla Questura. Classifica sul veicolo reale.
+  const cargosTypeUnknown = !!data.veicolo && !VEHICLE_TYPES[canonicalTipo({ tipo: data.veicolo?.tipo, modello: data.veicolo?.modello || data.veicolo?.nome })];
+  const needsCargosChoice = cargosTypeUnknown && !data.cargosManualChoice;
 
   // Step 3 = Periodo (date prima), Step 4 = Veicolo (filtrato per disponibilità)
   const STEPS = ['Tipo', 'Cliente', 'Periodo', 'Veicolo', 'Conferma'];
@@ -18657,7 +18688,7 @@ function Wizard({ onClose, prefillCustomer, operator, fleet, customers, partners
                   {step === 2 && <Step2Customer data={data} update={update} customers={customers} />}
                   {step === 3 && <Step4Period data={data} update={update} partners={partners} />}
                   {step === 4 && <Step3Vehicle data={data} update={update} fleet={fleet} prenotazioni={prenotazioni} />}
-                  {step === 5 && <Step5Confirm data={data} operator={operator} partners={partners} onShowPdf={() => setPdfOpen(true)} onShowFirma={() => setFirmaOpen(true)} update={update} agency={agency} contractId={contractId} contractDate={contractDate} />}
+                  {step === 5 && <Step5Confirm data={data} operator={operator} partners={partners} onShowPdf={() => setPdfOpen(true)} onShowFirma={() => setFirmaOpen(true)} update={update} agency={agency} contractId={contractId} contractDate={contractDate} cargosTypeUnknown={cargosTypeUnknown} />}
                 </div>
               )
             }
@@ -18693,8 +18724,9 @@ function Wizard({ onClose, prefillCustomer, operator, fleet, customers, partners
                 <button
                   type="button"
                   onClick={handleConfirm}
-                  disabled={submitting}
-                  aria-disabled={submitting}
+                  disabled={submitting || needsCargosChoice}
+                  aria-disabled={submitting || needsCargosChoice}
+                  title={needsCargosChoice ? 'Scegli prima se il veicolo va comunicato alla Questura' : undefined}
                   className="btn-accent px-5 py-2 rounded text-sm font-semibold flex items-center gap-2 disabled:opacity-60"
                 >
                   {submitting ? (
@@ -19313,7 +19345,7 @@ function StructureSelect({ label, req, partners, structureId, onStructureChange,
 }
 
 // ─── Step 5 — Conferma ────────────────────────────────────────────
-function Step5Confirm({ data, operator, partners, onShowPdf, onShowFirma, update, agency, contractId, contractDate }) {
+function Step5Confirm({ data, operator, partners, onShowPdf, onShowFirma, update, agency, contractId, contractDate, cargosTypeUnknown }) {
   const VEHICLE_TYPES = useVehicleTypes();
   const t = VEHICLE_TYPES[data.tipoVeicolo] || VEHICLE_TYPES.auto;
   // Disponibilità CARGOS: lo permette la normativa per questo tipo veicolo?
@@ -19377,6 +19409,34 @@ function Step5Confirm({ data, operator, partners, onShowPdf, onShowFirma, update
           <div className="divider-dotted" />
           <SummaryRow icon={UserCheck} label="Operatore" value={operator.nome} sub={`${operator.ruolo} · turno ${operator.turno}`} />
         </div>
+
+        {/* Tipo veicolo NON riconosciuto → scelta obbligatoria dell'operatore prima di confermare.
+            Niente default silenzioso: l'operatore decide se va comunicato alla Questura. */}
+        {cargosTypeUnknown && (
+          <div className="mt-5 p-4 rounded card-paper" style={{ borderLeft: '3px solid var(--warning)' }}>
+            <div className="flex items-start gap-3 mb-3">
+              <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" style={{ color: 'var(--warning)' }} aria-hidden="true" />
+              <div>
+                <div className="font-semibold text-sm">Tipo veicolo non riconosciuto</div>
+                <div className="text-xs" style={{ color: 'var(--muted)' }}>
+                  Questo veicolo (tipo "{data.veicolo?.tipo || '—'}") non è tra i tipi configurati. Scegli se va comunicato alla Questura (CARGOS). Puoi anche aggiungerlo stabilmente in <strong>Prezzi → Tipi di veicolo</strong>.
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button type="button" onClick={() => update('cargosManualChoice', 'auto')}
+                className="px-3 py-2 rounded border text-xs font-semibold flex items-center gap-1.5"
+                style={{ borderColor: data.cargosManualChoice === 'auto' ? 'var(--accent)' : 'var(--border)', background: data.cargosManualChoice === 'auto' ? 'var(--accent-soft)' : 'transparent', color: data.cargosManualChoice === 'auto' ? 'var(--accent-deep)' : 'var(--ink-2)' }}>
+                <ShieldCheck className="w-3.5 h-3.5" /> Invia a CARGOS (come auto)
+              </button>
+              <button type="button" onClick={() => update('cargosManualChoice', 'excluded')}
+                className="px-3 py-2 rounded border text-xs font-semibold flex items-center gap-1.5"
+                style={{ borderColor: data.cargosManualChoice === 'excluded' ? 'var(--sea)' : 'var(--border)', background: data.cargosManualChoice === 'excluded' ? 'var(--sea-soft)' : 'transparent', color: data.cargosManualChoice === 'excluded' ? 'var(--sea)' : 'var(--ink-2)' }}>
+                Escludi (come e-bike)
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Toggle CARGOS — abilitato solo per tipi veicolo soggetti per legge */}
         {cargosAllowed ? (
