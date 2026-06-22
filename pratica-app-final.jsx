@@ -8168,7 +8168,7 @@ function ImportStoricoModal({ existingPreno, existingCustomers, onImport, onClos
       });
 
       // Ordina per data decrescente
-      rows.sort((a,b) => b.dal.localeCompare(a.dal));
+      rows.sort((a,b) => (b.dal||'').localeCompare(a.dal||''));
 
       // Seleziona solo i non-duplicati di default
       const newSel = new Set(rows.filter(r => !r.isDup).map(r => r.key));
@@ -16052,7 +16052,7 @@ function ManutenzioniModal({ vehicle, manutenzioni, setManutenzioni, onClose }) 
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {[...lista].sort((a, b) => (a.completata ? 1 : 0) - (b.completata ? 1 : 0) || a.dataScadenza.localeCompare(b.dataScadenza)).map(m => {
+          {[...lista].sort((a, b) => (a.completata ? 1 : 0) - (b.completata ? 1 : 0) || (a.dataScadenza||'').localeCompare(b.dataScadenza||'')).map(m => {
             const scaduta = !m.completata && m.dataScadenza < today;
             const in30 = !m.completata && !scaduta && m.dataScadenza <= localDateISO(30);
             return (
@@ -17071,7 +17071,7 @@ function CustomersPage({ customers, setCustomers, prenotazioni, admin, onShowQR,
               {schedaPreno.length > 0 && (
                 <div>
                   <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--muted)', marginBottom: 6 }}>Storico noleggi</div>
-                  {schedaPreno.slice().sort((a, b) => b.dal.localeCompare(a.dal)).slice(0, 6).map(p => (
+                  {schedaPreno.slice().sort((a, b) => (b.dal||'').localeCompare(a.dal||'')).slice(0, 6).map(p => (
                     <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 11, padding: '5px 0', borderBottom: '1px solid var(--border)' }}>
                       <div>
                         <span style={{ fontWeight: 600 }}>{p.vehicleLabel || '—'}</span>
