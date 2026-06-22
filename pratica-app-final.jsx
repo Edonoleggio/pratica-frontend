@@ -709,11 +709,15 @@ function getVehicleCategoria(v) {
 
 // ═══════════════════════════════════════════════════════════════════
 // SHARED UTILITY — safePrezzo
-// Filtra valori anomali nel campo prezzo (timestamp, ID, date YYYYMMDD finiti nel campo).
-// Nessun noleggio supera €5.000 — qualsiasi valore > €5.000 è un errore di import/sync.
+// Filtra SOLO valori palesemente anomali nel campo prezzo: timestamp/ID/date
+// YYYYMMDD (es. 20260501 = ~20 milioni) finiti per errore nel campo durante un
+// import/sync. Il tetto è alto apposta (€50.000) per NON tagliare mai un noleggio
+// vero (lungo periodo, van/luxury, pratica multipla a totale combinato): prima era
+// €5.000 e azzerava silenziosamente i noleggi alti in TUTTI i KPI dei report.
+const PREZZO_MAX_PLAUSIBILE = 50000;
 function safePrezzo(p) {
   const n = Number(p?.prezzo ?? p);
-  return (isFinite(n) && n > 0 && n <= 5000) ? n : 0;
+  return (isFinite(n) && n > 0 && n <= PREZZO_MAX_PLAUSIBILE) ? n : 0;
 }
 
 // SHARED UTILITY — normalizeAutoCategoria
@@ -1149,10 +1153,15 @@ function bookingContractId(p) {
   return `EDO-${y}-${code}`;
 }
 // true se esiste una pratica registrata (CARGOS o interna) per questa prenotazione.
+// Match per CODICE (chiave unica), ignorando il segmento ANNO dell'id: il wizard
+// "nuovo" usa l'anno di CREAZIONE mentre bookingContractId ricostruisce l'anno di
+// RITIRO → a cavallo d'anno (preno fatta a dic per ritiro a gen) i due id NON
+// coincidevano e "Completa contratto" restava acceso pur avendo il contratto.
 function bookingHasContract(p, contracts) {
-  const id = bookingContractId(p);
-  if (!id) return false;
-  return (contracts || []).some(c => c && c.contractId === id);
+  const code = p && (p.codice || p.id);
+  if (!code) return false;
+  const suffix = '-' + String(code);
+  return (contracts || []).some(c => c && typeof c.contractId === 'string' && c.contractId.endsWith(suffix));
 }
 
 // Mappa il wizard data → record CARGOS tracciato.
@@ -2794,7 +2803,9 @@ function PrenoCard({ p, onEdit, onConvert, onDelete, onFoto, onContratto, onFirm
         if (onFoto) items.push({ label: 'Foto stato', onClick: () => onFoto(p) });
         if (st === 'confermata' && onWaConferma) items.push({ label: 'WhatsApp conferma', onClick: () => onWaConferma(p) });
         if (st === 'confermata' && rentmePush) items.push({ label: 'Invia a RentMe', onClick: () => {
-          const rmVeh = (rentmeVehicles || []).find(v => v.targa === p.vehicleId);
+          // Risolvi il mezzo RentMe per CODICE/numero (dopo MOSSA 2 p.vehicleId è il
+          // codice RentMe, non una targa; gli oggetti rentmeVehicles non hanno .targa).
+          const rmVeh = (rentmeVehicles || []).find(v => String(cuoreNumero(v.idRentme, v.rentmeCode)) === String(p.vehicleId));
           rentmePush(p, rmVeh?.slug || p.vehicleType || 'auto')
             .then(() => pushToast && pushToast({ tone: 'success', title: 'Inviato a RentMe' }))
             .catch(err => pushToast && pushToast({ tone: 'warning', title: 'RentMe fallito', message: err.message }));
@@ -3397,8 +3408,8 @@ function useReportData({ prenotazioni, contracts, cassa, customers, fleet, opera
   return useMemo(() => {
     // allP: tutte le prenotazioni dell'anno (per conteggi e revenue)
     const allP = (prenotazioni || []).filter(p => (p.dal || '').startsWith(year));
-    // Helper: prezzo validato — esclude valori anomali (>9999) che indicano
-    // un dato non-prezzo finito nel campo (es. timestamp, ID, data YYYYMMDD dal sync RentMe).
+    // Helper: prezzo validato — esclude solo valori anomali (vedi safePrezzo,
+    // tetto €50.000) che indicano un dato non-prezzo finito nel campo (timestamp, ID, data YYYYMMDD).
     // Nessun noleggio a Lampedusa può costare più di €9.999 — qualsiasi valore superiore
     // è sicuramente un errore di import e non deve entrare nei calcoli finanziari.
     // allPLocali: alias per compatibilità con usi successivi (coincide con allP in questo contesto)
@@ -3839,9 +3850,12 @@ function ReportOperativoPage({ prenotazioni, contracts, customers, fleet, operat
     const topCats = Object.entries(catMap).sort((a, b) => b[1] - a[1]);
     const maxCat = Math.max(1, ...topCats.map(c => c[1]));
 
-    // Stati prenotazioni
+    // Stati prenotazioni: conta su TUTTE le preno dell'anno (incluse
+    // annullate/cancellate), NON solo le attive — altrimenti la voce
+    // "Cancellate" del pannello restava sempre 0.
     const stati = {};
-    prenoAnno.forEach(p => { stati[p.stato] = (stati[p.stato] || 0) + 1; });
+    (prenotazioni || []).filter(p => (p.dal || '').startsWith(year))
+      .forEach(p => { stati[p.stato] = (stati[p.stato] || 0) + 1; });
 
     // Flotta: noleggi + giorni per veicolo
     const perVeicolo = {};
@@ -6427,7 +6441,11 @@ function useRentMeSync({ fleet, rentmeVehicles, setRentmeVehicles, setPrenotazio
       const overla = (v.impegni || []).some(imp => imp.al >= booking.dal && imp.dal <= booking.al);
       if (overla) busy.add(v.targa);
     });
-    const freeVeh = catVehs.find(v => !busy.has(v.targa)) || catVehs[0];
+    // NIENTE fallback su catVehs[0]: se tutti i mezzi della categoria sono occupati
+    // nelle date richieste, NON si registra una prenotazione su un mezzo già occupato
+    // (creava overbooking reale su RentMe, sistema sorgente di verità). Si blocca.
+    const freeVeh = catVehs.find(v => !busy.has(v.targa));
+    if (!freeVeh) throw new Error('Nessun mezzo libero in questa categoria per le date richieste — invio a RentMe annullato');
     const payload = {
       uuidDittaAssociata: freeVeh.uuidDittaAssociata,
       targa:              freeVeh.targa,
@@ -6792,9 +6810,11 @@ function FleetCSVImport({ fleet, onImport, onClose }) {
     const sep   = lines[0].includes(';') ? ';' : ',';
     const heads = lines[0].split(sep).map(h => h.trim().toLowerCase().replace(/"/g,''));
 
-    // ── Rileva formato EDOX: prima colonna contiene "id rentme" o "id" ──
-    const isEdox = heads[0].includes('id rentme') || heads[0] === 'id' ||
-                   (heads.includes('modello') && heads.includes('targa') && heads.includes('colore'));
+    // ── Rileva formato EDOX: intestazione "id rentme" OPPURE la firma di colonne
+    // EDOX (modello+targa+colore). NON basta più heads[0]==='id' da solo: un CSV
+    // generico con prima colonna 'id' veniva scambiato per EDOX e importato male.
+    const hasEdoxCols = heads.includes('modello') && heads.includes('targa') && heads.includes('colore');
+    const isEdox = heads[0].includes('id rentme') || hasEdoxCols;
 
     if (isEdox) {
       // Formato: ID RENTME;Modello;Targa;Colore;;CC;
@@ -10046,8 +10066,20 @@ export default function App() {
     mergeRemote: (remote, local) => {
       if (!Array.isArray(remote) || !Array.isArray(local)) return remote;
       const remoteIds = new Set(remote.map(p => p && p.id));
+      // Preserva le voci che vivono SOLO in locale e che il backend NON può avere:
+      //  (a) RentMe non lavorate (le riporta il sync RentMe);
+      //  (b) STORICO ARCHIVIATO non-RentMe: prenotazioni non-attive più vecchie di 6
+      //      mesi, che la sanitize esclude apposta dal payload → senza questo merge
+      //      sparivano da localStorage al refresh (storico Report perso). NB: una
+      //      cancellazione di una voce archiviata su un altro device non si propaga
+      //      (scelta voluta: meglio conservare lo storico che perderlo).
+      const ATTIVI = new Set(['attesa', 'confermata', 'in_corso']);
+      const cutoff = new Date(); cutoff.setMonth(cutoff.getMonth() - 6);
+      const cutoffStr = cutoff.toISOString().slice(0, 10);
+      const isRentme = (p) => p.fonte === 'rentme' || p.fonte === 'rentme_storico';
+      const isArchiviata = (p) => !isRentme(p) && !ATTIVI.has(p.stato) && (p.al || p.dal || '') < cutoffStr;
       const localOnly = local.filter(p =>
-        p && p.id && (p.fonte === 'rentme' || p.fonte === 'rentme_storico') && !remoteIds.has(p.id));
+        p && p.id && !remoteIds.has(p.id) && (isRentme(p) || isArchiviata(p)));
       return localOnly.length ? [...remote, ...localOnly] : remote;
     },
   });
@@ -13037,8 +13069,8 @@ function CuorePrenotaPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazion
       }, ...(prev || [])]);
     }
     if (sendRentme && rentmePush) {
-      const rmVeh = mezzo && typeof cuoreNumero === 'function'
-        ? (rentmeVehicles || []).find(v => String(cuoreNumero(v)) === String(mezzo.numero)) : null;
+      const rmVeh = mezzo
+        ? (rentmeVehicles || []).find(v => String(cuoreNumero(v.idRentme, v.rentmeCode)) === String(mezzo.numero)) : null;
       rentmePush(nuova, rmVeh?.slug || tipo || 'auto')
         .then(() => pushToast && pushToast({ tone: 'success', title: 'Inviata a RentMe' }))
         .catch(err => pushToast && pushToast({ tone: 'warning', title: 'RentMe: invio fallito', message: err.message }));
