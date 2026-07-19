@@ -11771,6 +11771,8 @@ function CuoreOggiPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazioni, 
   const naviFeed = useNaviFeed();
   const meteoFeed = useMeteoFeed();
   const [liveView, setLiveView] = useState(null); // null | 'voli' | 'navi'
+  // Elenco mezzi sotto le card KPI (click sulla card → lista; ri-click → chiude).
+  const [kpiView, setKpiView] = useState(null); // null | 'tutti' | 'liberi' | 'occupati' | 'manutenzione'
   const domani = localDateISO(1);
   const parcoByNum = useMemo(() => new Map(parco.map(m => [String(m.numero), m])), [parco]);
 
@@ -11787,6 +11789,25 @@ function CuoreOggiPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazioni, 
     const liberi = disponibili.filter(m => !occ.has(String(m.numero)));
     return { totale: parco.length, disp: disponibili.length, liberi, occupati, manutenzione };
   }, [parco, prenoConFermi, oggi]);
+
+  // Chi occupa ogni mezzo OGGI (per l'elenco "Occupati ora"): numero → { cliente, al }.
+  // Stessi criteri dello snap (prenoConFermi + segmenti con overlap su oggi).
+  const occupanteByNum = useMemo(() => {
+    const map = new Map();
+    prenoConFermi.forEach(p => {
+      if (!p || CUORE_PRENO_FUORI.has(String(p.stato || ''))) return;
+      cuoreSegmenti(p).forEach(s => {
+        if (!cuoreOverlaps(s.dal, s.al, oggi, oggi)) return;
+        const key = String(s.numero);
+        if (map.has(key)) return; // prima prenotazione trovata: basta per l'etichetta
+        map.set(key, {
+          cliente: p._fermo ? 'Fermo programmato' : [p.clienteCognome, p.clienteNome].filter(Boolean).join(' '),
+          al: s.al,
+        });
+      });
+    });
+    return map;
+  }, [prenoConFermi, oggi]);
 
   const categorie = useMemo(() => {
     const seen = new Map();
@@ -11932,12 +11953,25 @@ function CuoreOggiPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazioni, 
     );
   };
 
-  const kpi = (label, val, color) => (
-    <div className="card-paper" style={{ padding: 14, borderTop: `3px solid ${color}` }}>
-      <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--ink-2)' }}>{label}</div>
-      <div style={{ fontFamily: 'var(--font-mono, monospace)', fontSize: 34, fontWeight: 700, color, lineHeight: 1.1, marginTop: 4 }}>{val}</div>
-    </div>
-  );
+  // Card KPI cliccabile: apre/chiude l'elenco mezzi corrispondente sotto la riga.
+  const kpi = (label, val, color, key) => {
+    const active = kpiView === key;
+    return (
+      <button type="button" onClick={() => setKpiView(v => v === key ? null : key)}
+        aria-expanded={active}
+        title={active ? 'Chiudi elenco' : `Mostra l'elenco: ${label}`}
+        className="card-paper" style={{ padding: 14, textAlign: 'left', cursor: 'pointer',
+          borderTop: `3px solid ${color}`,
+          border: active ? `1px solid ${color}` : '1px solid var(--border)',
+          boxShadow: active ? 'var(--shadow-inset)' : undefined }}>
+        <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--ink-2)' }}>{label}</div>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+          <span style={{ fontFamily: 'var(--font-mono, monospace)', fontSize: 34, fontWeight: 700, color, lineHeight: 1.1, marginTop: 4 }}>{val}</span>
+          <span aria-hidden="true" style={{ fontSize: 12, color: 'var(--muted)' }}>{active ? '▴' : '▾'}</span>
+        </div>
+      </button>
+    );
+  };
   const agendaCard = (titolo, n, sub, page, tone) => (
     <button type="button" onClick={() => setPage && setPage(page)}
       className="card-paper" style={{ padding: 14, textAlign: 'left', cursor: 'pointer', border: '1px solid var(--border)', borderLeft: `3px solid ${tone}` }}>
@@ -11990,11 +12024,71 @@ function CuoreOggiPage({ rentmeVehicles, targhe, fleet, scadenze, prenotazioni, 
 
       {/* KPI flotta ORA */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12, marginBottom: 16 }}>
-        {kpi('Mezzi totali', snap.totale, 'var(--ink)')}
-        {kpi('Liberi ora', snap.liberi.length, 'var(--sea)')}
-        {kpi('Occupati ora', snap.occupati.length, '#c88a2e')}
-        {kpi('In manutenzione', snap.manutenzione.length, 'var(--accent, #c0392b)')}
+        {kpi('Mezzi totali', snap.totale, 'var(--ink)', 'tutti')}
+        {kpi('Liberi ora', snap.liberi.length, 'var(--sea)', 'liberi')}
+        {kpi('Occupati ora', snap.occupati.length, '#c88a2e', 'occupati')}
+        {kpi('In manutenzione', snap.manutenzione.length, 'var(--accent, #c0392b)', 'manutenzione')}
       </div>
+
+      {/* Elenco mezzi della card KPI cliccata */}
+      {kpiView && (() => {
+        const KPI_VIEWS = {
+          tutti:        { titolo: 'Tutti i mezzi',        lista: parco },
+          liberi:       { titolo: 'Mezzi liberi ora',     lista: snap.liberi },
+          occupati:     { titolo: 'Mezzi occupati ora',   lista: snap.occupati },
+          manutenzione: { titolo: 'In manutenzione',      lista: snap.manutenzione },
+        };
+        const view = KPI_VIEWS[kpiView];
+        if (!view) return null;
+        const lista = [...view.lista].sort((a, b) =>
+          (a.tipo + a.categoria).localeCompare(b.tipo + b.categoria) || (parseInt(a.numero) - parseInt(b.numero)));
+        const showStato = kpiView === 'manutenzione' || kpiView === 'tutti';
+        const showChi = kpiView === 'occupati';
+        return (
+          <div className="card-paper" style={{ padding: '12px 14px', marginBottom: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              <span style={{ fontFamily: 'var(--font-serif)', fontWeight: 600, fontSize: 15 }}>{view.titolo}</span>
+              <span className="label" style={{ color: 'var(--sea)' }}>{lista.length} {lista.length === 1 ? 'mezzo' : 'mezzi'}</span>
+              <button type="button" onClick={() => setKpiView(null)}
+                style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 4, border: '1px solid var(--border)', background: 'transparent',
+                  borderRadius: 6, padding: '4px 9px', cursor: 'pointer', color: 'var(--muted)', fontSize: 11, fontWeight: 600 }}>
+                <X style={{ width: 12, height: 12 }} /> Chiudi
+              </button>
+            </div>
+            {lista.length === 0 ? (
+              <div style={{ fontSize: 13, color: 'var(--muted)', padding: '8px 0' }}>Nessun mezzo in questa lista al momento.</div>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead><tr>
+                    <th style={th}>Mezzo</th>
+                    <th style={th}>N°</th>
+                    <th style={th}>Targa</th>
+                    <th style={th}>Categoria</th>
+                    {showChi && <th style={th}>Cliente · rientro</th>}
+                    {showStato && <th style={th}>Stato</th>}
+                  </tr></thead>
+                  <tbody>
+                    {lista.map(m => {
+                      const chi = showChi ? occupanteByNum.get(String(m.numero)) : null;
+                      return (
+                        <tr key={m.numero}>
+                          <td style={td}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><VehicleIcon type={m.tipo} className="w-4 h-4" /> {(m.marca ? m.marca + ' ' : '') + (m.modello || '')}{m.cc ? ` · ${m.cc}` : ''}</span></td>
+                          <td style={{ ...td, ...mono }}>{m.numero}</td>
+                          <td style={{ ...td, ...mono }}>{m.targaAttesa === false ? '—' : (m.targa || '—')}</td>
+                          <td style={td}>{CATEGORIA_LABEL[m.categoria] || m.categoria || '—'}</td>
+                          {showChi && <td style={td}>{chi ? `${chi.cliente || '—'} · fino al ${formatDate(chi.al)}` : '—'}</td>}
+                          {showStato && <td style={td}>{m.stato || 'disponibile'}</td>}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Dettaglio live (espanso al clic su volo/nave nell'hero) */}
       {liveView && (
